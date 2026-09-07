@@ -174,14 +174,16 @@ göz önünde bulundurmalı:
   **doğrudan taşınamaz**, pybdt'nin kendi API'sine göre (`num_trees`,
   `beta`, `depth`, `min_split`, `prune_strength`, `use_purity`) yeniden
   ayarlanmalı.
-- pybdt derlenmiş bir C++/boost_python eklentisi. **Durum belirsiz/
-  çelişkili:** `py3-v4.4.2` env-shell içinde `python -c "from icecube
-  import pybdt"` denendi, `ImportError: cannot import name 'pybdt' from
-  'icecube' (unknown location)` alındı — yani meta-projede pybdt derlenmiş
-  olarak YOK. (Daha önce "derlenmiş geliyor" denmişti ama gerçek test bunu
-  doğrulamadı — hangi ortamda/hangi komutla test edildiği netleşmeden bu
-  konuda ilerlemeyin.) Sonraki adım: `diagnose_env.py`'daki PYBDT bölümünü
-  tam çıktısıyla çalıştırıp env-shell içinde olunduğunu teyit etmek.
+- pybdt derlenmiş bir C++/boost_python eklentisi. **Kesinleşti (env-shell
+  içinde doğrulandı, `icetray OK` sonrasında test edildi):** `python -c
+  "from icecube import pybdt"` → `ImportError: cannot import name 'pybdt'
+  from 'icecube' (unknown location)`. py3-v4.4.2 dağıtımında pybdt
+  derlenmiş olarak YOK. Kullanılabilmesi için IceTray meta-project build
+  sistemiyle **kaynaktan derlenmesi gerekiyor** — bu, cvmfs'teki hazır
+  dağıtımın üstüne "parazit" (parasitic) bir build dizini açıp `pybdt/`
+  projesini o dağıtıma karşı cmake ile derlemeyi gerektirir (compiler,
+  boost-python geliştirme başlıkları, cmake kuruluysa cobalt'ta genelde
+  mevcuttur). Bu adım henüz yapılmadı — sıradaki iş bu.
 - Uygulama tarafı da değişir: `l4_classifier_module.py` şu an LightGBM
   `Booster` + `.txt`/`.json` formatını okuyor; pybdt modeli için ayrı
   bir yükleme/uygulama yolu (`pybdt.util.load` + `score_event`, bkz.
