@@ -136,6 +136,54 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
    netleşecek.
 
+## Referans belgeler (`reference/`)
+
+- `reference/OscNext_v00.074_pass2_technical_note.pdf` — pass2 için resmi
+  oscNext teknik notu (83 sayfa). **pass3 için değil**, ama L4 mantığının
+  büyük kısmı (değişken tanımları, BDT hiperparametreleri) pass3'te de
+  aynı kabul ediliyor.
+- `reference/pass3_L3_process.py` — kullanıcının elindeki **gerçek pass3 L3
+  işleme scripti** (GRECO `grecovariables.DeepCoreCleaning`/`DeepCoreCuts`
+  kullanıyor). `oscNext_L4_variables.py`'nin varsaydığı L3 çıktısıyla
+  karşılaştırıldı ve **doğrulandı**:
+  - `SRTTWSplitInIcePulsesDC` → `CLEANED_PULSES_DEFAULT` ile birebir aynı
+  - `L3_oscNext_bool = IC2018_LE_L3_bools["IC2018_LE_L3_Full"] AND
+    Data_quality_bool` → `oscNext_L4_variables.py`'deki `l3_cut`
+    fonksiyonuyla birebir aynı mantık
+  - SLOP filtresi / LID errata veri kalitesi kesimi de kod yorumundaki
+    varsayımla eşleşiyor
+
+## BDT eğitimi: pybdt kullanılacak (bilinçli sapma — dikkat)
+
+`icecube/icetray` (private) içindeki `pybdt` (IceCube'un kendi AdaBoost
+tabanlı BDT kütüphanesi, C++/boost_python; kod repoda `pybdt/` altında)
+bu projede **kasıtlı olarak** kullanılacak.
+
+**Bunun resmi oscNext analiziyle uyuşmadığını bil:** Teknik not (pass2,
+v00.074, bölüm 3.6.1) L4 noise/muon sınıflandırıcılarının LightGBM
+(gradient boosting) ile eğitildiğini açıkça yazıyor, pybdt hiç
+geçmiyor; Tablo 10'daki hiperparametreler de (`max_depth`, `num_leaves`,
+`max_bin`, `lambda_l1`, `lambda_l2`, `min_gain_to_split`) LightGBM'in
+native isimleri. `train_L4_classifier.py` şu an bu resmi yaklaşımı
+(LightGBM) doğru şekilde uyguluyor ve referans olarak repoda duruyor.
+
+pybdt'ye geçiş şu sonuçları doğurur, bir sonraki session bunları
+göz önünde bulundurmalı:
+- pybdt AdaBoost yapıyor, LightGBM'in gradient-boosting + leaf/lambda
+  regularizasyon mantığı yok — Tablo 10 parametreleri pybdt'ye
+  **doğrudan taşınamaz**, pybdt'nin kendi API'sine göre (`num_trees`,
+  `beta`, `depth`, `min_split`, `prune_strength`, `use_purity`) yeniden
+  ayarlanmalı.
+- pybdt derlenmiş bir C++/boost_python eklentisi. Sadece `pybdt/`
+  kaynak kodunun repoda olması yetmez — IceTray meta-project build
+  sistemi içinde (cmake) derlenmesi gerekir. Ortamda (`py3-v4.4.2`
+  env-shell) zaten derlenmiş gelip gelmediği doğrulanmadı — ilk adım
+  `python -c "from icecube import pybdt"` ile kontrol etmek.
+- Uygulama tarafı da değişir: `l4_classifier_module.py` şu an LightGBM
+  `Booster` + `.txt`/`.json` formatını okuyor; pybdt modeli için ayrı
+  bir yükleme/uygulama yolu (`pybdt.util.load` + `score_event`, bkz.
+  `pybdt/python/pybdtmodule.py`) gerekecek.
+
 ## Konvansiyonlar
 
 - Kod ve yorumlar Türkçe.

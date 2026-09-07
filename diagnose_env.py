@@ -74,6 +74,19 @@ except Exception as e:
     print("  icetray yuklenemedi:", e)
 
 print("\n" + "=" * 70)
+print("PYBDT  (BDT egitimi icin -- derlenmis mi diye kontrol)")
+print("=" * 70)
+pybdt = try_import("icecube.pybdt")
+if pybdt:
+    try_import("icecube.pybdt.ml", "BDTLearner, DecisionTreeLearner, ...")
+    print("\n  -> pybdt zaten derlenmis geliyor, dogrudan kullanilabilir.")
+else:
+    print("\n  -> pybdt derlenmis degil. pybdt/ klasorundeki kaynak kod")
+    print("     (C++/boost_python) IceTray meta-project build sistemi")
+    print("     icinde cmake ile derlenmeden calismaz -- sadece dosyalarin")
+    print("     var olmasi yetmez.")
+
+print("\n" + "=" * 70)
 print("oscNext PROJESI  (adim 1'de eksik cikan kisim)")
 print("=" * 70)
 osc = try_import("icecube.oscNext")

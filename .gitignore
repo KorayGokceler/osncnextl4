@@ -23,7 +23,10 @@ L4_*_report.json
 # Grafikler
 *.png
 *.pdf
-!docs/*.png          # dokumantasyon gorselleri istisna
+# dokumantasyon gorselleri istisna
+!docs/*.png
+# teknik notlar / referans belgeler istisna
+!reference/*.pdf
 
 # Job listeleri / loglar
 L4_jobs.txt
