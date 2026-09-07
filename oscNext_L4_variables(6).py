@@ -1,0 +1,817 @@
+'''
+oscNext Level 4 degisken hesaplama -- calisir hale getirilmis surum.
+
+Orijinal tray segment'i (oscNext_level4.py) tamamen yoruma alinmisti ve su uc
+eski projeye bagimliydi:
+
+    tau_bdt.I3CutL7Module        -> VICH degiskenleri
+    analysis.event_selection     -> Dunkman degiskenleri
+    slc-veto SmallQ_Box          -> QR box
+
+Bunlar modern IceTray meta-projelerinde genelde bulunmuyor. Burada VICH ve
+Dunkman degiskenleri technical note'taki tanimlarina gore saf Python'la
+yeniden yazildi; QR box opsiyonel birakildi (BDT girdisi degil).
+
+Referans: oscNext technical note v00.07, bolum 3.4-3.6, Tablo 11-12.
+'''
+
+import os
+import numpy as np
+
+from icecube import dataclasses, icetray, DomTools
+from icecube import linefit, tensor_of_inertia, fill_ratio
+
+# Deserialization icin gerekli (dogrudan kullanilmasalar da)
+for _lib in ("simclasses", "recclasses", "genie_icetray", "genie_reader",
+             "sim_services"):
+    try:
+        __import__("icecube." + _lib)
+    except ImportError:
+        pass
+from icecube.icetray import I3Units
+from icecube import DeepCore_Filter
+from icecube.DeepCore_Filter import DOMS
+
+
+# ---------------------------------------------------------------------------
+# Cikti frame objesi isimleri  (orijinal script ile birebir ayni)
+# ---------------------------------------------------------------------------
+
+L4_CUT_BOOL_KEY = "L4_Cut_Bool"
+
+L4_FIRST_HLC_KEY      = "L4_first_hlc"
+L4_FIRST_HLC_RHO_KEY  = L4_FIRST_HLC_KEY + "_rho"
+
+L4_TOI_KEY            = "L4_ToI"
+L4_LINEFIT_KEY        = "L4_iLineFit"
+L4_QRBOX_KEY          = "L4_QR_Box"
+
+L4_VICH_NCH_KEY       = "L4_VICH_nch"
+L4_VICH_NPULSES_KEY   = "L4_VICH_npulses"
+L4_VICH_QTOT_KEY      = "L4_VICH_qtot"
+
+L4_SEP_IN_COGS_KEY    = "L4_separation_in_cogs"
+L4_ACC_TIME_KEY       = "L4_accumulated_time"
+
+L4_FTLR_KEY           = "L4_FullTimeLengthRatio"
+L4_NFLUX_KEY          = "L4_n_flux_events"   # I3GenieInfo'dan P frame'e tasinir
+L4_MICROCOUNT_KEY     = "L4_micro_count"
+L4_FILL_RATIO_KEY     = "L4_fill_ratio"
+
+L4_NOISE_STRAIGHT_CUT_KEY         = "L4_NoiseStraightCuts_Bool"
+L4_NOISE_MODEL_PREDICTION_KEY     = "L4_NoiseClassifier_ProbNu"
+L4_MUON_MODEL_PREDICTION_DATA_KEY = "L4_MuonClassifier_Data_ProbNu"
+
+# ---------------------------------------------------------------------------
+# Pulse serisi isimleri
+#
+# oscNext L3 (online_filterscripts .. grecovariables.DeepCoreCleaning) girdi
+# olarak "SplitInIcePulses" alir ve "SRTTWSplitInIcePulsesDC" uretir.
+# (Eski pass1 isimlendirmesi "SRTTWOfflinePulsesDC" idi -- ARTIK O DEGIL.)
+# ---------------------------------------------------------------------------
+UNCLEANED_PULSES_DEFAULT = "SplitInIcePulses"
+CLEANED_PULSES_DEFAULT   = "SRTTWSplitInIcePulsesDC"
+
+# HitStatistics / HitMultiplicity (muon BDT'nin cog_z, z_sigma, z_travel girdileri)
+#
+# NOT: L3 bunlari hesaplayip sonra SILIYOR (cleanup listesindeki
+# "<name>_DeepCoreCutsSRTTWSplitInIcePulsesDCHitStatistics").  Bu yuzden
+# oscNext_L4_hit_statistics segment'i ile YENIDEN hesapliyoruz -- ayni pulse
+# serisi, ayni modul, dolayisiyla ayni sonuc.
+HITSTAT_KEY  = CLEANED_PULSES_DEFAULT + "HitStatistics"
+HITMULT_KEY  = CLEANED_PULSES_DEFAULT + "HitMultiplicity"
+
+# Micro count icin kullanilan static/dynamic time window parametreleri
+STW_MINUS = 3500.
+STW_PLUS  = 4000.
+DTW       = 200
+# Orijinal script'teki format string birebir korundu ->  "STW_m3500p4000_DTW200"
+# (Eski GRECO kodu ayni degisken icin "STW7500_DTW200" ariyordu -- uyusmuyor.)
+MICROCOUNT_SUBKEY = "STW_m%ip%i_DTW%i" % (STW_MINUS, STW_PLUS, DTW)
+
+# Fill ratio yaricap carpani -- GRECO icin optimize edildi, oscNext icin
+# yeniden optimize EDILMEDI.  Yeni veride oynanabilecek bir parametre.
+FILL_RATIO_SPHERICAL_RADIUS_MEAN = 1.6
+
+# VICH nedensellik hiz penceresi [m/ns] (technical note bolum 3.4)
+VICH_SPEED_MIN = 0.25
+VICH_SPEED_MAX = 0.40
+
+# String 36 konumu (DeepCore merkezi) -- calc_rho_36 icin fallback
+STRING36_X = 46.29
+STRING36_Y = -34.88
+
+
+L4_HDF5_KEYS = [
+    L4_CUT_BOOL_KEY,
+    L4_FIRST_HLC_KEY, L4_FIRST_HLC_RHO_KEY,
+    L4_TOI_KEY, L4_TOI_KEY + "Params",
+    L4_LINEFIT_KEY, L4_LINEFIT_KEY + "Params",
+    L4_QRBOX_KEY,
+    L4_VICH_NCH_KEY, L4_VICH_NPULSES_KEY, L4_VICH_QTOT_KEY,
+    L4_SEP_IN_COGS_KEY, L4_ACC_TIME_KEY,
+    L4_MICROCOUNT_KEY, L4_FILL_RATIO_KEY, L4_FTLR_KEY, L4_NFLUX_KEY,
+    L4_NOISE_STRAIGHT_CUT_KEY,
+    L4_NOISE_MODEL_PREDICTION_KEY,
+    L4_MUON_MODEL_PREDICTION_DATA_KEY,
+]
+
+
+# ---------------------------------------------------------------------------
+# Yardimci fonksiyonlar
+# ---------------------------------------------------------------------------
+
+_LC_FLAG = dataclasses.I3RecoPulse.PulseFlags.LC
+
+
+def iter_map(pulse_map):
+    '''
+    (omkey, pulses) ciftleri uzerinde iterasyon.
+
+    DIKKAT: IceTray surumune gore bir I3RecoPulseSeriesMap uzerinde dogrudan
+    iterasyon ANAHTARLARI dondurebilir, cift degil.  O durumda
+    "for omkey, pulses in pmap" hatasi verir -- OMKey uc bilesene
+    (string, om, pmt) acildigi icin "too many values to unpack (expected 2)".
+    .items() her surumde dogru calisir.
+    '''
+    if pulse_map is None:
+        return []
+    try:
+        return pulse_map.items()
+    except AttributeError:
+        return iter(pulse_map)
+
+
+def get_pulses(frame, key):
+    '''Pulse serisini al; mask/union ise frame'e uygula.'''
+    if key not in frame:
+        return None
+    obj = frame[key]
+    if hasattr(obj, "apply"):
+        try:
+            return obj.apply(frame)
+        except Exception:
+            return None
+    return obj
+
+
+def calc_rho_36(x, y):
+    '''String 36'ya (DeepCore merkezi) yatay radyal uzaklik.'''
+    return float(np.hypot(x - STRING36_X, y - STRING36_Y))
+
+
+def iter_hits(pulse_map, geometry, first_pulse_only=False):
+    '''
+    (omkey, pos, time, charge) uzerinde iterasyon.
+    first_pulse_only=True ise DOM basina sadece ilk pulse.
+    '''
+    omgeo = geometry.omgeo
+    for omkey, pulses in iter_map(pulse_map):
+        if omkey not in omgeo:
+            continue
+        pos = omgeo[omkey].position
+        if first_pulse_only:
+            if len(pulses):
+                p = pulses[0]
+                yield omkey, pos, p.time, p.charge
+        else:
+            for p in pulses:
+                yield omkey, pos, p.time, p.charge
+
+
+def charge_weighted_cog(hits):
+    '''Yuk agirlikli center-of-gravity (konum + zaman).'''
+    xs, ys, zs, ts, qs = [], [], [], [], []
+    for _, pos, t, q in hits:
+        xs.append(pos.x); ys.append(pos.y); zs.append(pos.z)
+        ts.append(t); qs.append(max(q, 0.0))
+    if not xs:
+        return None
+    q = np.asarray(qs, dtype=float)
+    if q.sum() <= 0:
+        q = np.ones_like(q)
+    w = q / q.sum()
+    return (float(np.dot(w, xs)), float(np.dot(w, ys)),
+            float(np.dot(w, zs)), float(np.dot(w, ts)))
+
+
+def check_object_exists(frame, object_key):
+    '''Obje yoksa frame'i dusur (orijinaldeki data_quality.check_object_exists).'''
+    return object_key in frame
+
+
+# ===========================================================================
+# 1. ORTAK DEGISKENLER
+# ===========================================================================
+
+def _first_hlc(frame, pulses_key, output_key, geometry_key="I3Geometry"):
+    '''
+    Temizlenmis seride zamanca ilk HLC hit'i bul, I3Particle olarak yaz.
+
+    Orijinal script "FirstHLC<I3RecoPulse>" C++ modulunu kullaniyordu.  Bu
+    modul her meta-projede bulunmadigi icin ayni isi Python'da yapiyoruz:
+    HLC hit'ler I3RecoPulse.PulseFlags.LC bayragi ile isaretlenir.
+    '''
+    if output_key in frame:
+        return True
+    pmap = get_pulses(frame, pulses_key)
+    if pmap is None or geometry_key not in frame:
+        return True
+    omgeo = frame[geometry_key].omgeo
+
+    best = None   # (time, pos)
+    for omkey, pulses in iter_map(pmap):
+        if omkey not in omgeo:
+            continue
+        for p in pulses:
+            if not (p.flags & _LC_FLAG):
+                continue
+            if best is None or p.time < best[0]:
+                best = (p.time, omgeo[omkey].position)
+            break   # DOM basina ilk HLC pulse yeterli
+
+    if best is None:
+        return True
+
+    part = dataclasses.I3Particle()
+    part.pos = best[1]
+    part.time = best[0]
+    part.shape = dataclasses.I3Particle.ParticleShape.Cascade
+    part.fit_status = dataclasses.I3Particle.FitStatus.OK
+    frame[output_key] = part
+    return True
+
+
+def _add_rho_36(frame, particle_key, output_key):
+    if particle_key in frame and output_key not in frame:
+        pos = frame[particle_key].pos
+        frame[output_key] = dataclasses.I3Double(calc_rho_36(pos.x, pos.y))
+    return True
+
+
+def _full_time_length_ratio(frame, output_key,
+                            l3_key="IC2018_LE_L3_Vars",
+                            cleaned_pulses=None, uncleaned_pulses=None):
+    '''
+    Temizlenmis / temizlenmemis olay suresi orani.  Noise BDT girdisi.
+
+    Technical note Tablo 11: "olayin toplam suresini hem temizlenmis hem
+    temizlenmemis pulse serisinde olc (sure = maks pulse zamani - min pulse
+    zamani), ikisinin oranini hesapla."
+
+    Yon: temizlenmis / temizlenmemis, yani [0,1] araliginda (Sekil 13'teki
+    x ekseni ile uyumlu).  Gercek olayda temizleme fazla bir sey silmez
+    -> ~1.  Saf gurultude temizlenmis seri birkac izole hit'e iner -> ~0.
+
+    pass3 L3 ciktisinda IC2018_LE_L3_Vars icinde CleanedFullTimeLength ve
+    UncleanedFullTimeLength AYRI AYRI var ama ORANLARI YOK -- bu yuzden
+    burada hesapliyoruz.  L3 map'inde yoksa pulse serilerinden dogrudan
+    olculur.
+    '''
+    if output_key in frame:
+        return True
+
+    cleaned = uncleaned = None
+
+    if l3_key in frame:
+        v = frame[l3_key]
+        if "CleanedFullTimeLength" in v and "UncleanedFullTimeLength" in v:
+            cleaned = float(v["CleanedFullTimeLength"])
+            uncleaned = float(v["UncleanedFullTimeLength"])
+
+    if cleaned is None and cleaned_pulses and uncleaned_pulses:
+        def duration(key):
+            pmap = get_pulses(frame, key)
+            if pmap is None:
+                return None
+            times = [p.time for _, pulses in iter_map(pmap) for p in pulses]
+            return (max(times) - min(times)) if times else None
+        cleaned = duration(cleaned_pulses)
+        uncleaned = duration(uncleaned_pulses)
+
+    if cleaned is None or uncleaned is None or uncleaned <= 0:
+        return True
+
+    frame[output_key] = dataclasses.I3Double(float(cleaned) / float(uncleaned))
+    return True
+
+
+@icetray.traysegment
+def oscNext_L4_common_variables(tray, name, cleaned_pulses, uncleaned_pulses=None):
+    '''Ilk HLC hit, rho, ve FullTimeLengthRatio.'''
+
+    tray.Add(_first_hlc, name + "_FirstHLC",
+             pulses_key=cleaned_pulses,
+             output_key=L4_FIRST_HLC_KEY)
+
+    tray.Add(_add_rho_36, name + "_FirstHLCRho",
+             particle_key=L4_FIRST_HLC_KEY,
+             output_key=L4_FIRST_HLC_RHO_KEY)
+
+    tray.Add(_full_time_length_ratio, name + "_FTLR",
+             output_key=L4_FTLR_KEY,
+             cleaned_pulses=cleaned_pulses,
+             uncleaned_pulses=uncleaned_pulses)
+
+
+class PropagateGenieInfo(icetray.I3Module):
+    '''
+    I3GenieInfo.n_flux_events'i her Physics frame'e I3Double olarak yazar.
+
+    NEDEN: I3GenieInfo dosya basina bir kez, Physics OLMAYAN bir frame'de
+    (S/M) bulunur.  HDF5 booking ise olay bazlidir -- o yuzden degeri her
+    P frame'e tasimazsak agirlik hesabinda kullanamayiz.
+
+    Agirlik konvansiyonu (mevcut oscnext_rates.py ile ayni):
+        weight [Hz] = OneWeight * flux(E) / n_flux
+        n_flux      = I3GenieInfo.n_flux_events            (varsa)
+                    = NEvents * 0.7 (nu) veya 0.3 (nubar)  (yoksa)
+    '''
+
+    def __init__(self, context):
+        icetray.I3Module.__init__(self, context)
+        self.AddParameter("OutputKey", "Yazilacak anahtar", L4_NFLUX_KEY)
+        self.AddOutBox("OutBox")
+
+    def Configure(self):
+        self.output_key = self.GetParameter("OutputKey")
+        self.n_flux = None
+        self.warned = False
+
+    def _grab(self, frame):
+        '''
+        I3GenieInfo'yu okumayi dene.  Deserialization hatasi (genie_icetray
+        import edilmemis) ya da eksik alan job'i COKURMEMELI -- agirlik
+        hesabi NEvents fallback'ine duser.
+        '''
+        if self.n_flux is not None or not frame.Has("I3GenieInfo"):
+            return
+        try:
+            self.n_flux = float(frame["I3GenieInfo"].n_flux_events)
+            icetray.logging.log_info(
+                "PropagateGenieInfo: n_flux_events = %g" % self.n_flux)
+        except Exception as e:
+            if not self.warned:
+                icetray.logging.log_warn(
+                    "PropagateGenieInfo: I3GenieInfo okunamadi (%s: %s). "
+                    "genie_icetray import edildi mi? Agirlik hesabi "
+                    "NEvents * nu/nubar fraksiyonuna dusecek."
+                    % (type(e).__name__, e))
+                self.warned = True
+
+    # I3GenieInfo hangi stream'de olursa olsun yakala
+    def DAQ(self, frame):
+        self._grab(frame); self.PushFrame(frame)
+
+    def Simulation(self, frame):
+        self._grab(frame); self.PushFrame(frame)
+
+    def Process(self):
+        frame = self.PopFrame()
+        if frame.Stop != icetray.I3Frame.Physics:
+            self._grab(frame)
+            self.PushFrame(frame)
+            return
+        self._grab(frame)
+        if self.n_flux is not None and self.output_key not in frame:
+            frame[self.output_key] = dataclasses.I3Double(self.n_flux)
+        elif self.n_flux is None and not self.warned:
+            icetray.logging.log_warn(
+                "PropagateGenieInfo: I3GenieInfo bulunamadi -- agirlik hesabi "
+                "NEvents * nu/nubar fraksiyonuna dusecek")
+            self.warned = True
+        self.PushFrame(frame)
+
+
+# ===========================================================================
+# 2. MUON REDDI DEGISKENLERI
+# ===========================================================================
+
+def _accumulated_time(frame, pulses_key, output_key, fraction=0.75):
+    '''
+    Olayin toplam yukunun %75'ine ulasmasi icin gecen sure [ns].
+
+    Technical note Tablo 12: "Time to reach 75% of an event's charge in the
+    cleaned pulse series."  Seciimdeki nadir yuke-bagli degiskenlerden biri.
+    Orijinalde analysis/event_selection'in CalculateVariables modulunden
+    cikariliyordu; burada dogrudan hesapliyoruz.
+    '''
+    if output_key in frame:
+        return True
+    pmap = get_pulses(frame, pulses_key)
+    if pmap is None:
+        return True
+
+    times, charges = [], []
+    for _, pulses in iter_map(pmap):
+        for p in pulses:
+            times.append(p.time)
+            charges.append(max(p.charge, 0.0))
+    if not times:
+        return True
+
+    t = np.asarray(times); q = np.asarray(charges)
+    order = np.argsort(t)
+    t, q = t[order], q[order]
+    total = q.sum()
+    if total <= 0:
+        return True
+    cum = np.cumsum(q) / total
+    idx = int(np.searchsorted(cum, fraction))
+    idx = min(idx, len(t) - 1)
+    frame[output_key] = dataclasses.I3Double(float(t[idx] - t[0]))
+    return True
+
+
+def _separation_in_cogs(frame, pulses_key, output_key, geometry_key="I3Geometry"):
+    '''
+    Olayi zamanca iki yariya bolup her yarinin yuk agirlikli COG'unu hesapla,
+    aradaki mesafeyi yaz.
+
+    Track ilerledikce COG kayar -> buyuk ayrim.
+    Cascade yerinde patlar    -> kucuk ayrim.
+
+    DIKKAT: orijinal Dunkman implementasyonunun tam tanimi dogrulanamadi
+    (proje mevcut degil).  Referans dosyalariniz varsa bu degiskeni onlarla
+    karsilastirin.  BDT girdisi olmadigi icin kritik degil.
+    '''
+    if output_key in frame:
+        return True
+    pmap = get_pulses(frame, pulses_key)
+    if pmap is None or geometry_key not in frame:
+        return True
+
+    hits = list(iter_hits(pmap, frame[geometry_key]))
+    if len(hits) < 4:
+        return True
+    hits.sort(key=lambda h: h[2])          # zamana gore sirala
+    half = len(hits) // 2
+    c1 = charge_weighted_cog(hits[:half])
+    c2 = charge_weighted_cog(hits[half:])
+    if c1 is None or c2 is None:
+        return True
+    d = np.sqrt((c2[0]-c1[0])**2 + (c2[1]-c1[1])**2 + (c2[2]-c1[2])**2)
+    frame[output_key] = dataclasses.I3Double(float(d))
+    return True
+
+
+def _vich(frame, uncleaned_pulses, cleaned_pulses,
+          nch_key, npulses_key, qtot_key, geometry_key="I3Geometry"):
+    '''
+    Veto Identified Causal Hits.
+
+    Technical note bolum 3.4: veto bolgesindeki her hit ile olayin COG
+    konum/zaman vertex'i arasindaki hiz hesaplanir; hiz [0.25, 0.4] m/ns
+    araligindaysa hit, detektoru gecen bir muondan kaynaklanmis olabilecegi
+    gerekcesiyle isaretlenir.  (0.3 m/ns = isik hizi.)
+
+    ONEMLI: girdi TEMIZLENMEMIS seri olmali -- temizleme muonun veto
+    bolgesindeki zayif, izole hit'lerini siler ve muon tam da o hit'lerden
+    taninir.  COG vertex'i ise TEMIZLENMIS seriden alinir.
+
+    Orijinalde tau_bdt.I3CutL7Module yapiyordu.
+    '''
+    if nch_key in frame:
+        return True
+    unc = get_pulses(frame, uncleaned_pulses)
+    cln = get_pulses(frame, cleaned_pulses)
+    if unc is None or cln is None or geometry_key not in frame:
+        return True
+
+    geo = frame[geometry_key]
+    cog = charge_weighted_cog(iter_hits(cln, geo))
+    if cog is None:
+        return True
+    cx, cy, cz, ct = cog
+
+    veto_doms = set(DOMS.DOMS("IC86").DeepCoreVetoDOMs)
+
+    n_doms, n_pulses, qtot = 0, 0, 0.0
+    for omkey, pulses in iter_map(unc):
+        if omkey not in veto_doms:
+            continue
+        if omkey not in geo.omgeo:
+            continue
+        pos = geo.omgeo[omkey].position
+        d = np.sqrt((pos.x-cx)**2 + (pos.y-cy)**2 + (pos.z-cz)**2)
+        dom_counted = False
+        for p in pulses:
+            dt = ct - p.time            # veto hit COG'dan ONCE olmali
+            if dt <= 0:
+                continue
+            speed = d / dt
+            if VICH_SPEED_MIN <= speed <= VICH_SPEED_MAX:
+                n_pulses += 1
+                qtot += max(p.charge, 0.0)
+                dom_counted = True
+        if dom_counted:
+            n_doms += 1
+
+    frame[nch_key]     = dataclasses.I3Double(float(n_doms))
+    frame[npulses_key] = dataclasses.I3Double(float(n_pulses))
+    frame[qtot_key]    = dataclasses.I3Double(float(qtot))
+    return True
+
+
+@icetray.traysegment
+def oscNext_L4_atm_muon_classifier_variables(tray, name,
+                                             uncleaned_pulses,
+                                             cleaned_pulses,
+                                             run_qr_box=False):
+    '''L4 atmosferik muon reddi siniflandiricisinin girdileri.'''
+
+    # --- Tensor of inertia (BDT girdisi degil; aday/legacy) ---
+    tray.AddModule("I3TensorOfInertia", name + "_ToI",
+                   AmplitudeOption=1,
+                   AmplitudeWeight=1,
+                   InputReadout=cleaned_pulses,
+                   InputSelection="",
+                   MinHits=3,
+                   Name=L4_TOI_KEY)
+
+    # --- improved LineFit ---
+    # BDT'de kullanilan alan hiz: L4_iLineFitParams.LFVel
+    tray.AddSegment(linefit.simple, name + "_iLineFit",
+                    inputResponse=cleaned_pulses,
+                    fitName=L4_LINEFIT_KEY)
+
+    # --- QR box (slc-veto; opsiyonel, BDT girdisi degil) ---
+    if run_qr_box:
+        try:
+            icetray.load("slc-veto", False)
+            tray.AddModule("SmallQ_Box", name + "_QRBox",
+                           BoxName=L4_QRBOX_KEY,
+                           RecoPulsesKey=cleaned_pulses)
+        except Exception as e:
+            icetray.logging.log_warn("QR box atlandi (slc-veto yok): %s" % e)
+
+    # --- Dunkman degiskenleri (Python yeniden yazim) ---
+    tray.Add(_accumulated_time, name + "_AccTime",
+             pulses_key=cleaned_pulses,
+             output_key=L4_ACC_TIME_KEY)
+
+    tray.Add(_separation_in_cogs, name + "_SepCOG",
+             pulses_key=cleaned_pulses,
+             output_key=L4_SEP_IN_COGS_KEY)
+
+    # --- VICH (tau_bdt yeniden yazim) ---
+    tray.Add(_vich, name + "_VICH",
+             uncleaned_pulses=uncleaned_pulses,
+             cleaned_pulses=cleaned_pulses,
+             nch_key=L4_VICH_NCH_KEY,
+             npulses_key=L4_VICH_NPULSES_KEY,
+             qtot_key=L4_VICH_QTOT_KEY)
+
+
+# ===========================================================================
+# 3. GURULTU REDDI DEGISKENLERI
+# ===========================================================================
+
+def _micro_count(frame, pulses_key, output_key, subkey):
+    '''Temizlenmis+pencereli seride hit alan DOM sayisini I3MapStringInt olarak yaz.'''
+    values = dataclasses.I3MapStringInt()
+    pmap = get_pulses(frame, pulses_key)
+    # DOM sayisi: len(map) her surumde calisir, .keys() bazen liste degil
+    # bir view/iterator dondurur.
+    if pmap is None:
+        n_doms = 0
+    else:
+        try:
+            n_doms = len(pmap)
+        except TypeError:
+            n_doms = sum(1 for _ in iter_map(pmap))
+    values[subkey] = int(n_doms)
+    if output_key not in frame:
+        frame[output_key] = values
+    return True
+
+
+@icetray.traysegment
+def oscNext_L4_noise_cut_variables(tray, name,
+                                   fill_ratio_vertex,
+                                   uncleaned_pulses,
+                                   cleaned_pulses):
+    '''L4 saf gurultu reddi siniflandiricisinin girdileri.'''
+
+    #
+    # Micro count
+    #
+    # Zincir:  static TW [-3500,+4000] ns -> SeededRT -> DeepCore fiducial
+    #          -> 200 ns dinamik pencere -> DOM say
+    #
+    # Bu GRECO'dan oldugu gibi alinmistir (yeniden optimize edilmedi).  L3'teki
+    # microcount ile tamamlayicidir: parametreleri farkli oldugu icin ikisi tam
+    # korele degil, BDT ikisinden de bilgi cikarir.
+
+    icetray.load("static-twc", False)
+
+    tw_pulses = "L4_TWPulses"
+    tray.AddModule("I3StaticTWC<I3RecoPulseSeries>", name + "_StaticTWC_DC",
+                   InputResponse=uncleaned_pulses,
+                   OutputResponse=tw_pulses,
+                   TriggerConfigIDs=[1010, 1011],
+                   TriggerName="I3TriggerHierarchy",
+                   WindowMinus=STW_MINUS,
+                   WindowPlus=STW_PLUS)
+
+    from icecube import STTools
+    from icecube.STTools.seededRT.configuration_services import \
+        I3DOMLinkSeededRTConfigurationService
+
+    srt_cfg = I3DOMLinkSeededRTConfigurationService(
+        useDustlayerCorrection=False,
+        dustlayerUpperZBoundary=0 * I3Units.m,
+        dustlayerLowerZBoundary=-150 * I3Units.m,
+        ic_ic_RTTime=1000 * I3Units.ns,
+        ic_ic_RTRadius=150 * I3Units.m)
+
+    srt_tw_pulses = "L4_SRTTWPulses"
+    tray.AddModule("I3SeededRTCleaning_RecoPulse_Module",
+                   name + "_SeededRTCleaning_DC",
+                   AllowNoSeedHits=False,
+                   InputHitSeriesMapName=tw_pulses,
+                   OutputHitSeriesMapName=srt_tw_pulses,
+                   STConfigService=srt_cfg,
+                   MaxNIterations=-1,
+                   SeedProcedure="AllHLCHits")
+
+    # Klasik IC86 DeepCore fiducial hacmi
+    dom_list = DOMS.DOMS("IC86")
+    tw_fid_pulses = tw_pulses + "_DCFid"
+
+    tray.AddModule("I3OMSelection<I3RecoPulseSeries>", name + "_DCFidPulses",
+                   selectInverse=True,
+                   InputResponse=tw_pulses,
+                   OutputResponse=tw_fid_pulses,
+                   OmittedKeys=dom_list.DeepCoreFiducialDOMs)
+
+    dtw_pulses = tw_fid_pulses + ("_DTW%i" % DTW)
+    tray.AddModule("I3TimeWindowCleaning<I3RecoPulse>", name + "_DynamicTW",
+                   InputResponse=tw_fid_pulses,
+                   OutputResponse=dtw_pulses,
+                   TimeWindow=DTW)
+
+    tray.Add(_micro_count, name + "_MicroCount",
+             pulses_key=dtw_pulses,
+             output_key=L4_MICROCOUNT_KEY,
+             subkey=MICROCOUNT_SUBKEY)
+
+    #
+    # Fill ratio
+    #
+    # GRECO farkli bir pulse serisi kullaniyordu; burada standart temizlenmis
+    # seri kullaniliyor (orijinal yorumda "iyi calisiyor, basitlik icin boyle
+    # birakiyorum" deniyor).
+
+    tray.AddModule("I3FillRatioModule", name + "_FillRatio",
+                   RecoPulseName=cleaned_pulses,
+                   ResultName=L4_FILL_RATIO_KEY,
+                   SphericalRadiusMean=FILL_RATIO_SPHERICAL_RADIUS_MEAN,
+                   VertexName=fill_ratio_vertex)
+
+
+# ===========================================================================
+# 4. HIT STATISTICS  (muon BDT'nin cog_z / z_sigma / z_travel girdileri)
+# ===========================================================================
+
+@icetray.traysegment
+def oscNext_L4_hit_statistics(tray, name, cleaned_pulses):
+    '''
+    common_variables ile hit statistics ve multiplicity hesapla.
+    L3'te zaten hesaplaniyorsa bu segment atlanabilir.
+    '''
+    from icecube.common_variables import hit_statistics, hit_multiplicity
+
+    tray.AddSegment(hit_statistics.I3HitStatisticsCalculatorSegment,
+                    name + "_HitStatistics",
+                    PulseSeriesMapName=cleaned_pulses,
+                    OutputI3HitStatisticsValuesName=HITSTAT_KEY,
+                    BookIt=False,
+                    If=lambda f: HITSTAT_KEY not in f)
+
+    tray.AddSegment(hit_multiplicity.I3HitMultiplicityCalculatorSegment,
+                    name + "_HitMultiplicity",
+                    PulseSeriesMapName=cleaned_pulses,
+                    OutputI3HitMultiplicityValuesName=HITMULT_KEY,
+                    BookIt=False,
+                    If=lambda f: HITMULT_KEY not in f)
+
+
+# ===========================================================================
+# 5. KESIMLER
+# ===========================================================================
+
+def L4_noise_straight_cuts(frame, output_key=L4_NOISE_STRAIGHT_CUT_KEY):
+    '''
+    Siniflandiriciya alternatif gevsek duz kesimler.  Uretiliyor ama kesimde
+    kullanilmiyor -- siniflandirici ile sorun cikarsa diye tutuluyor.
+    Her degiskenin hangi yonde ayirdigini gormek icin de faydali bir referans.
+    '''
+    try:
+        keep = (
+            frame[HITMULT_KEY].n_hit_doms >= 8 and
+            frame["IC2018_LE_L3_Vars"]["STW9000_DTW300Hits"] >= 2 and
+            frame[L4_MICROCOUNT_KEY][MICROCOUNT_SUBKEY] >= 2 and
+            frame[L4_FILL_RATIO_KEY].fill_ratio_from_mean >= 0.03 and
+            frame[HITSTAT_KEY].z_sigma >= 8. and
+            frame[HITSTAT_KEY].z_travel >= -50.
+        )
+    except (KeyError, AttributeError):
+        keep = False
+    frame[output_key] = icetray.I3Bool(bool(keep))
+    return True
+
+
+@icetray.traysegment
+def compute_L4_cut(tray, name, classifier_model_dir,
+                   noise_cut=0.70, muon_cut=0.65):
+    '''
+    Egitilmis siniflandiricilari uygula ve L4 kesimini hesapla.
+
+    NOT: oscNext projesi (icecube.oscNext.tools.classifier.I3Classifier) bu
+    meta-projede YOK.  Yerine l4_classifier_module.py kullaniliyor -- ayni isi
+    yapar, sadece lightgbm + numpy'a bagimlidir (IceTray ortaminda sklearn ve
+    joblib bulunmuyor).
+
+    Modeller HENUZ EGITILMEMISSE bu segment'i atlayin: once degiskenleri
+    kesimsiz book edip siniflandiricilari egitmeniz gerekir.
+    '''
+    from l4_classifier_module import add_L4_classifiers
+
+    tray.Add(L4_noise_straight_cuts, name + "_straight_cuts")
+
+    tray.Add(add_L4_classifiers, name + "_classifiers",
+             model_dir=classifier_model_dir,
+             noise_cut=noise_cut,
+             muon_cut=muon_cut,
+             apply_cut=True)
+
+
+# ===========================================================================
+# 6. ANA SEGMENT
+# ===========================================================================
+
+@icetray.traysegment
+def oscNext_L4(tray, name,
+               uncleaned_pulses=UNCLEANED_PULSES_DEFAULT,
+               cleaned_pulses=CLEANED_PULSES_DEFAULT,
+               apply_l3_cut=True,
+               is_genie=False,
+               compute_hit_statistics=True,
+               apply_cut=False,
+               classifier_model_dir=None):
+    '''
+    oscNext L4 ana tray segment'i.
+
+    apply_cut=False (varsayilan): sadece degiskenleri hesaplar.  Modelleri
+    egitmeden once bu modda calistirin -- kesim uygulanmadan tum olaylari
+    book edersiniz, boylece hem noise hem muon egitim setini tek gecisten
+    cikarabilirsiniz.
+    '''
+
+    # I3GenieInfo -> her P frame'e (L3 kesiminden ONCE, S frame'ler kesimden
+    # etkilenmesin diye)
+    if is_genie:
+        tray.Add(PropagateGenieInfo, name + "_genie_info")
+
+    if apply_l3_cut:
+        # L3 scripti olaylari ATMAZ, sadece bool yazar -> kesimi burada uygula.
+        #
+        # Tercih sirasi:
+        #   1) L3_oscNext_bool  = IC2018_LE_L3_Full AND Data_quality_bool
+        #      (data quality dahil: LID errata yok VE SLOP filtresini gecmemis)
+        #   2) IC2018_LE_L3_bools.IC2018_LE_L3_Full  (data quality HARIC)
+        #
+        # SLOP trigger'lari cok genis zaman penceresi (birkac ms) yuzunden
+        # DeepCore kriterlerini tesadufen saglayabiliyor ama duzgun simule
+        # edilmiyorlar; bu yuzden (1) tercih edilmeli.
+        def l3_cut(frame):
+            if "L3_oscNext_bool" in frame:
+                return bool(frame["L3_oscNext_bool"].value)
+            if "IC2018_LE_L3_bools" in frame:
+                return bool(frame["IC2018_LE_L3_bools"]["IC2018_LE_L3_Full"])
+            return False
+        tray.Add(l3_cut, name + "_L3_cut")
+
+    tray.Add(oscNext_L4_common_variables, name + "_common",
+             cleaned_pulses=cleaned_pulses,
+             uncleaned_pulses=uncleaned_pulses)
+
+    if compute_hit_statistics:
+        tray.Add(oscNext_L4_hit_statistics, name + "_hitstats",
+                 cleaned_pulses=cleaned_pulses)
+
+    tray.Add(oscNext_L4_noise_cut_variables, name + "_noise_vars",
+             fill_ratio_vertex=L4_FIRST_HLC_KEY,
+             uncleaned_pulses=uncleaned_pulses,
+             cleaned_pulses=cleaned_pulses)
+
+    tray.Add(oscNext_L4_atm_muon_classifier_variables, name + "_muon_vars",
+             uncleaned_pulses=uncleaned_pulses,
+             cleaned_pulses=cleaned_pulses)
+
+    if apply_cut:
+        if classifier_model_dir is None:
+            raise ValueError("apply_cut=True icin classifier_model_dir gerekli")
+        tray.Add(compute_L4_cut, name + "_cut",
+                 classifier_model_dir=classifier_model_dir)

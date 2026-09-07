@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------------------
+# CIKTILAR -- asla commit edilmez
+# ---------------------------------------------------------------------------
+# Tum islenmis veri, modeller ve grafikler buraya gider
+L4_output/
+
+# Yanlislikla baska yere yazilirsa diye tur bazinda da engelle
+*.hdf5
+*.h5
+*.i3
+*.i3.zst
+*.i3.bz2
+*.i3.gz
+*.parquet
+*.joblib
+*.pkl
+
+# LightGBM model dosyalari (L4_output disinda uretilirse)
+L4_*_model.txt
+L4_*_model.json
+L4_*_report.json
+
+# Grafikler
+*.png
+*.pdf
+!docs/*.png          # dokumantasyon gorselleri istisna
+
+# Job listeleri / loglar
+L4_jobs.txt
+*.log
+*.out
+*.err
+condor_logs/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---------------------------------------------------------------------------
+# Jupyter
+# ---------------------------------------------------------------------------
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# ---------------------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
