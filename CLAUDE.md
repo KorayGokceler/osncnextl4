@@ -95,8 +95,6 @@ Yardımcı/tanı scriptleri:
   (`configure_runner`, `run_process`, `run_all`).
 - `l4_data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
   `check_feature_map`, `load_sample`, `add_weights`.
-- `NOTEBOOK_HUCRELERI.md` — notebook `.gitignore`'da olduğu için hücre
-  içerikleri burada; yapıştırılıp kullanılıyor.
 - `TEKNIK_NOT_KARSILASTIRMA.md` — HDF5'e tam olarak ne yazdığımız +
   teknik notla satır satır karşılaştırma (Tablo 7/10/11/12/13).
 - `diagnose_env.py` — ortamda ne var/yok (pybdt kontrolü dahil).
@@ -284,11 +282,10 @@ Eğitim mantığı notebook'ta **tekrarlanmıyor**, `pybdt_train.py` subprocess
 olarak çağrılıyor — tek implementasyon kalsın diye (eski notebook da
 `process_L4.py`'yi böyle çağırıyordu).
 
-**Notebook versiyonlanmıyor.** `oscNext_L4_pybdt.ipynb` `.gitignore`'da:
-çalıştırılınca çıktı hücreleri değişiyor ve her `git pull`u blokluyordu.
-Mantık `l4_run.py` + `l4_data.py` içinde durduğu için versiyonlu kalıyor;
-notebook'ta sadece birkaç satırlık çağrı var (bkz. `NOTEBOOK_HUCRELERI.md`).
-Notebook değişiklikleri metin olarak veriliyor, elle yapıştırılıyor.
+**Notebook ince bir arayüz.** Ağır mantık `l4_run.py` + `l4_data.py`
+içinde; notebook onları import ediyor. Notebook versiyonlanıyor (tracked)
+ama çalıştırınca çıktı hücreleri `git pull`u bloklayabilir — bunu önlemek
+için bir kez `pip install --user nbstripout && nbstripout --install`.
 
 **Dikkat — `.ds` dosyalarında BDT girdisi olmayan kolonlar var** (`w_phys`,
 fiziksel ağırlık). Notebook eğitime `--features`'ı **açıkça** geçer;
