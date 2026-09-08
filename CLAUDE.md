@@ -91,6 +91,12 @@ Yardımcı/tanı scriptleri:
   başarısız olursa sebebini raporlar. `require_pybdt()` de burada.
 - `setup_env.sh` — ortamı bul / shell aç / tek komut çalıştır / Jupyter kernel.
 - `scan_files.py` — bozuk `.i3.zst` dosyalarını bul, sağlam liste üret.
+- `l4_run.py` — `process_L4.py` sürücüsü + canlı ilerleme çubuğu
+  (`configure_runner`, `run_process`, `run_all`).
+- `l4_data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
+  `check_feature_map`, `load_sample`, `add_weights`.
+- `NOTEBOOK_HUCRELERI.md` — notebook `.gitignore`'da olduğu için hücre
+  içerikleri burada; yapıştırılıp kullanılıyor.
 - `TEKNIK_NOT_KARSILASTIRMA.md` — HDF5'e tam olarak ne yazdığımız +
   teknik notla satır satır karşılaştırma (Tablo 7/10/11/12/13).
 - `diagnose_env.py` — ortamda ne var/yok (pybdt kontrolü dahil).
@@ -99,11 +105,19 @@ HDF5 kolonlarını dökmek için notebook bölüm 2.
 
 ## Kritik senkronizasyon noktası
 
-`FEATURE_MAP` (`l4_classifier_module.py`) ile notebook'taki **feature
-registry** (bölüm 3) birbiriyle satır satır aynı olmalı. Biri diğerinden
-farklı bir kolon okursa model **sessizce** yanlış tahmin üretir — hata
-fırlatmaz. Bu iki tanımı karşılaştırmadan model/kolon değişikliği
-önerilmemeli.
+`FEATURE_MAP` (`l4_classifier_module.py`) ile `REGISTRY` (`l4_data.py`)
+birbiriyle satır satır aynı olmalı. Biri diğerinden farklı bir kolon
+okursa model **sessizce** yanlış tahmin üretir — hata fırlatmaz.
+
+Artık elle değil, kodla kontrol ediliyor: `l4_data.check_feature_map()`
+`FEATURE_MAP`'i **AST ile** okuyor (icetray gerekmiyor) ve çakışmaları
+listeliyor. FEATURE_MAP'in fazladan aday değişken içermesi normal;
+tehlikeli olan **aynı isim, farklı kolon**.
+
+İlk çalıştırmada gerçek bir çakışma yakaladı: `iLineFit_speed` REGISTRY'de
+`LFVel`, FEATURE_MAP'te `lf_vel`, teknik not Tablo 11'de ise
+`L4_iLineFit.speed`. Üçü de `l4_data.ALTS` içinde — dosyada **gerçekten
+hangisi varsa** o kullanılıyor.
 
 Model formatı bilinçli olarak joblib/pickle değil, LightGBM native metin
 formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
@@ -269,6 +283,12 @@ pybdt'nin kendi önerdiği iş akışını izler (bkz. `pybdt/resources/docs/`
 Eğitim mantığı notebook'ta **tekrarlanmıyor**, `pybdt_train.py` subprocess
 olarak çağrılıyor — tek implementasyon kalsın diye (eski notebook da
 `process_L4.py`'yi böyle çağırıyordu).
+
+**Notebook versiyonlanmıyor.** `oscNext_L4_pybdt.ipynb` `.gitignore`'da:
+çalıştırılınca çıktı hücreleri değişiyor ve her `git pull`u blokluyordu.
+Mantık `l4_run.py` + `l4_data.py` içinde durduğu için versiyonlu kalıyor;
+notebook'ta sadece birkaç satırlık çağrı var (bkz. `NOTEBOOK_HUCRELERI.md`).
+Notebook değişiklikleri metin olarak veriliyor, elle yapıştırılıyor.
 
 **Dikkat — `.ds` dosyalarında BDT girdisi olmayan kolonlar var** (`w_phys`,
 fiziksel ağırlık). Notebook eğitime `--features`'ı **açıkça** geçer;
