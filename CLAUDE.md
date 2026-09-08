@@ -198,12 +198,17 @@ pybdt'ye geçiş şu sonuçları doğurur:
   başlatılmalı (Jupyter içindeki terminaller/kernel'ler ortamı miras
   alır, tekrar env-shell gerekmez; sadece Jupyter sunucusu yeniden
   başladığında bu iki adım tekrarlanır).
-- Uygulama tarafı da değişir: `l4_classifier_module.py` şu an LightGBM
-  `Booster` + `.txt`/`.json` formatını okuyor; pybdt modeli için ayrı
-  bir yükleme/uygulama modülü gerekiyor (henüz yazılmadı — sıradaki iş).
-  Eğitim tarafı yazıldı: `pybdt_train_L4_classifier.py`
-  (`train_L4_classifier.py` ile aynı parquet girdisini kullanır, veri
-  yükleme kodu oradan import edilir).
+- Eğitim + uygulama çifti yazıldı:
+  - `pybdt_train_L4_classifier.py` — `train_L4_classifier.py` ile aynı
+    parquet girdisini kullanır (`load_data` oradan import edilir),
+    `pybdt.ml.BDTLearner` ile eğitir, `.pkl` + `.json` sidecar kaydeder.
+  - `pybdt_classifier_module.py` — `l4_classifier_module.py`'deki
+    `FEATURE_MAP`/`read_feature`'ı yeniden kullanır (tek doğruluk
+    kaynağı korunur), `PyBDTL4Classifier` tray modülüyle `.pkl` modeli
+    frame'e uygular.
+  - **Henüz yapılmadı:** gerçek eğitim verisi yok (notebook'un
+    parquet export adımı — bölüm 11 — hiç çalıştırılmadı), bu yüzden
+    `pybdt_train_L4_classifier.py` uçtan uca test edilmedi.
 
 ## Konvansiyonlar
 
