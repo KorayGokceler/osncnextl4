@@ -317,6 +317,32 @@ Elenen dosyalar `<çıktı>.hdf5.badfiles.txt`'ye yazılır. Set başına bir ke
 `scan_files.py --good-list` ile tarayıp `--input-list ... --scan off`
 kullanmak en verimlisi.
 
+## `--n` frame sayar, olay saymaz
+
+`process_L4.py --n N` → `tray.Execute(N)` → **N frame** işlenir. Frame ≠ olay:
+akışta G/C/D (GCD), Q (DAQ) ve P (Physics) frame'leri var; bir DAQ olayı
+birden fazla P frame (sub-event) üretebilir. Üstelik P frame'lerin ancak bir
+kısmı `--sub-event-stream`'e uyar ve ancak bir kısmı L3 kesimini geçer.
+
+Bu yüzden `--n 200` ile 60 olay book edilmesi normal. Çıktı artık kademeyi
+gösteriyor:
+
+```
+Physics frame           : 98
+  InIceSplit            : 98  (100.0%)
+  L3 kesimi sonrasi     : 60  (61.2%)
+Book edilen olay        : 60
+```
+
+Kayıp nerede olursa olsun burada görünür: `InIceSplit` satırı 0 ise
+`--sub-event-stream` yanlış; L3 satırı 0 ise girdi L3 çıktısı değil ya da
+`Data_quality_bool` eliyor (test için `--no-l3-cut`).
+
+`--n` verildiğinde tray erken durur, yani **dosya listesinin tamamı okunmaz**.
+Bu yüzden `--n` modunda "işlenen dosya" sayısı basılmıyor (yanıltıcı olurdu:
+listede 100 dosya olsa da tray ilk dosyada durmuş olabilir). Smoke test'te
+tek dosya verin ya da `--scan off` kullanın — 100 dosyayı taramak boşuna.
+
 ## Konvansiyonlar
 
 - Kod ve yorumlar Türkçe.

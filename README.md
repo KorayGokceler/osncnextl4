@@ -138,6 +138,28 @@ python process_L4.py \
 `--apply-cut` **kullanma** — modeller eğitilmeden önce tüm olaylar book
 edilmeli.
 
+**Smoke test** (`--n` ile küçük deneme):
+```bash
+python process_L4.py --gcd ... --scan off \
+    --input /data/.../genie_NuE_IC86.023800.000000.i3.zst \
+    --output-hdf5 L4_output/hdf5/nue/L4_nue_smoke.hdf5 --mc --genie --n 200
+```
+
+> **`--n` FRAME sayar, olay değil.** Akışta G/C/D, Q ve P frame'leri var;
+> P frame'lerin de ancak bir kısmı `--sub-event-stream`'e uyup L3 kesimini
+> geçiyor. `--n 200` ile ~60 olay book edilmesi normal. Çıktı kademeyi
+> gösteriyor:
+> ```
+> Physics frame           : 98
+>   InIceSplit            : 98  (100.0%)
+>   L3 kesimi sonrasi     : 60  (61.2%)
+> ```
+> `InIceSplit` satırı 0 ise `--sub-event-stream` yanlış; L3 satırı 0 ise
+> girdi L3 çıktısı değil (test için `--no-l3-cut`).
+>
+> `--n` verildiğinde tray erken durur, dosya listesinin tamamı okunmaz —
+> smoke test'te tek dosya verin ve `--scan off` kullanın.
+
 Üretilen HDF5'in gerçek sütun isimlerini görmek için notebook'un
 2. bölümünü çalıştır (`dump_tables`) — tüm tabloları ve kolonları listeler.
 

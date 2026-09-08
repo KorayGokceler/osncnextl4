@@ -139,6 +139,10 @@ CORSIKA_KEYS = [
 _BAD_FILE_RE = re.compile(r"Error reading (\S+?) at frame")
 
 
+def _pct(n, total):
+    return "%.1f%%" % (100.0 * n / total) if total else "-"
+
+
 def _bad_list_path(output):
     return (output or "process_L4") + ".badfiles.txt"
 
@@ -210,7 +214,7 @@ def _run_tray(build, infiles, output_hdf5, retries):
                 tray.Execute(n_frames)
             else:
                 tray.Execute()
-            return counter["n"], infiles
+            return counter, infiles
         except RuntimeError as e:
             m = _BAD_FILE_RE.search(str(e))
             if not m or attempt >= retries:
@@ -323,7 +327,13 @@ def main():
     # --- bozuk dosyalari on taramayla ele ---
     if args.scan != "off":
         nf = 0 if args.scan == "full" else args.scan_frames
-        print("On tarama (%s)..." % args.scan)
+        if args.n > 0 and len(infiles) > 5:
+            print("On tarama (%s)... [%d dosya]" % (args.scan, len(infiles)))
+            print("  NOT: --n verildigi icin tray ilk dosyalarda duracak;")
+            print("       tum listeyi taramak bosuna zaman.  Smoke test'te")
+            print("       tek dosya verin ya da --scan off kullanin.")
+        else:
+            print("On tarama (%s)..." % args.scan)
         infiles, bad = validate_files(infiles, n_frames=nf)
         if bad:
             print("  [!] %d bozuk dosya elendi:" % len(bad))
@@ -352,9 +362,26 @@ def main():
         tray = I3Tray()
         tray.Add("I3Reader", "reader", FilenameList=[args.gcd] + files)
 
+        # --- asamali sayaclar --------------------------------------------
+        # Olay kaybinin NEREDE oldugunu gormek icin.  "--n ile 200 frame
+        # verdim ama 60 olay cikti" sorusunun cevabi bu dokumde.
+        counter = {"physics": 0, "stream": 0, "n": 0}
+
+        def _count_physics(frame):
+            counter["physics"] += 1
+            return True
+        tray.Add(_count_physics, "count_physics",
+                 Streams=[icetray.I3Frame.Physics])
+
         # Sadece fizik sub-event stream'ini isle
         tray.Add(lambda f: f["I3EventHeader"].sub_event_stream == args.sub_event_stream,
                  "stream_filter",
+                 Streams=[icetray.I3Frame.Physics])
+
+        def _count_stream(frame):
+            counter["stream"] += 1
+            return True
+        tray.Add(_count_stream, "count_stream",
                  Streams=[icetray.I3Frame.Physics])
 
         tray.Add(oscNext_L4, "oscNext_L4",
@@ -366,8 +393,7 @@ def main():
                  apply_cut=args.apply_cut,
                  classifier_model_dir=args.model_dir)
 
-        # --- ne kadar olay kaldi? ---
-        counter = {"n": 0}
+        # --- L3 kesiminden sonra kalan (book edilecek) ---
         def count(frame):
             counter["n"] += 1
             return True
@@ -390,14 +416,44 @@ def main():
 
     build_tray.n_frames = args.n if args.n > 0 else 0
 
-    n_booked, used = _run_tray(build_tray, infiles, args.output_hdf5, args.retries)
+    counts, used = _run_tray(build_tray, infiles, args.output_hdf5, args.retries)
 
-    print("Book edilen olay:", n_booked)
-    print("Islenen dosya:", len(used))
+    n_phys, n_stream, n_booked = counts["physics"], counts["stream"], counts["n"]
+
+    print()
+    print("Physics frame           : %d" % n_phys)
+    print("  %-22s: %d  (%s)" % (args.sub_event_stream, n_stream,
+                                 _pct(n_stream, n_phys)))
+    print("  L3 kesimi sonrasi     : %d  (%s)" % (n_booked, _pct(n_booked, n_stream)))
+    print("Book edilen olay        : %d" % n_booked)
+
+    if args.n > 0:
+        # --n frame sayisidir, olay sayisi DEGIL.  Tray erken durdugu icin
+        # dosya listesinin tamami okunmamis olabilir.
+        print()
+        print("NOT: --n %d = %d FRAME (olay degil).  Tray bu sayida frame"
+              % (args.n, args.n))
+        print("     okuyunca durdu; dosya listesinin tamami okunmamis olabilir.")
+        print("     Dosya listesi: %d dosya (kac tanesinin okundugu belli degil)."
+              % len(used))
+    else:
+        print("Islenen dosya           : %d" % len(used))
+
     print("HDF5:", args.output_hdf5)
     bl = _bad_list_path(args.output_hdf5)
     if os.path.exists(bl):
         print("Bozuk dosya listesi:", bl)
+
+    if n_phys and not n_booked:
+        print()
+        print("[!] Hic olay book EDILMEDI.  Sirayla kontrol edin:")
+        if not n_stream:
+            print("    * --sub-event-stream '%s' yanlis olabilir -- hicbir"
+                  % args.sub_event_stream)
+            print("      Physics frame bu stream'de degil.")
+        else:
+            print("    * L3 kesimi her seyi eledi -- girdi gercekten L3 ciktisi mi?")
+            print("      Test icin: --no-l3-cut")
 
 
 if __name__ == "__main__":
