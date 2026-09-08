@@ -167,27 +167,43 @@ geçmiyor; Tablo 10'daki hiperparametreler de (`max_depth`, `num_leaves`,
 native isimleri. `train_L4_classifier.py` şu an bu resmi yaklaşımı
 (LightGBM) doğru şekilde uyguluyor ve referans olarak repoda duruyor.
 
-pybdt'ye geçiş şu sonuçları doğurur, bir sonraki session bunları
-göz önünde bulundurmalı:
+pybdt'ye geçiş şu sonuçları doğurur:
 - pybdt AdaBoost yapıyor, LightGBM'in gradient-boosting + leaf/lambda
   regularizasyon mantığı yok — Tablo 10 parametreleri pybdt'ye
   **doğrudan taşınamaz**, pybdt'nin kendi API'sine göre (`num_trees`,
-  `beta`, `depth`, `min_split`, `prune_strength`, `use_purity`) yeniden
-  ayarlanmalı.
-- pybdt derlenmiş bir C++/boost_python eklentisi. **Kesinleşti (env-shell
-  içinde doğrulandı, `icetray OK` sonrasında test edildi):** `python -c
-  "from icecube import pybdt"` → `ImportError: cannot import name 'pybdt'
-  from 'icecube' (unknown location)`. py3-v4.4.2 dağıtımında pybdt
-  derlenmiş olarak YOK. Kullanılabilmesi için IceTray meta-project build
-  sistemiyle **kaynaktan derlenmesi gerekiyor** — bu, cvmfs'teki hazır
-  dağıtımın üstüne "parazit" (parasitic) bir build dizini açıp `pybdt/`
-  projesini o dağıtıma karşı cmake ile derlemeyi gerektirir (compiler,
-  boost-python geliştirme başlıkları, cmake kuruluysa cobalt'ta genelde
-  mevcuttur). Bu adım henüz yapılmadı — sıradaki iş bu.
+  `beta`, `depth`, `min_split`, `prune_strength`, `use_purity`) ayrıca
+  ayarlandı — bkz. `pybdt_train_L4_classifier.py` içindeki `PYBDT_PARAMS`
+  (pybdt'nin kendi örnek/varsayılan değerleri, oscNext için optimize
+  EDİLMEDİ, sadece başlangıç noktası).
+- pybdt derlenmiş bir C++/boost_python eklentisi. **py3-v4.4.2 cvmfs
+  dağıtımında pybdt YOK** (`BUILD_PYBDT` bayrağı kapalı gelmiş,
+  `pybdt/CMakeLists.txt`'te `USE_TOOLS ... gsl` gerektiriyor).
+  **Çözüldü:** `icecube/icetray` kaynağı (v1.17.0, ZIP indirilip) ayrı bir
+  build dizininde (`/data/user/<kullanıcı>/icetray_build/`) `cmake
+  -DBUILD_PYBDT=ON` ile yapılandırılıp `make pybdt` ile derlendi (GSL 2.8
+  cvmfs'te zaten mevcuttu, cmake buldu). Build sadece
+  `serialization`/`icetray`/`dataclasses`/`pybdt` hedeflerini derledi
+  (tüm meta-proje değil), birkaç dakika sürdü. `/cvmfs` salt-okunur
+  olduğu için build cvmfs'e hiç yazmadı, tamamen ayrı bir dizinde.
+- **KRİTİK — import yolu diğer IceTray projelerinden FARKLI:** pybdt,
+  `icecube` isim alanına dahil DEĞİL — `from icecube import pybdt`
+  ÇALIŞMAZ (bu yüzden başta "pybdt derlenmemiş" sanılıp gereksiz yere
+  şüpheye düşüldü). Doğrusu: `import pybdt` / `from pybdt import ml,
+  util` (pybdt'nin kendi kaynak kodu da bunu kullanıyor, bkz.
+  `pybdt/python/pybdtmodule.py`). `l4_classifier_module.py` ve
+  `train_L4_classifier.py`'nin aksine pybdt `icecube.*` namespace
+  paketi değil, bağımsız üst düzey bir pip-tarzı pakettir.
+- Bu özel build'in ortamı: `eval $(/cvmfs/.../py3-v4.4.2/setup.sh)` →
+  `cd <build_dizini> && ./env-shell.sh`. Jupyter de bu ortamdan
+  başlatılmalı (Jupyter içindeki terminaller/kernel'ler ortamı miras
+  alır, tekrar env-shell gerekmez; sadece Jupyter sunucusu yeniden
+  başladığında bu iki adım tekrarlanır).
 - Uygulama tarafı da değişir: `l4_classifier_module.py` şu an LightGBM
   `Booster` + `.txt`/`.json` formatını okuyor; pybdt modeli için ayrı
-  bir yükleme/uygulama yolu (`pybdt.util.load` + `score_event`, bkz.
-  `pybdt/python/pybdtmodule.py`) gerekecek.
+  bir yükleme/uygulama modülü gerekiyor (henüz yazılmadı — sıradaki iş).
+  Eğitim tarafı yazıldı: `pybdt_train_L4_classifier.py`
+  (`train_L4_classifier.py` ile aynı parquet girdisini kullanır, veri
+  yükleme kodu oradan import edilir).
 
 ## Konvansiyonlar
 

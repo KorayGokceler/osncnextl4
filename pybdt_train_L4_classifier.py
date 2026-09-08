@@ -53,7 +53,7 @@ from sklearn.metrics import roc_curve, roc_auc_score
 from train_L4_classifier import load_data, POSITIVE_CLASS, NEGATIVE_CLASS
 
 try:
-    from icecube.pybdt import ml, util
+    from pybdt import ml, util
 except ImportError:
     sys.exit(
         "icecube.pybdt import edilemedi.\n"
