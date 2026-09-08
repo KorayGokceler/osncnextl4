@@ -58,3 +58,15 @@ venv/
 .DS_Store
 *.swp
 *~
+
+# --- Notebook -----------------------------------------------------------
+# oscNext_L4_pybdt.ipynb versiyonlanmiyor: calistirilinca cikti hucreleri
+# degisiyor ve her `git pull`u "local changes would be overwritten" ile
+# blokluyordu.  Artik YEREL KOPYA ASIL KOPYADIR -- repodan gelmez, repoya
+# gitmez.  Notebook'ta yapilacak degisiklikler sohbette metin olarak
+# veriliyor, elle yapistiriliyor.
+#
+# oscNext_L4_feature_engineering.ipynb (referans, calistirilmiyor) tracked
+# kalmaya devam ediyor; git zaten takip ettigi dosyalari .gitignore'a
+# bakmadan izler.
+oscNext_L4_pybdt.ipynb
