@@ -54,33 +54,37 @@ process_L4.py  ──uses──►  oscNext_L4_variables.py (oscNext_L4 traysegm
 .hdf5  (L4_output/hdf5/<sample>/L4_*.hdf5)
    │
    ▼
-oscNext_L4_feature_engineering.ipynb  (ANA ARAYÜZ — 11 bölüm, sırayla çalıştırılır)
-   0  Konfigürasyon
-   1  process_L4.py'yi notebook'tan çalıştırma (+smoke test)
-   2  Booking doğrulaması
-   3  Feature registry (tek doğruluk kaynağı — hangi kolon, hangi tablo)
-   4  Yükleme (HDF5 → DataFrame)
-   5  Sağlık kontrolü (eksik/NaN kolonlar)
-   6  Yeniden yazılan değişkenlerin referansla karşılaştırılması
-   7  Livetime ve ağırlıklar
-   8  Türetilmiş değişkenler
-   9  Data/MC uyum kontrolü
-  10  Korelasyon + feature importance + incremental scan (~40 değişken taraması)
-  11  Export → parquet (L4_noise_training.parquet, L4_muon_training.parquet)
+oscNext_L4_pybdt.ipynb   ◄── ANA ARAYÜZ (aktif yol, 11 bölüm)
+   0  Konfigürasyon + ortam kontrolü
+   1  L3 → L4 işleme (process_L4.py'yi çağırır, +smoke test)
+   2  Booking doğrulaması (HDF5'te gerçekte ne var)
+   3  Feature registry (BDT değişkeni → HDF5 tablo/kolon)
+   4  HDF5 → numpy (pytables; pandas YOK)
+   5  Ağırlıklar (w_phys + eğitim ağırlığı)
+   6  pybdt DataSet + train/test → .ds
+   7  Eğitim (pybdt_train.py'yi çağırır)
+   8  Doğrulama (Validator: KS overtraining, dist, rate)
+   9  Kesim seçimi
+  10  Frame'e uygulama + REGISTRY↔FEATURE_MAP tutarlılık kontrolü
    │
    ▼
-train_L4_classifier.py  (native LightGBM API, sklearn API DEĞİL)
+pybdt_train.py  →  L4_{name}.bdt + .validator + .json + grafikler
    │
    ▼
-L4_{tag}_model.txt + .json  (model + sidecar: değişken sırası + sınıf haritası)
-   │
-   ▼
-l4_classifier_module.py  (L4Classifier tray modülü — I3Classifier'in yerine)
-   FEATURE_MAP: model değişken adı → (frame anahtarı, kolon adı)
+pybdt_classifier_module.py  (PyBDTClassifier tray modülü)
+   FEATURE_MAP'i l4_classifier_module.py'den alır
 ```
 
-Yardımcı/tanı scriptleri: `diagnose_env.py` (ortamda ne var/yok, pybdt
-kontrolü dahil), `dump_columns.py` (üretilen HDF5'in tam kolon isimleri).
+**Referans (LightGBM) yolu** — resmi yöntem, artık aktif kullanılmıyor:
+`oscNext_L4_feature_engineering.ipynb` (eski arayüz, parquet export) →
+`train_L4_classifier.py` → `L4_{tag}_model.txt`/`.json` →
+`l4_classifier_module.py`. Eski notebook'ta yeni notebook'a
+**taşınmamış** bölümler var ve bu yüzden duruyor: §6 yeniden yazılan
+değişkenlerin referansla karşılaştırılması, §8 türetilmiş değişkenler,
+§9 data/MC uyumu, §10 korelasyon + incremental feature scan.
+
+Yardımcı/tanı scripti: `diagnose_env.py` (ortamda ne var/yok, pybdt
+kontrolü dahil). HDF5 kolonlarını dökmek için notebook bölüm 2.
 
 ## Kritik senkronizasyon noktası
 

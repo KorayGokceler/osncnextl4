@@ -24,7 +24,6 @@ noise + muon sınıflandırıcılarını eğitir.
 | `l4_classifier_module.py` | IceTray | *(referans)* LightGBM modelini frame'e uygular + `FEATURE_MAP` |
 | `oscNext_L4_feature_engineering.ipynb` | IceTray | *(referans)* Eski uçtan uca arayüz |
 | `diagnose_env.py` | IceTray | Ortamda ne var ne yok (pybdt kontrolü dahil) |
-| `dump_columns.py` | herhangi | Üretilen HDF5'in tam sütun isimleri |
 | `reference/` | — | pass2 teknik notu (PDF) + gerçek pass3 L3 scripti |
 | `pybdt/` | — | pybdt kaynağı (okuma/referans; derleme buradan YAPILMAZ) |
 
@@ -107,10 +106,8 @@ python process_L4.py \
 `--apply-cut` **kullanma** — modeller eğitilmeden önce tüm olaylar book
 edilmeli.
 
-Üretilen HDF5'in gerçek sütun isimlerini görmek için:
-```bash
-python dump_columns.py L4_output/hdf5/nue/L4_nue.hdf5
-```
+Üretilen HDF5'in gerçek sütun isimlerini görmek için notebook'un
+2. bölümünü çalıştır (`dump_tables`) — tüm tabloları ve kolonları listeler.
 
 ### Uçtan uca: notebook
 
