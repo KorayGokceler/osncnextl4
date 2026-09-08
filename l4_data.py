@@ -90,13 +90,41 @@ AUX = {
     "noise_weight":  ("noise_weight", "value"),
 }
 
+def _table_nodes(h5):
+    """
+    Dosyadaki GERCEK veri tablolari -> {ad: node}.
+
+    NEDEN AYRI FONKSIYON: h5.walk_nodes("/", "Table") ALT GRUPLARA DA iner.
+    hdfwriter her anahtar icin iki tablo yazar:
+
+        /L4_VICH_nch                 <- gercek veri  (Run, Event, ..., value)
+        /__I3Index__/L4_VICH_nch     <- index        (exists, start, stop)
+
+    Sozlugu leaf isimle kurunca ikisi CAKISIYOR ve index tablosu gercek
+    veriyi eziyordu; sonuc: her tablo "start/stop" kolonlu gorunuyor,
+    aranan kolonlar bulunamiyor, TUM DEGISKENLER NaN oluyordu.
+
+    Cozum: __I3Index__ altini atla, ayni isim iki yerde varsa KOKE EN YAKIN
+    olani sec.
+    """
+    best = {}
+    for node in h5.walk_nodes("/", "Table"):
+        path = node._v_pathname
+        if "__I3Index__" in path:
+            continue
+        depth = path.count("/")
+        if node.name not in best or depth < best[node.name][0]:
+            best[node.name] = (depth, node)
+    return {k: v[1] for k, v in best.items()}
+
+
 def dump_tables(h5path, only=None, max_cols=40):
     """HDF5'teki tablolari ve kolonlarini listele."""
     if not os.path.exists(h5path):
         print("YOK:", h5path); return {}
     found = {}
     with tables.open_file(h5path, "r") as h5:
-        for node in h5.walk_nodes("/", "Table"):
+        for node in _table_nodes(h5).values():
             cols = [c for c in node.colnames
                     if c not in ("Run", "Event", "SubEvent", "SubEventStream", "exists")]
             found[node.name] = (node.nrows, cols)
@@ -165,7 +193,7 @@ def resolve_one(name, available):
 def load_one_file(path, wanted):
     """Tek HDF5 dosyasindan istenen degiskenleri oku -> {ad: dizi}."""
     with tables.open_file(path, "r") as h5:
-        available = {n.name: set(n.colnames) for n in h5.walk_nodes("/", "Table")}
+        available = {k: set(n.colnames) for k, n in _table_nodes(h5).items()}
 
     need, unresolved = {}, []
     for name in wanted:
@@ -182,7 +210,7 @@ def load_one_file(path, wanted):
                 print("  [!] %-22s cozulemedi (%s) -> NaN" % (name, pair))
 
     with tables.open_file(path, "r") as h5:
-        nodes = {n.name: n for n in h5.walk_nodes("/", "Table")}
+        nodes = _table_nodes(h5)
         if "I3EventHeader" not in nodes:
             raise RuntimeError("%s: I3EventHeader tablosu yok" % path)
 
