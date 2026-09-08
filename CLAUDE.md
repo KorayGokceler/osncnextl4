@@ -198,17 +198,37 @@ pybdt'ye geçiş şu sonuçları doğurur:
   başlatılmalı (Jupyter içindeki terminaller/kernel'ler ortamı miras
   alır, tekrar env-shell gerekmez; sadece Jupyter sunucusu yeniden
   başladığında bu iki adım tekrarlanır).
-- Eğitim + uygulama çifti yazıldı:
-  - `pybdt_train_L4_classifier.py` — `train_L4_classifier.py` ile aynı
-    parquet girdisini kullanır (`load_data` oradan import edilir),
-    `pybdt.ml.BDTLearner` ile eğitir, `.pkl` + `.json` sidecar kaydeder.
-  - `pybdt_classifier_module.py` — `l4_classifier_module.py`'deki
-    `FEATURE_MAP`/`read_feature`'ı yeniden kullanır (tek doğruluk
-    kaynağı korunur), `PyBDTL4Classifier` tray modülüyle `.pkl` modeli
-    frame'e uygular.
-  - **Henüz yapılmadı:** gerçek eğitim verisi yok (notebook'un
-    parquet export adımı — bölüm 11 — hiç çalıştırılmadı), bu yüzden
-    `pybdt_train_L4_classifier.py` uçtan uca test edilmedi.
+### pybdt yolu (yeni, LightGBM yolundan bağımsız)
+
+pybdt'nin kendi önerdiği iş akışını izler (bkz. `pybdt/resources/docs/`
+`man_training.rst`, `man_validator_setup.rst`):
+
+```
+.ds DataSet dosyaları  --BDTLearner-->  .bdt  --Validator-->  grafikler
+```
+
+- `pybdt_train.py` — eğitim + doğrulama, **tamamen standalone**:
+  sklearn / lightgbm / pandas kullanmaz, `train_L4_classifier.py`'den
+  hiçbir şey import etmez. Girdi olarak pybdt native `.ds` dosyaları
+  alır. Değerlendirme için pybdt'nin kendi `validate.Validator`'ını
+  kullanır — KS testli overtraining kontrolü (`p_KS < 0.01` uyarısı,
+  pybdt dokümantasyonunun eşiği), skor dağılımı ve rate-vs-cut
+  grafikleri hazır gelir. Hiperparametreler yalnızca komut satırında
+  açıkça verilirse set edilir, gerisi pybdt'nin kendi varsayılanlarında
+  kalır; fiilen kullanılan değerler `.json` meta dosyasına yazılır.
+- `pybdt_classifier_module.py` — `PyBDTClassifier` tray modülü,
+  `.bdt` + `.json`'ı okuyup frame'e `I3Double` yazar. Frame'den değişken
+  okuma için `l4_classifier_module.py`'deki `FEATURE_MAP`/`read_feature`
+  import edilir (mapping tek yerde kalsın diye; o modül lightgbm'i
+  sadece kendi `load_model()`'ı içinde import ettiği için bu bağımlılık
+  lightgbm gerektirmez).
+
+**Henüz yapılmadı — sıradaki iş:** `.ds` dosyalarını üretecek adım.
+`process_L4.py`'nin ürettiği HDF5'ten (ya da başka bir kaynaktan)
+`pybdt.ml.DataSet` kurup `util.save` ile `.ds` yazacak bir betik gerekiyor.
+Ağırlıkların nasıl hesaplanacağı (şu an notebook bölüm 7'de, kod olarak
+repoda yok) bu adımın açık sorusu. Dolayısıyla `pybdt_train.py` uçtan
+uca hiç çalıştırılmadı.
 
 ## Konvansiyonlar
 
