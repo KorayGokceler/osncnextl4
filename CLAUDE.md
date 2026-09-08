@@ -221,12 +221,26 @@ pybdt'nin kendi önerdiği iş akışını izler (bkz. `pybdt/resources/docs/`
   sadece kendi `load_model()`'ı içinde import ettiği için bu bağımlılık
   lightgbm gerektirmez).
 
-**Henüz yapılmadı — sıradaki iş:** `.ds` dosyalarını üretecek adım.
-`process_L4.py`'nin ürettiği HDF5'ten (ya da başka bir kaynaktan)
-`pybdt.ml.DataSet` kurup `util.save` ile `.ds` yazacak bir betik gerekiyor.
-Ağırlıkların nasıl hesaplanacağı (şu an notebook bölüm 7'de, kod olarak
-repoda yok) bu adımın açık sorusu. Dolayısıyla `pybdt_train.py` uçtan
-uca hiç çalıştırılmadı.
+- `oscNext_L4_pybdt.ipynb` — **ana arayüz**. Uçtan uca tüm süreç: L3→L4
+  işleme, booking doğrulaması, feature registry, HDF5→numpy, ağırlıklar,
+  `.ds` üretimi, eğitim (`pybdt_train.py`'yi subprocess olarak çağırır),
+  doğrulama, kesim seçimi. Yalnızca numpy + pytables + pybdt kullanır —
+  **pandas kullanmaz** (IceTray ortamında bulunmayabilir). Ağırlık
+  mantığı eski notebook'un 7. bölümünden taşındı.
+
+Eğitim mantığı notebook'ta **tekrarlanmıyor**, `pybdt_train.py` subprocess
+olarak çağrılıyor — tek implementasyon kalsın diye (eski notebook da
+`process_L4.py`'yi böyle çağırıyordu).
+
+**Dikkat — `.ds` dosyalarında BDT girdisi olmayan kolonlar var** (`w_phys`,
+fiziksel ağırlık). Notebook eğitime `--features`'ı **açıkça** geçer;
+`pybdt_train.py` de `--features` verilmezse `RESERVED_COLS`'u dışarıda
+bırakır. Bu koruma olmazsa model fiziksel ağırlığı bir değişken sanıp
+öğrenir — sessiz ve ciddi bir hata.
+
+**Henüz test edilmedi:** notebook uçtan uca hiç çalıştırılmadı; HDF5 sütun
+isimleri doğrulanmadığı için 3. bölümdeki `REGISTRY` büyük olasılıkla
+düzeltme gerektirecek (2. bölüm zaten bunu tespit etmek için var).
 
 ## Konvansiyonlar
 

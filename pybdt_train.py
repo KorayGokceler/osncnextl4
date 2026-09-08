@@ -53,6 +53,11 @@ except ImportError:
         "(Dogru import 'import pybdt', 'from icecube import pybdt' DEGIL.)")
 
 
+# DataSet'te bulunabilecek ama BDT girdisi OLMAYAN kolonlar.  --features
+# verilmediginde bunlar otomatik olarak disarida birakilir.
+RESERVED_COLS = {"w_phys", "livetime", "Run", "Event", "SubEvent"}
+
+
 # ---------------------------------------------------------------------------
 # Egitim
 # ---------------------------------------------------------------------------
@@ -274,8 +279,13 @@ def main():
     if args.features:
         features = [f.strip() for f in args.features.split(",") if f.strip()]
     else:
+        # DataSet'te BDT girdisi OLMAYAN kolonlar da bulunabilir (fiziksel
+        # agirlik, livetime...).  Bunlar egitime sizarsa model agirligi bir
+        # degisken sanip ogrenir -- sessiz ve ciddi bir hata.
         features = [n for n in ds["train_sig"].names
-                    if n != args.weight_col]
+                    if n not in RESERVED_COLS and n != args.weight_col]
+        print(f"  [i] --features verilmedi -> {args.weight_col} ve "
+              f"{sorted(RESERVED_COLS)} disindaki tum kolonlar kullaniliyor")
     print(f"  degisken   {len(features)}: {', '.join(features)}")
 
     for key, d in ds.items():

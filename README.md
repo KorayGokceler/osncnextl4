@@ -17,6 +17,7 @@ noise + muon sınıflandırıcılarını eğitir.
 | `oscNext_L4_variables.py` | IceTray | L4 değişkenlerini hesaplayan tray segmentleri |
 | `process_L4.py` | IceTray | `.i3` → L4 değişkenleri → `.hdf5` |
 | `simple_booker.py` | IceTray | `hdfwriter` yoksa fallback booker |
+| `oscNext_L4_pybdt.ipynb` | pybdt build'i | **ANA ARAYÜZ** — uçtan uca tüm süreç |
 | `pybdt_train.py` | pybdt build'i | `.ds` → BDT eğitimi + doğrulama grafikleri |
 | `pybdt_classifier_module.py` | pybdt build'i | Eğitilmiş pybdt modelini frame'e uygular |
 | `train_L4_classifier.py` | herhangi | *(referans)* Parquet → LightGBM modeli |
@@ -111,6 +112,13 @@ edilmeli.
 python dump_columns.py L4_output/hdf5/nue/L4_nue.hdf5
 ```
 
+### Uçtan uca: notebook
+
+Normalde her şeyi `oscNext_L4_pybdt.ipynb` üzerinden yaparsın — işleme,
+ağırlıklar, `.ds` üretimi, eğitim, doğrulama, kesim seçimi hepsi orada,
+sırayla çalıştırılacak bölümler halinde. Aşağıdaki komutlar notebook'un
+perde arkasında çağırdığı adımlar.
+
 ### BDT eğitimi (pybdt)
 ```bash
 python pybdt_train.py --name L4_noise --outdir models_pybdt \
@@ -129,10 +137,12 @@ python pybdt_train.py --name L4_noise --outdir models_pybdt \
 Overtraining kontrolü otomatik: pybdt'nin KS testi çalışır, `p_KS < 0.01`
 ise uyarı basar (pybdt dokümantasyonunun eşiği).
 
-> **Eksik parça:** `.ds` dosyalarını üretecek adım henüz yazılmadı.
-> `pybdt.ml.DataSet` bir dict-of-numpy-arrays; HDF5'ten kurulup
-> `pybdt.util.save` ile yazılması gerekiyor. Açık soru: ağırlıkların
-> nasıl hesaplanacağı (şu an sadece notebook bölüm 7'de).
+`.ds` dosyaları notebook'un 6. bölümünde üretilir (HDF5 → numpy →
+`pybdt.ml.DataSet` → `util.save`).
+
+> **Dikkat:** `.ds` içinde BDT girdisi olmayan kolonlar da var (`w_phys`).
+> Eğitime `--features` **açıkça** geçilmeli — yoksa model fiziksel
+> ağırlığı bir değişken sanıp öğrenebilir.
 
 ### Modeli frame'e uygulama
 ```python
@@ -175,7 +185,9 @@ pip install --user nbstripout && nbstripout --install
 - [x] Ortam doğrulandı (`hdfwriter` yok → SimpleBooker; `oscNext` projesi yok)
 - [x] pybdt kaynaktan derlendi ve çalışıyor
 - [x] νe işleme çalışıyor, tüm tablolar book ediliyor
-- [ ] `.ds` üretme adımı yazılmadı → `pybdt_train.py` uçtan uca test edilmedi
+- [x] Uçtan uca notebook yazıldı (`oscNext_L4_pybdt.ipynb`)
+- [ ] Notebook hiç çalıştırılmadı → HDF5 sütun isimleri doğrulanmadı,
+      3. bölümdeki `REGISTRY` düzeltme gerektirebilir
 - [ ] νμ / CORSIKA / noise işleme denenmedi
 - [ ] Sütun isimleri kesinleştirilmedi
 - [ ] Yeniden yazılan değişkenler (VICH, accumulated_time) doğrulanmadı
