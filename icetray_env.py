@@ -311,6 +311,65 @@ def deepcore_veto_domset(detector="IC86"):
 
 
 # ---------------------------------------------------------------------------
+# pybdt
+# ---------------------------------------------------------------------------
+#
+# DIKKAT: pybdt diger IceTray projelerinin AKSINE `icecube` isim alaninda
+# DEGIL.  Dogru import:
+#
+#     import pybdt                 /  from pybdt import ml, util
+#
+# YANLIS (ve bu proje gecmisinde bir kez "pybdt derlenmemis" sanilmasina
+# yol acmis olan):
+#
+#     from icecube import pybdt    <-- HER ZAMAN ImportError verir
+#
+# pybdt bagimsiz, ust duzey bir pakettir; kendi kaynagi da boyle import
+# ediyor (bkz. pybdt/python/pybdtmodule.py).
+
+
+def have_pybdt():
+    """pybdt import edilebiliyor mu?  (icecube'dan BAGIMSIZ)"""
+    try:
+        importlib.import_module("pybdt")
+        return True
+    except ImportError:
+        return False
+
+
+def require_pybdt():
+    """pybdt'yi import et; yoksa ne yapilmasi gerektigini soyle."""
+    try:
+        import pybdt
+        return pybdt
+    except ImportError as exc:
+        # Sik yapilan hatayi tespit et: icecube var ama pybdt yok
+        extra = ""
+        if have_icetray():
+            try:
+                importlib.import_module("icecube.pybdt")
+                extra = ("\n  NOT: 'icecube.pybdt' bulundu -- ama dogru import\n"
+                         "  yine de 'import pybdt'.\n")
+            except ImportError:
+                pass
+        raise IceTrayNotAvailable(
+            "pybdt import edilemedi.\n"
+            "\n"
+            "  DOGRU import :  import pybdt        (ya da from pybdt import ml, util)\n"
+            "  YANLIS import:  from icecube import pybdt   <-- her zaman patlar\n"
+            "%s"
+            "\n"
+            "  pybdt cvmfs py3-v4.4.2 dagitiminda DERLENMIS GELMIYOR\n"
+            "  (BUILD_PYBDT bayragi kapali).  Kendi build'inizi yapmaniz gerekir:\n"
+            "  README > 'pybdt'yi derle (bir kez)'.\n"
+            "\n"
+            "  Build zaten varsa ortama girmemis olabilirsiniz:\n"
+            "      ./setup_env.sh shell\n"
+            "\n"
+            "  Orijinal hata: %s" % (extra, exc)) from exc
+
+
+# ---------------------------------------------------------------------------
 # Deserialization icin gereken kutuphaneler
 # ---------------------------------------------------------------------------
 
@@ -352,7 +411,13 @@ def find_env_shells():
             found.append(("I3_BUILD", p))
 
     home = os.path.expanduser("~")
-    for pat in ("%s/*/build/env-shell.sh" % home,
+    user = os.environ.get("USER") or os.path.basename(home)
+    # /data/user/$USER en olasi yer: cobalt'ta home kotali oldugu icin
+    # build oraya yapiliyor (bkz. README "pybdt'yi derle").
+    for pat in ("/data/user/%s/icetray_build/build/env-shell.sh" % user,
+                "/data/user/%s/*/build/env-shell.sh" % user,
+                "/data/user/%s/build/env-shell.sh" % user,
+                "%s/*/build/env-shell.sh" % home,
                 "%s/*/*/build/env-shell.sh" % home,
                 "%s/icetray/build/env-shell.sh" % home,
                 "%s/build/env-shell.sh" % home):
@@ -377,6 +442,13 @@ if __name__ == "__main__":
             print("  I3Tray  :", get_I3Tray())
         except Exception as e:
             print("  I3Tray  : BULUNAMADI --", e)
+        if have_pybdt():
+            import pybdt
+            print("  pybdt   :", getattr(pybdt, "__file__", "<?>"))
+        else:
+            print("  pybdt   : YOK  (import pybdt basarisiz)")
+            print("            'from icecube import pybdt' DEGIL, 'import pybdt'")
+            print("            Derlenmemisse: README > pybdt'yi derle")
     else:
         print(_env_report())
         print()

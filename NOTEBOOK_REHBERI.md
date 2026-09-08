@@ -1,4 +1,30 @@
-# `oscNext_L4_feature_engineering.ipynb` — adım adım ne yapıyor
+# Notebook rehberi
+
+Bu branch'te **iki notebook** var:
+
+| Notebook | Durum | Motor |
+|---|---|---|
+| `oscNext_L4_pybdt.ipynb` | **ANA ARAYÜZ** (aktif yol) | pybdt |
+| `oscNext_L4_feature_engineering.ipynb` | referans / eski arayüz | LightGBM |
+
+Aşağıdaki bölüm bölüm açıklama **`oscNext_L4_feature_engineering.ipynb`**
+için. Eski notebook duruyor çünkü pybdt notebook'una **taşınmamış** bölümleri
+var ve hâlâ gerekli:
+
+- §6 yeniden yazılan değişkenlerin referansla karşılaştırılması (VICH!)
+- §8 türetilmiş değişkenler
+- §9 data/MC uyum kontrolü
+- §10 korelasyon + incremental feature scan
+
+Bölüm 0–5 ve 7 (ağırlıklar) pybdt notebook'una taşındı, mantık aynı — orada
+pandas yerine saf numpy + pytables kullanılıyor. Yani aşağıdaki açıklamaların
+büyük kısmı iki notebook için de geçerli.
+
+Dosyanın sonunda **pybdt'nin nasıl çalıştığı** ayrı bir bölüm olarak var.
+
+---
+
+## `oscNext_L4_feature_engineering.ipynb` — adım adım
 
 Notebook bir "analiz defteri" değil, **üretim hattının kontrol paneli**.
 Ağır iş (`.i3` okuma, tray çalıştırma) IceTray'de `process_L4.py` ile yapılır;
@@ -19,6 +45,9 @@ L3 .i3.zst ──process_L4.py──▶ L4 .hdf5 ──notebook──▶ L4_*_tr
 Notebook'un kendisi **IceTray'e ihtiyaç duymaz** (bölüm 1'den job başlatmazsan).
 Sadece `numpy / pandas / tables / matplotlib / lightgbm` yeter. Bu bilinçli:
 HDF5 zaten üretildikten sonra IceTray'e gerek kalmıyor.
+
+> pybdt notebook'u bu konuda daha katı: **pandas hiç kullanmıyor** (IceTray
+> ortamında bulunmayabilir), sadece numpy + pytables + pybdt.
 
 ---
 
@@ -503,111 +532,134 @@ belirgin yüksek, referans varsa `compare_to_reference()` çalıştırıldı.
 
 # pybdt nasıl çalışır
 
-## Önce: bu repo pybdt kullanmıyor
-
-Bu repo **LightGBM** kullanıyor (`train_L4_classifier.py`,
-`l4_classifier_module.py`, notebook bölüm 10). oscNext v00.07 L4
-sınıflandırıcıları da LightGBM'di — notebook'taki Tablo 10 hyperparametreleri
-(`num_leaves`, `min_data_in_leaf`, `lambda_l1/l2`, `feature_fraction`) LightGBM
-parametreleri, pybdt'de bu isimler yok.
-
-`pybdt` IceCube'un **kendi** BDT paketi; DeepCore/GRECO gibi eski seçimlerde ve
-birçok point-source analizinde kullanıldı. Eski bir oscNext/GRECO koduna
-bakıyorsan ya da referans bir `.pybdt` model dosyan varsa aşağısı işine yarar.
+> Bu bölüm bu branch'in **aktif** yolunu anlatıyor. `pybdt/` kaynağı repoya
+> vendor edilmiş, `pybdt_train.py` + `pybdt_classifier_module.py` +
+> `oscNext_L4_pybdt.ipynb` bu yolu kullanıyor. LightGBM yolu
+> (`train_L4_classifier.py`, `l4_classifier_module.py`) referans olarak
+> duruyor — teknik notun (v00.074, §3.6.1) resmi yöntemi odur.
 
 ## Algoritma: AdaBoost + karar ağaçları
 
 pybdt, LightGBM'in kullandığı **gradient boosting**'den farklı olarak
-**AdaBoost** (discrete/SAMME) uygular. Fark önemli:
+**AdaBoost** uygular. Fark önemli:
 
 | | pybdt (AdaBoost) | LightGBM (gradient boosting) |
 |---|---|---|
 | Ağaç neyi öğrenir | yanlış sınıflandırılan **olayların ağırlığı artırılır** | önceki modelin **gradyanı/residüeli** |
-| Ağaç yapısı | derinliğe göre simetrik büyütme | leaf-wise, `num_leaves` sınırlı |
-| Split kriteri | Gini / cross-entropy / misclassification | histogram tabanlı gain |
+| Ağaç yapısı | derinliğe göre simetrik büyütme + budama | leaf-wise, `num_leaves` sınırlı |
+| Split kriteri | `separation_type` (Gini vb.) | histogram tabanlı gain |
 | Çıktı | ağırlıklı oy toplamı, ~[−1, +1] | log-odds → sigmoid → [0, 1] |
-| Eksik değer | doğal desteği yok | NaN'ı bir yön olarak öğrenir |
+| Eksik değer | doğal desteği **yok** | NaN'ı bir yön olarak öğrenir |
+| Aşırı uyum kontrolü | budama (pruner) + KS testi | early stopping + λ regularizasyon |
 
 **AdaBoost döngüsü:**
 
 ```
 w_i = 1/N   (başlangıç)
-her t = 1..T ağacı için:
+her t = 1..num_trees için:
     h_t  = ağırlıklı olaylarla bir karar ağacı eğit
     err  = Σ_{yanlış} w_i  /  Σ w_i
-    α_t  = β · ln((1 − err) / err)        β = "beta", öğrenme hızı
+    α_t  = beta · ln((1 − err) / err)
     w_i ← w_i · exp(α_t)   yanlış sınıflandırılan olaylar için
     w yeniden normalize
 skor(x) = Σ_t α_t · h_t(x)  /  Σ_t α_t      →  [−1, +1]
 ```
 
 Kilit sezgi: **her yeni ağaç bir öncekinin hata yaptığı olaylara odaklanır.**
-Sinyal ile arka planın karıştığı sınır bölgesi giderek daha yüksek ağırlık alır.
+Sinyal ile arka planın karıştığı sınır bölgesi giderek daha yüksek ağırlık
+alır. `beta` LightGBM'deki `learning_rate`'in karşılığı — küçükse daha yavaş
+ama daha kararlı.
 
-`β` (LightGBM'deki `learning_rate` karşılığı) küçükse daha yavaş ama daha
-kararlı öğrenme. IceCube analizlerinde tipik `β = 0.5` civarı, `num_trees`
-birkaç yüz.
+**Tablo 10 parametreleri pybdt'ye doğrudan taşınamaz.** `num_leaves`,
+`max_bin`, `lambda_l1/l2`, `min_gain_to_split` LightGBM'in native isimleri;
+pybdt'de karşılıkları yok. oscNext için optimize edilmiş bir pybdt parametre
+kümesi **mevcut değil** — kendin ayarlaman gerekiyor.
 
-## Tipik kullanım
+## Bu repodaki gerçek API
+
+`pybdt_train.py:71` — dikkat, learner ağırlık kolonlarını **kurucuda** alıyor
+ve `dtlearner` ayrı yaratılmıyor, learner'ın içinden erişiliyor:
 
 ```python
-from pybdt import ml, dtlearner, bdtlearner
+from pybdt import ml
 
-feats = ['NchCleaned', 'cog_z', 'z_travel', 'VICH_nch']
+# BDTLearner(degiskenler, sinyal_agirlik_kolonu, arkaplan_agirlik_kolonu)
+learner = ml.BDTLearner(list(features), weight_col, weight_col)
 
-# DataSet: {isim: numpy dizisi} sözlüğünden
-sig = ml.DataSet({f: sig_df[f].values for f in feats})
-bkg = ml.DataSet({f: bkg_df[f].values for f in feats})
+# zayif ogrenici learner'in ICINDE
+dt = learner.dtlearner
+dt.max_depth            = 3
+dt.min_split            = 500     # yaprakta minimum olay
+dt.num_cuts             = 100     # degisken basina denenen kesim sayisi
+dt.num_random_variables = 3       # her split'te rastgele degisken alt kumesi
+dt.linear_cuts          = True    # False -> nonlinear_histogram
 
-# zayıf öğrenici: tek karar ağacı
-dtl = dtlearner.DTLearner(feats)
-dtl.max_depth       = 6
-dtl.min_split       = 500          # yaprakta minimum olay
-dtl.separation_type = 'gini'       # 'gini' | 'cross_entropy' | 'misclass_error'
-dtl.num_random_variables = 3       # her split'te rastgele değişken alt kümesi
+# boost parametreleri
+learner.num_trees          = 300
+learner.beta               = 0.7
+learner.frac_random_events = 0.5  # bagging
+learner.use_purity         = True
 
-# boost edici
-bdtl = bdtlearner.BDTLearner(feats, dtl)
-bdtl.beta                = 0.5
-bdtl.num_trees           = 300
-bdtl.frac_random_events  = 0.5     # bagging
+# budama -- LightGBM'de karsiligi yok, pybdt'de ONEMLI
+learner.add_before_pruner(ml.SameLeafPruner())
+learner.add_before_pruner(ml.CostComplexityPruner(35))
 
-model = bdtl.train(sig, bkg, sig_weight='w', bkg_weight='w')
-ml.save(model, 'L4_muon.pybdt')
-
-# uygulama
-scores = model.score(test_dataset)                  # [-1, +1]
-scores = model.score(test_dataset, use_purity=True) # yaprak saflığı ağırlıklı
+bdt = learner.train(sig_train, bg_train)
+util.save(bdt, "L4_noise.bdt")
 ```
 
-> API detaylarını (özellikle `train` imzası ve ağırlık argümanlarının adları)
-> kendi kurulumunda `help(bdtlearner.BDTLearner)` ile doğrula — pybdt
-> sürümleri arasında farklılık var.
+`pybdt_train.py` bunları CLI bayrağı olarak alıyor ve **yalnızca açıkça
+verilenleri** set ediyor; gerisi pybdt'nin kendi varsayılanlarında kalıyor.
+`effective_params()` (satır 99) fiilen kullanılan değerleri okuyup `.json`'a
+yazıyor — "bu modeli hangi parametrelerle eğittim" sorusunun cevabı orada.
 
-**IceTray entegrasyonu:** pybdt bir `I3BDTModule` sağlıyor; model dosyasını
-yükleyip frame'den değişkenleri okur ve skoru `I3Double` olarak yazar.
-Bu repodaki `l4_classifier_module.py` **tam olarak bunun LightGBM karşılığı** —
-`icecube.oscNext.tools.classifier.I3Classifier` yerine yazılmış hali.
+**`use_purity`** — skorların yaprak saflığıyla ağırlıklandırılması. Eğitimde
+açıksa **okumada da açık olmalı**: `score_expr()` (satır 152) `use_purity`
+ise `pscores`, değilse `scores` döndürüyor. Karıştırılırsa skorlar sessizce
+yanlış olur.
 
-**Yardımcı modüller:** `pybdt.validate` (overtraining kontrolü — train ve test
-skor dağılımlarını üst üste çizer, KS testi), `pybdt.viz` (skor dağılımı,
-importance, ROC).
+## Doğrulama — `Validator`
 
-**pybdt'de importance:** `model.variable_importance()`. Bu LightGBM'in
-`split`'ine benzer bir sayım metriğidir ve aynı biası taşır — çok değerli
-sürekli değişkenler lehine. Notebook'taki permutation yaklaşımı pybdt için de
-aynen uygulanabilir ve orada da daha güvenilir.
+pybdt'nin en güçlü yanı bu. `build_validator()` (satır 121) dört DataSet'i
+(sig/bg × train/test) ekliyor, `make_plots()` üç grafik üretiyor:
 
-## Neden LightGBM tercih edildi
+- `_overtrain.png` — train ve test skor dağılımları üst üste. **KS testi
+  otomatik**: `p_KS < 0.01` ise uyarı basıyor (pybdt dokümantasyonunun eşiği,
+  `man_overtraining.rst`). Uyarı çıkarsa `num_trees` düşür ya da
+  `prune_strength` artır.
+- `_dist.png` — skor dağılımı
+- `_rate.png` — kesim değerine karşı rate
 
-- NaN'ı doğal işliyor (IceCube verisinde eksik reco çok yaygın)
-- Histogram tabanlı → `max_bin=32` ile çok hızlı, milyonlarca olayda pratik
-- `.txt` native model formatı: **sklearn/joblib gerektirmiyor**. IceTray
-  ortamında (py3-v4.4.2) sklearn ve joblib yok — `l4_classifier_module.py`
-  bu yüzden modeli metin formatından okuyor. pybdt bunu çözmek için IceTray
-  içine derlenmeyi gerektirirdi.
-- Aktif geliştiriliyor; pybdt bakım modunda
+LightGBM yolunda bunu elle yapıyorduk (train/test AUC farkı > 0.01 kontrolü);
+pybdt hazır getiriyor ve KS testi AUC farkından daha hassas.
 
-Eski bir `.pybdt` modelini bu zincirde kullanman gerekiyorsa: model dosyasını
-LightGBM'e çeviremezsin, pybdt'yi build'ine eklemen gerekir. Ama v00.07 L4
-modelleri zaten LightGBM olduğu için bu ihtimal düşük.
+## Frame'e uygulama
+
+`pybdt_classifier_module.py` → `PyBDTClassifier` tray modülü. `FEATURE_MAP`'i
+`l4_classifier_module.py`'den import ediyor — **mapping tek yerde kalsın
+diye**. O modül `lightgbm`'i sadece kendi `load_model()`'ı içinde import
+ettiği için bu bağımlılık lightgbm gerektirmiyor.
+
+## İki tuzak
+
+**1. Import yolu.** `import pybdt` — `from icecube import pybdt` **değil**.
+pybdt diğer IceTray projelerinin aksine `icecube` isim alanında değil,
+bağımsız üst düzey bir paket (kendi kaynağı da böyle import ediyor, bkz.
+`pybdt/python/pybdtmodule.py`). Bu proje geçmişinde bir kez "pybdt
+derlenmemiş" sanılmasına yol açtı. `icetray_env.require_pybdt()` artık bu
+hatayı yakalayıp doğru kullanımı söylüyor.
+
+**2. `.ds` dosyalarında BDT girdisi olmayan kolonlar var** (`w_phys` —
+fiziksel ağırlık). Eğitime `--features` **açıkça** geçilmeli; `pybdt_train.py`
+verilmezse `RESERVED_COLS`'u dışarıda bırakıyor. Bu koruma olmasa model
+fiziksel ağırlığı bir değişken sanıp öğrenirdi — sessiz ve ciddi bir hata.
+
+## Neden LightGBM referans olarak duruyor
+
+- NaN'ı doğal işliyor (IceCube verisinde eksik reco yaygın; pybdt'de yok)
+- `.txt` native formatı sklearn/joblib gerektirmiyor
+- Teknik notun resmi yöntemi bu — sonuçları resmi analizle karşılaştırmak
+  gerekirse referans lazım
+
+pybdt'nin karşılığında getirdiği: IceCube'un kendi aracı olması, hazır
+`Validator` altyapısı ve KS tabanlı overtraining kontrolü.

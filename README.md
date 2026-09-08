@@ -14,6 +14,9 @@ noise + muon sınıflandırıcılarını eğitir.
 
 | Dosya | Nerede çalışır | Ne yapar |
 |---|---|---|
+| `icetray_env.py` | her yer | **IceTray/pybdt köprüsü** — import başarısız olursa sebebini söyler |
+| `setup_env.sh` | shell | ortamı bul / shell aç / tek komut çalıştır / Jupyter kernel |
+| `scan_files.py` | IceTray | bozuk `.i3.zst` dosyalarını bul, sağlam liste üret |
 | `oscNext_L4_variables.py` | IceTray | L4 değişkenlerini hesaplayan tray segmentleri |
 | `process_L4.py` | IceTray | `.i3` → L4 değişkenleri → `.hdf5` |
 | `simple_booker.py` | IceTray | `hdfwriter` yoksa fallback booker |
@@ -71,14 +74,36 @@ cd /data/user/$(whoami)/icetray_build/build
 ./env-shell.sh
 ```
 
+...ya da repodaki sarmalayıcı (build'i kendisi bulur):
+```bash
+cd ~/l4 && ./setup_env.sh shell
+```
+
 Doğrula:
 ```bash
 python -c "import pybdt; print('OK', pybdt.__file__)"
+# ya da hepsini birden (icecube + I3Tray + pybdt):
+./setup_env.sh run python icetray_env.py
 ```
 
-> **Dikkat:** `import pybdt` — `from icecube import pybdt` **değil**.
+> **Dikkat 1:** `import pybdt` — `from icecube import pybdt` **değil**.
 > pybdt, diğer IceTray projelerinin aksine `icecube` isim alanına dahil
-> değildir.
+> değildir. `icetray_env.require_pybdt()` bu hatayı yakalayıp söylüyor.
+
+> **Dikkat 2:** `env-shell.sh` **yeni bir shell açar**. Bir script'in içinde
+> ard arda `./env-shell.sh` ve `python ...` yazarsan ikinci satır o
+> shell'den çıkıldıktan sonra, yani ortam olmadan çalışır. Tek komut için:
+> ```bash
+> ./env-shell.sh -- python process_L4.py ...     # ya da
+> ./setup_env.sh run python process_L4.py ...
+> ```
+
+`setup_env.sh` build'i şu sırayla arar: `$OSCNEXT_I3_BUILD` → `$I3_BUILD` →
+`/data/user/$USER/icetray_build/build` → `/data/user/$USER/*/build` →
+`~/*/build` → cvmfs metaproject'leri. Başka yerdeyse:
+```bash
+export OSCNEXT_I3_BUILD=/tam/yol/build
+```
 
 ### 4. Jupyter (isteğe bağlı)
 
@@ -87,6 +112,13 @@ notebook kernel'i ortamı miras alır, tekrar `env-shell` gerekmez:
 ```bash
 cd ~/l4
 python -m jupyter lab --no-browser --port=8896
+```
+
+Jupyter'i ortam dışından başlattıysan notebook `icecube`/`pybdt` göremez.
+O durumda kernel'i bir kez kaydet ve notebook'ta seç
+(**Kernel > Change Kernel > "IceTray (oscNext L4)"**):
+```bash
+./setup_env.sh kernel
 ```
 Yerelden: `ssh -L 8896:localhost:8896 <kullanıcı>@cobalt.icecube.wisc.edu`
 
@@ -108,6 +140,57 @@ edilmeli.
 
 Üretilen HDF5'in gerçek sütun isimlerini görmek için notebook'un
 2. bölümünü çalıştır (`dump_tables`) — tüm tabloları ve kolonları listeler.
+
+### Bozuk girdi dosyaları
+
+pass3 üretiminde yarım yazılmış `.i3.zst` dosyaları var. `I3Reader` böyle bir
+dosyaya gelince
+
+```
+FATAL (I3Reader): Error reading .../genie_NuMu_IC86.023799.000046.i3.zst
+                  at frame 4: input stream error!
+```
+
+atıp **tüm tray'i öldürüyor** — 100 dosyalık bir job'da tek bozuk dosya
+yüzünden 99 sağlam dosyanın işlenmesi boşa gidiyor ve geride açılamayan
+yarım bir HDF5 kalıyor. Ardından gelen
+`Table 'Data_quality_bool' is still connected ... This is a BUG!`
+mesajı **bunun sonucu**, ayrı bir hata değil.
+
+`process_L4.py` iki katmanlı koruma yapıyor:
+
+1. **Ön tarama** (`--scan quick`, varsayılan açık) — her dosyanın ilk 25
+   frame'i okunur, açılmayanlar elenir. Kesik dosyalar tipik olarak ilk
+   frame'lerde patladığı için saniyeler içinde yakalanır.
+2. **Çalışma anı** (`--retries 3`, varsayılan) — tray yine de patlarsa hata
+   mesajından dosya adı çıkarılır, kara listeye yazılır, yarım HDF5 silinir
+   ve o dosya hariç yeniden denenir.
+
+```
+--scan quick   # varsayılan: ilk N frame (--scan-frames, varsayılan 25)
+--scan full    # her frame okunur -- dosyanın ortasında bozulma varsa gerekli
+--scan off     # tarama yok (liste zaten temizse)
+--retries 0    # çalışma anı yeniden denemesi kapalı
+```
+
+Elenen dosyalar `<çıktı>.hdf5.badfiles.txt` içine yazılır.
+
+**Üretimden önce bir kez tara (önerilen).** Her job aynı taramayı tekrar
+etmesin diye set başına bir kez tarayıp sağlam listeyi kaydet:
+
+```bash
+python scan_files.py --good-list good_23799.txt \
+    '/data/ana/LE/oscNext/pass3/genie/level3/23799/*.i3.zst'
+
+python process_L4.py --input-list good_23799.txt --scan off \
+    --gcd ... --output-hdf5 ... --mc --genie
+```
+
+`scan_files.py` bozuk dosya bulursa çıkış kodu 1 döner — shell script'ten
+kontrol edilebilir.
+
+> Patlayan job'lardan kalan yarım HDF5'ler açılamaz, silin:
+> `rm -f L4_output/hdf5/numu/L4_numu.hdf5`
 
 ### Uçtan uca: notebook
 
@@ -179,13 +262,21 @@ pip install --user nbstripout && nbstripout --install
 
 ## Durum
 
-- [x] Ortam doğrulandı (`hdfwriter` yok → SimpleBooker; `oscNext` projesi yok)
+- [x] Ortam doğrulandı (`oscNext` projesi yok; `slc-veto` yok)
 - [x] pybdt kaynaktan derlendi ve çalışıyor
-- [x] νe işleme çalışıyor, tüm tablolar book ediliyor
+- [x] **Kendi build'de `icecube.hdfwriter` VAR** — `Booking: icecube.hdfwriter`.
+      SimpleBooker fallback'i devrede değil (cvmfs metaproject'inde yoktu)
+- [x] IceTray/pybdt import katmanı (`icetray_env.py` + `setup_env.sh`)
+- [x] Bozuk girdi dosyalarına dayanıklılık (`--scan` + `--retries`)
+- [x] νe işleme çalıştı — 100 dosya → 256 799 olay, 149 MB, 1019 s
+- [x] CORSIKA işleme çalıştı — 500 dosya → 6 462 olay, 4.2 MB, 2578 s
 - [x] Uçtan uca notebook yazıldı (`oscNext_L4_pybdt.ipynb`)
 - [ ] Notebook hiç çalıştırılmadı → HDF5 sütun isimleri doğrulanmadı,
       3. bölümdeki `REGISTRY` düzeltme gerektirebilir
-- [ ] νμ / CORSIKA / noise işleme denenmedi
+- [ ] νμ / noise yeniden çalıştırılmalı — bozuk dosya yüzünden yarım kaldı
+      (`--scan` düzeltmesinden sonra)
+- [ ] CORSIKA istatistiği az görünüyor (dosya başına ~13 olay); muon BDT
+      arka planı bu, eğitim öncesi ağırlık kontrolü şart
 - [ ] Sütun isimleri kesinleştirilmedi
 - [ ] Yeniden yazılan değişkenler (VICH, accumulated_time) doğrulanmadı
 - [ ] Ağırlıklar doğrulanmadı

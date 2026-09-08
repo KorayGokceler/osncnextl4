@@ -34,7 +34,12 @@ find_env_shell() {
         echo "$I3_BUILD/env-shell.sh"; return 0
     fi
     # 3) Kendi derlediginiz build'ler
-    for p in "$HOME"/icetray/build/env-shell.sh \
+    #    /data/user/$USER en olasi yer: cobalt'ta home kotali oldugu icin
+    #    build oraya yapiliyor (bkz. README "pybdt'yi derle").
+    for p in /data/user/"$(whoami)"/icetray_build/build/env-shell.sh \
+             /data/user/"$(whoami)"/*/build/env-shell.sh \
+             /data/user/"$(whoami)"/build/env-shell.sh \
+             "$HOME"/icetray/build/env-shell.sh \
              "$HOME"/*/build/env-shell.sh \
              "$HOME"/*/*/build/env-shell.sh \
              "$HOME"/build/env-shell.sh; do
@@ -68,7 +73,10 @@ report() {
 
     echo "Bulunan env-shell.sh adaylari:"
     local any=0
-    for p in "$HOME"/icetray/build/env-shell.sh "$HOME"/*/build/env-shell.sh \
+    for p in /data/user/"$(whoami)"/icetray_build/build/env-shell.sh \
+             /data/user/"$(whoami)"/*/build/env-shell.sh \
+             /data/user/"$(whoami)"/build/env-shell.sh \
+             "$HOME"/icetray/build/env-shell.sh "$HOME"/*/build/env-shell.sh \
              "$HOME"/*/*/build/env-shell.sh "$HOME"/build/env-shell.sh; do
         [ -x "$p" ] && { echo "  [kendi build ] $p"; any=1; }
     done
@@ -85,7 +93,7 @@ report() {
         local ts; ts="$(detect_toolset "$bd")"
         [ -n "${ts:-}" ] && echo "Derleme toolset (CMakeCache): $ts"
         echo
-        echo "icecube import testi:"
+        echo "icecube + pybdt import testi:"
         "$es" -- python "$HERE/icetray_env.py" 2>&1 | sed 's/^/  /'
     else
         echo "env-shell.sh BULUNAMADI."

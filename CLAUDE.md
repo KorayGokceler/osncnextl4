@@ -22,8 +22,11 @@ Kullanılan IceTray meta-projesinde (`py3-v4.4.2`) şu satırlar **yok**:
 
 - `icecube.oscNext` projesi tamamen yok → `I3Classifier` (model uygulama),
   `oscNext_cut`, `calc_rho_36` kullanılamıyor.
-- `icecube.hdfwriter` yok (meta-proje HDF5 destesiz derlenmiş) →
-  `simple_booker.py` pytables ile fallback booking yapıyor.
+- `icecube.hdfwriter` **cvmfs metaproject'inde** yoktu → `simple_booker.py`
+  pytables ile fallback booking yapıyor. **Güncelleme:** kullanıcının kendi
+  build'inde (`/data/user/$USER/icetray_build/build`) hdfwriter VAR —
+  gerçek çalışmada `Booking: icecube.hdfwriter` yazıyor. Fallback artık
+  devrede değil ama kod duruyor (cvmfs ortamına dönülürse gerekli).
 - Eski proje bağımlılıkları yok: `tau_bdt.I3CutL7Module` (VICH),
   `analysis.event_selection` (Dunkman değişkenleri: accumulated_time,
   separation_in_cogs), `slc-veto` (QR box, opsiyonel).
@@ -83,8 +86,14 @@ pybdt_classifier_module.py  (PyBDTClassifier tray modülü)
 değişkenlerin referansla karşılaştırılması, §8 türetilmiş değişkenler,
 §9 data/MC uyumu, §10 korelasyon + incremental feature scan.
 
-Yardımcı/tanı scripti: `diagnose_env.py` (ortamda ne var/yok, pybdt
-kontrolü dahil). HDF5 kolonlarını dökmek için notebook bölüm 2.
+Yardımcı/tanı scriptleri:
+- `icetray_env.py` — **tüm `icecube` import'ları buradan geçer**; import
+  başarısız olursa sebebini raporlar. `require_pybdt()` de burada.
+- `setup_env.sh` — ortamı bul / shell aç / tek komut çalıştır / Jupyter kernel.
+- `scan_files.py` — bozuk `.i3.zst` dosyalarını bul, sağlam liste üret.
+- `diagnose_env.py` — ortamda ne var/yok (pybdt kontrolü dahil).
+
+HDF5 kolonlarını dökmek için notebook bölüm 2.
 
 ## Kritik senkronizasyon noktası
 
@@ -100,10 +109,13 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
 
 ## Mevcut durum (README'den)
 
-- [x] Ortam doğrulandı (`hdfwriter` yok → SimpleBooker; `oscNext` projesi yok;
-      `slc-veto` yok)
-- [x] νe işleme çalışıyor, tüm tablolar book ediliyor
-- [ ] νμ / CORSIKA / noise işleme henüz denenmedi
+- [x] Ortam doğrulandı (`oscNext` projesi yok; `slc-veto` yok;
+      kendi build'de `hdfwriter` VAR)
+- [x] IceTray/pybdt import katmanı (`icetray_env.py` + `setup_env.sh`)
+- [x] Bozuk girdi dosyalarına dayanıklılık (`--scan` + `--retries`)
+- [x] νe işleme çalıştı (100 dosya → 256 799 olay, 1019 s)
+- [x] CORSIKA işleme çalıştı (500 dosya → 6 462 olay, 2578 s)
+- [ ] νμ / noise yeniden çalıştırılmalı — bozuk `.i3.zst` yüzünden yarım kaldı
 - [ ] Sütun isimleri kesinleştirilmedi
 - [ ] Yeniden yazılan değişkenler (VICH, accumulated_time, separation_in_cogs)
       referansla doğrulanmadı
@@ -245,6 +257,65 @@ bırakır. Bu koruma olmazsa model fiziksel ağırlığı bir değişken sanıp
 **Henüz test edilmedi:** notebook uçtan uca hiç çalıştırılmadı; HDF5 sütun
 isimleri doğrulanmadığı için 3. bölümdeki `REGISTRY` büyük olasılıkla
 düzeltme gerektirecek (2. bölüm zaten bunu tespit etmek için var).
+
+## Ortam kurulumu — bilinen tuzaklar
+
+**1. `env-shell.sh` yeni bir shell açar.** Script içinde ard arda
+`./env-shell.sh` ve `python ...` yazarsan ikinci satır o shell'den
+çıkıldıktan sonra, yani ortam olmadan çalışır. Bu, "icetray import
+edilmiyor" hatasının 1 numaralı sebebi. Tek komut için:
+`./env-shell.sh -- python ...` ya da `./setup_env.sh run python ...`.
+
+**2. Jupyter kernel'i.** Notebook'un IceTray/pybdt'yi görmesinin tek yolu
+kernel'in env-shell içindeki python olması. Jupyter'i ortam içinden
+başlatmak en temizi (README adım 4); başlatılmadıysa `./setup_env.sh kernel`
+ile kernel kaydedilip notebook'ta seçilir.
+
+**3. `import pybdt`, `from icecube import pybdt` DEĞİL.** pybdt `icecube`
+isim alanında değil, bağımsız üst düzey bir paket. Bu proje geçmişinde bir
+kez "pybdt derlenmemiş" sanılmasına yol açtı. `icetray_env.require_pybdt()`
+bu hatayı yakalayıp doğru kullanımı söylüyor.
+
+**4. `I3Tray`'in yeri sürüme göre değişiyor** — `icecube.icetray.I3Tray`
+(v1.5+) vs top-level `I3Tray` (combo). `icetray_env.get_I3Tray()` ikisini
+de dener.
+
+**5. Tek eksik proje tüm repoyu kilitliyordu.** `oscNext_L4_variables.py`
+eskiden modül seviyesinde `tensor_of_inertia`, `fill_ratio`,
+`DeepCore_Filter` import ediyordu; biri eksikse dosya hiç import
+edilemiyordu. Artık `optional_project()` ile; eksik proje, o değişkeni
+üreten segment çağrıldığında (`require_project(...)`) net hata veriyor.
+
+Build arama sırası (`setup_env.sh` ve `icetray_env.find_env_shells()`):
+`$OSCNEXT_I3_BUILD` → `$I3_BUILD` → `/data/user/$USER/icetray_build/build`
+→ `/data/user/$USER/*/build` → `~/*/build` → cvmfs metaproject'leri.
+
+## Bozuk girdi dosyaları (çözüldü)
+
+pass3 üretiminde yarım yazılmış `.i3.zst` dosyaları var:
+
+```
+FATAL (I3Reader): Error reading .../genie_NuMu_IC86.023799.000046.i3.zst
+                  at frame 4: input stream error!
+```
+
+`I3Reader` tüm dosya listesini tek seferde alıyor → bir dosya bozuksa **tüm
+tray ölüyor**. numu (100 dosya) ve noise (100 dosya) job'ları bu yüzden
+yarım kaldı. Ardından gelen `Table ... is still connected ... This is a
+BUG!` mesajı **bunun sonucu**, ayrı bir bug değil — tray patlayınca HDF5
+düzgün kapanmadı demek. O yarım HDF5'ler açılamaz, silinmeli.
+
+`process_L4.py` iki katmanlı koruma yapıyor:
+1. **Ön tarama** (`--scan quick`, varsayılan) — dosya başına ilk 25 frame
+   okunur, açılmayanlar elenir.
+2. **Çalışma anı** (`--retries 3`, varsayılan) — tray yine patlarsa hata
+   mesajından dosya adı regex ile çıkarılır, kara listeye yazılır, yarım
+   HDF5 silinir, o dosya hariç yeniden denenir. (Tray bir fabrika
+   fonksiyonuna alındı: bir `I3Tray` ikinci kez `Execute` edilemiyor.)
+
+Elenen dosyalar `<çıktı>.hdf5.badfiles.txt`'ye yazılır. Set başına bir kez
+`scan_files.py --good-list` ile tarayıp `--input-list ... --scan off`
+kullanmak en verimlisi.
 
 ## Konvansiyonlar
 
