@@ -23,6 +23,7 @@ uygulamayin; tum olaylari book edin.
 '''
 
 import os
+import re
 import sys
 import glob
 import argparse
@@ -115,6 +116,126 @@ CORSIKA_KEYS = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Bozuk girdi dosyalari
+# ---------------------------------------------------------------------------
+#
+# pass3 uretiminde ara sira yarim yazilmis / bozuk .i3.zst dosyalari var.
+# I3Reader boyle bir dosyaya gelince
+#
+#     FATAL (I3Reader): Error reading <dosya> at frame N: input stream error!
+#
+# atip TUM tray'i oldururuyor.  100 dosyalik bir job'da tek bozuk dosya
+# yuzunden 99 saglam dosyanin islenmesi bosa gidiyor ve geride yarim,
+# acilmayan bir HDF5 kaliyor ("Table ... is still connected" hatasi bunun
+# sonucu, ayri bir bug degil).
+#
+# Cozum iki katmanli:
+#   1) On tarama  -- her dosyanin ilk N frame'i okunur, acilmayanlar elenir.
+#      Kesik/bos dosyalari saniyeler icinde yakalar (tipik hata frame 4'te).
+#   2) Calisma ani -- tray yine de patlarsa hata mesajindan dosya adi
+#      cikarilir, kara listeye yazilir ve o dosya haric yeniden denenir.
+
+_BAD_FILE_RE = re.compile(r"Error reading (\S+?) at frame")
+
+
+def _bad_list_path(output):
+    return (output or "process_L4") + ".badfiles.txt"
+
+
+def _record_bad(output, paths, reason):
+    """Bozuk dosyalari <cikti>.badfiles.txt icine yaz."""
+    if not paths:
+        return
+    path = _bad_list_path(output)
+    try:
+        with open(path, "a") as fh:
+            for p in paths:
+                fh.write("%s\t%s\n" % (p, reason))
+        print("  Kara liste: %s" % path)
+    except OSError as e:
+        print("  [!] kara liste yazilamadi: %s" % e)
+
+
+def validate_files(paths, n_frames=25, verbose=True):
+    """
+    Her dosyayi acip ilk `n_frames` frame'i oku.  (saglam, bozuk) dondur.
+
+    n_frames=0 -> dosyanin TAMAMI okunur (yavas ama kesin).
+
+    Not: bu, dosyanin tamamen saglam oldugunu garanti etmez -- ortasinda
+    bozulma varsa ancak tam tarama yakalar.  Ama pratikte gordugumuz
+    hatalar (kesik yazilmis dosya) ilk frame'lerde ortaya cikiyor.
+    """
+    good, bad = [], []
+    for i, path in enumerate(paths):
+        try:
+            if os.path.getsize(path) == 0:
+                bad.append((path, "bos dosya (0 byte)"))
+                continue
+        except OSError as e:
+            bad.append((path, "stat: %s" % e))
+            continue
+        try:
+            f = dataio.I3File(path)
+            try:
+                n = 0
+                while f.more():
+                    f.pop_frame()
+                    n += 1
+                    if n_frames and n >= n_frames:
+                        break
+            finally:
+                f.close()
+            good.append(path)
+        except Exception as e:
+            first = str(e).strip().splitlines()[0] if str(e).strip() else type(e).__name__
+            bad.append((path, first[:160]))
+        if verbose and (i + 1) % 100 == 0:
+            print("  taranan: %d/%d" % (i + 1, len(paths)))
+    return good, bad
+
+
+def _run_tray(build, infiles, output_hdf5, retries):
+    """
+    Tray'i calistir.  Bozuk dosya yuzunden patlarsa o dosyayi cikarip
+    yeniden dene (en fazla `retries` kez).
+    """
+    attempt = 0
+    while True:
+        tray, counter = build(infiles)
+        n_frames = getattr(build, "n_frames", 0)
+        try:
+            if n_frames:
+                tray.Execute(n_frames)
+            else:
+                tray.Execute()
+            return counter["n"], infiles
+        except RuntimeError as e:
+            m = _BAD_FILE_RE.search(str(e))
+            if not m or attempt >= retries:
+                raise
+            bad = m.group(1)
+            if bad not in infiles:
+                raise
+            attempt += 1
+            print("\n[!] Bozuk dosya calisma aninda yakalandi:\n    %s" % bad)
+            print("    %s" % str(e).strip().splitlines()[0][:200])
+            _record_bad(output_hdf5, [bad], "calisma ani: input stream error")
+            infiles = [f for f in infiles if f != bad]
+            # Yarim kalan HDF5 kullanilamaz -- silinmezse yeniden acilamaz.
+            if output_hdf5 and os.path.exists(output_hdf5):
+                try:
+                    os.remove(output_hdf5)
+                    print("    Yarim HDF5 silindi, bastan basliyor.")
+                except OSError as rm:
+                    print("    [!] yarim HDF5 silinemedi: %s" % rm)
+            print("    Kalan dosya: %d  (deneme %d/%d)\n"
+                  % (len(infiles), attempt, retries))
+            if not infiles:
+                raise RuntimeError("Tum girdi dosyalari bozuk cikti.")
+
+
 def build_key_list(is_mc=False, is_noise=False, is_muongun=False,
                    is_corsika=False, extra=None):
     keys = list(BASE_KEYS) + list(L3_KEYS) + list(COMMON_VAR_KEYS) + list(L4_HDF5_KEYS)
@@ -135,7 +256,7 @@ def build_key_list(is_mc=False, is_noise=False, is_muongun=False,
 def main():
     p = argparse.ArgumentParser(description="oscNext L4 isleme + HDF5 booking")
     p.add_argument("--gcd", required=True, help="GCD dosyasi")
-    p.add_argument("--input", required=True, nargs="+",
+    p.add_argument("--input", nargs="+", default=[],
                    help="Girdi .i3 dosyalari (glob deseni de olur)")
     p.add_argument("--output-i3", default=None, help="Cikti .i3 (opsiyonel)")
     p.add_argument("--output-hdf5", required=True, help="Cikti .hdf5")
@@ -161,18 +282,59 @@ def main():
     p.add_argument("--model-dir", default=None, help="Egitilmis .joblib modellerin dizini")
 
     p.add_argument("--n", type=int, default=0, help="Islenecek frame sayisi (0=hepsi)")
+
+    p.add_argument("--input-list", default=None,
+                   help="Girdi dosyalarini bu metin dosyasindan oku (satir basina "
+                        "bir yol).  scan_files.py --good-list ciktisi ile kullanilir; "
+                        "boylece tarama bir kez yapilir, her job tekrar etmez.")
+    p.add_argument("--scan", choices=["quick", "full", "off"], default="quick",
+                   help="Girdi dosyalarini on tarama: quick=ilk frame'ler "
+                        "(varsayilan, kesik dosyalari yakalar), full=tum dosya "
+                        "(yavas ama kesin), off=tarama yok")
+    p.add_argument("--scan-frames", type=int, default=25,
+                   help="--scan quick modunda dosya basina okunacak frame (varsayilan 25)")
+    p.add_argument("--retries", type=int, default=3,
+                   help="Calisma aninda bozuk dosya cikarsa onu atip kac kez "
+                        "yeniden denensin (varsayilan 3, 0=deneme)")
     p.add_argument("--no-hit-statistics", action="store_true",
                    help="HitStatistics'i hesaplama (L3'te zaten varsa)")
     args = p.parse_args()
 
+    if not args.input and not args.input_list:
+        p.error("--input ya da --input-list vermelisiniz.")
+
     # --- girdi dosyalarini coz ---
     infiles = []
+    if args.input_list:
+        try:
+            with open(args.input_list) as fh:
+                infiles = [ln.strip() for ln in fh
+                           if ln.strip() and not ln.startswith("#")]
+        except OSError as e:
+            sys.exit("--input-list okunamadi: %s" % e)
+        print("Girdi listesi: %s (%d dosya)" % (args.input_list, len(infiles)))
     for pattern in args.input:
         matched = sorted(glob.glob(pattern))
         infiles.extend(matched if matched else [pattern])
     if not infiles:
         sys.exit("Girdi dosyasi bulunamadi.")
     print("Girdi dosyasi:", len(infiles))
+
+    # --- bozuk dosyalari on taramayla ele ---
+    if args.scan != "off":
+        nf = 0 if args.scan == "full" else args.scan_frames
+        print("On tarama (%s)..." % args.scan)
+        infiles, bad = validate_files(infiles, n_frames=nf)
+        if bad:
+            print("  [!] %d bozuk dosya elendi:" % len(bad))
+            for path, why in bad[:10]:
+                print("      %s\n          %s" % (os.path.basename(path), why))
+            if len(bad) > 10:
+                print("      ... (+%d tane daha)" % (len(bad) - 10))
+            _record_bad(args.output_hdf5, [b[0] for b in bad], "on tarama: " + args.scan)
+        print("  Islenecek dosya: %d" % len(infiles))
+        if not infiles:
+            sys.exit("Saglam girdi dosyasi kalmadi.")
 
     for out in (args.output_i3, args.output_hdf5):
         if out:
@@ -183,51 +345,59 @@ def main():
     print("Book edilecek anahtar:", len(keys))
 
     # --- tray ---
-    tray = I3Tray()
-    tray.Add("I3Reader", "reader", FilenameList=[args.gcd] + infiles)
+    # Tray'i bir fabrika fonksiyonu icinde kuruyoruz: calisma aninda bozuk
+    # dosya cikarsa o dosya haric YENIDEN kurulup calistirilabilsin diye
+    # (bir I3Tray ikinci kez Execute edilemez).
+    def build_tray(files):
+        tray = I3Tray()
+        tray.Add("I3Reader", "reader", FilenameList=[args.gcd] + files)
 
-    # Sadece fizik sub-event stream'ini isle
-    tray.Add(lambda f: f["I3EventHeader"].sub_event_stream == args.sub_event_stream,
-             "stream_filter",
-             Streams=[icetray.I3Frame.Physics])
+        # Sadece fizik sub-event stream'ini isle
+        tray.Add(lambda f: f["I3EventHeader"].sub_event_stream == args.sub_event_stream,
+                 "stream_filter",
+                 Streams=[icetray.I3Frame.Physics])
 
-    tray.Add(oscNext_L4, "oscNext_L4",
-             uncleaned_pulses=args.uncleaned_pulses,
-             cleaned_pulses=args.cleaned_pulses,
-             apply_l3_cut=not args.no_l3_cut,
-             is_genie=args.genie,
-             compute_hit_statistics=not args.no_hit_statistics,
-             apply_cut=args.apply_cut,
-             classifier_model_dir=args.model_dir)
+        tray.Add(oscNext_L4, "oscNext_L4",
+                 uncleaned_pulses=args.uncleaned_pulses,
+                 cleaned_pulses=args.cleaned_pulses,
+                 apply_l3_cut=not args.no_l3_cut,
+                 is_genie=args.genie,
+                 compute_hit_statistics=not args.no_hit_statistics,
+                 apply_cut=args.apply_cut,
+                 classifier_model_dir=args.model_dir)
 
-    # --- ne kadar olay kaldi? ---
-    counter = {"n": 0}
-    def count(frame):
-        counter["n"] += 1
-        return True
-    tray.Add(count, "counter")
+        # --- ne kadar olay kaldi? ---
+        counter = {"n": 0}
+        def count(frame):
+            counter["n"] += 1
+            return True
+        tray.Add(count, "counter")
 
-    if args.output_i3:
-        tray.Add("I3Writer", "writer",
-                 Filename=args.output_i3,
-                 Streams=[icetray.I3Frame.TrayInfo,
-                          icetray.I3Frame.DAQ,
-                          icetray.I3Frame.Physics,
-                          icetray.I3Frame.Stream("S"),
-                          icetray.I3Frame.Stream("M")])
+        if args.output_i3:
+            tray.Add("I3Writer", "writer",
+                     Filename=args.output_i3,
+                     Streams=[icetray.I3Frame.TrayInfo,
+                              icetray.I3Frame.DAQ,
+                              icetray.I3Frame.Physics,
+                              icetray.I3Frame.Stream("S"),
+                              icetray.I3Frame.Stream("M")])
 
-    add_booker(tray, "booker",
-               output=args.output_hdf5,
-               keys=keys,
-               sub_event_streams=[args.sub_event_stream])
+        add_booker(tray, "booker",
+                   output=args.output_hdf5,
+                   keys=keys,
+                   sub_event_streams=[args.sub_event_stream])
+        return tray, counter
 
-    if args.n > 0:
-        tray.Execute(args.n)
-    else:
-        tray.Execute()
+    build_tray.n_frames = args.n if args.n > 0 else 0
 
-    print("Book edilen olay:", counter["n"])
+    n_booked, used = _run_tray(build_tray, infiles, args.output_hdf5, args.retries)
+
+    print("Book edilen olay:", n_booked)
+    print("Islenen dosya:", len(used))
     print("HDF5:", args.output_hdf5)
+    bl = _bad_list_path(args.output_hdf5)
+    if os.path.exists(bl):
+        print("Bozuk dosya listesi:", bl)
 
 
 if __name__ == "__main__":
