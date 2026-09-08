@@ -79,10 +79,8 @@ l4_classifier_module.py  (L4Classifier tray modülü — I3Classifier'in yerine)
    FEATURE_MAP: model değişken adı → (frame anahtarı, kolon adı)
 ```
 
-Yardımcı/tanı scriptleri: `diagnose_env.py` (ortamda ne var/yok),
-`dump_columns.py` (üretilen HDF5'in tam kolon isimleri),
-`inspect_classifier_api.py` (referans model şemasını çözer, eğitim
-scriptini yazmadan önce çalıştırılmalı).
+Yardımcı/tanı scriptleri: `diagnose_env.py` (ortamda ne var/yok, pybdt
+kontrolü dahil), `dump_columns.py` (üretilen HDF5'in tam kolon isimleri).
 
 ## Kritik senkronizasyon noktası
 
@@ -172,9 +170,9 @@ pybdt'ye geçiş şu sonuçları doğurur:
   regularizasyon mantığı yok — Tablo 10 parametreleri pybdt'ye
   **doğrudan taşınamaz**, pybdt'nin kendi API'sine göre (`num_trees`,
   `beta`, `depth`, `min_split`, `prune_strength`, `use_purity`) ayrıca
-  ayarlandı — bkz. `pybdt_train_L4_classifier.py` içindeki `PYBDT_PARAMS`
-  (pybdt'nin kendi örnek/varsayılan değerleri, oscNext için optimize
-  EDİLMEDİ, sadece başlangıç noktası).
+  ayarlanmalı. `pybdt_train.py` bunları CLI bayrağı olarak alır ve
+  verilmeyenleri pybdt'nin kendi varsayılanlarında bırakır — oscNext
+  için optimize edilmiş bir değer kümesi YOK.
 - pybdt derlenmiş bir C++/boost_python eklentisi. **py3-v4.4.2 cvmfs
   dağıtımında pybdt YOK** (`BUILD_PYBDT` bayrağı kapalı gelmiş,
   `pybdt/CMakeLists.txt`'te `USE_TOOLS ... gsl` gerektiriyor).
