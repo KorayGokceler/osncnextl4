@@ -166,6 +166,10 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    Ayrıca not bunu **L3 değişkeni** olarak listeliyor
    (`IC2018_LE_L3_Vars.FullTimeLengthRatio`); pass3 L3 map'inde oran yok,
    bileşenleri var (`CleanedFullTimeLength`, `UncleanedFullTimeLength`).
+3a. **Muon BDT'de eksik girdi (düzeltildi).** Tablo 12 **10** değişken
+   listeliyor, `MUON_FEATURES`'ta **9** vardı — `NchCleaned` atlanmıştı
+   (noise listesinde olduğu için gözden kaçmış). Eklendi. Benzersiz BDT
+   değişkeni: 14 (5 noise + 10 muon, `NchCleaned` ortak).
 3b. **`iLineFit_speed` kolonu — kontrol edilmeli.** Tablo 11 girdiyi
    `L4_iLineFit.speed` (I3Particle alanı) diye veriyor; pybdt notebook'u
    `L4_iLineFitParams.LFVel` okuyor, LightGBM notebook'u ise pass3 kolonunun

@@ -180,7 +180,26 @@ sınırlaması notta **açıkça yazan** bir şey ve şu an kodda yok.
 
 ---
 
-## 2.4 İsim uyuşmazlığı — kontrol edilmeli
+## 2.4 Eksik BDT girdisi (düzeltildi)
+
+Tablo 12 muon sınıflandırıcısı için **10** değişken listeliyor ve metin de
+bunu doğruluyor (*"Table 12 lists the 10 input variables"*). `MUON_FEATURES`
+listemizde **9** vardı — `IC2018_LE_L3_Vars.NchCleaned` atlanmıştı.
+
+`NchCleaned` hem noise hem muon BDT'sinin girdisi; noise listesinde olduğu
+için gözden kaçmış. Muon BDT'si belgelenmiş girdilerinden biri olmadan
+eğitilecekti. Eklendi, sıra Tablo 12'deki gibi:
+
+```
+ICVetoHits, RTVeto250Hits, NchCleaned, NAbove200Hits, VICH_nch,
+accumulated_time, first_hlc_rho, cog_z, z_sigma, z_travel
+```
+
+Benzersiz BDT değişkeni: **14** (5 noise + 10 muon, `NchCleaned` ortak).
+
+---
+
+## 2.5 İsim uyuşmazlığı — kontrol edilmeli
 
 Tablo 11 noise girdisini **`L4_iLineFit.speed`** diye veriyor — yani
 `L4_iLineFit` **I3Particle**'ının `speed` alanı.
@@ -212,7 +231,7 @@ dump_tables(SAMPLES["nue"]["hdf5"].replace(".hdf5", "_smoke.hdf5"),
 
 ---
 
-## 2.5 Ağırlık doğrulama hedefleri (Tablo 13)
+## 2.6 Ağırlık doğrulama hedefleri (Tablo 13)
 
 L3'teki oranlar — ağırlık zincirinin **tek en iyi göstergesi**:
 
@@ -241,9 +260,9 @@ pass3'te birebir tutmaz, **mertebe** tutmalı.
 
 1. **VICH COG'unu fiducial'la sınırla** (§2.2) — notta açıkça yazan, kodda
    olmayan tek şey. Muon ayrımını doğrudan etkiler.
-2. **`iLineFit_speed` kolonunu doğrula** (§2.4) — 10 saniyelik iş, sessiz
+2. **`iLineFit_speed` kolonunu doğrula** (§2.5) — 10 saniyelik iş, sessiz
    NaN riski.
-3. **Ağırlıkları Tablo 13 ile karşılaştır** (§2.5) — `n_l3_files` düzeltmesi
+3. **Ağırlıkları Tablo 13 ile karşılaştır** (§2.6) — `n_l3_files` düzeltmesi
    sonrası mertebe tutuyor mu?
 4. `accumulated_time` referans zamanı (§2.1) — fraksiyon ve seri doğrulandı,
    sıfır noktası açık.

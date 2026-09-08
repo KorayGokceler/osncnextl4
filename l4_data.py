@@ -73,7 +73,10 @@ REGISTRY = {
 NOISE_FEATURES = ["NchCleaned", "micro_count", "iLineFit_speed",
                   "fill_ratio", "FullTimeLengthRatio"]
 
-MUON_FEATURES = ["ICVetoHits", "RTVeto250Hits", "NAbove200Hits", "VICH_nch",
+# Tablo 12 SIRASIYLA 10 degisken listeliyor.  NchCleaned hem noise hem muon
+# BDT'sinde girdi -- ilk yazimda muon listesinden atlanmisti.
+MUON_FEATURES = ["ICVetoHits", "RTVeto250Hits", "NchCleaned", "NAbove200Hits",
+                 "VICH_nch",
                  "accumulated_time", "first_hlc_rho", "cog_z", "z_sigma",
                  "z_travel"]
 
