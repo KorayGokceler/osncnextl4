@@ -251,16 +251,52 @@ def n_l3_files(h5path):
     return None
 
 
+def sample_files(name, SAMPLES, include_smoke=False):
+    """
+    Bir ornegin VAR OLAN HDF5 dosyalarini bul.
+
+    L4_nue.hdf5, L4_nue_part000.hdf5, ... hepsi eslesir.  _smoke dosyalari
+    varsayilan olarak DISLANIR (kucuk test ciktisi, uretim degil); hic
+    uretim dosyasi yoksa onlara duser.
+    """
+    pattern = SAMPLES[name]["hdf5"].replace(".hdf5", "*.hdf5")
+    files = sorted(glob.glob(pattern))
+    if not include_smoke:
+        real = [f for f in files if "_smoke" not in f]
+        if real:
+            return real
+    return files
+
+
+def find_hdf5(name, SAMPLES, verbose=True):
+    """
+    Ornekten ILK var olan HDF5'i dondur -- dump_tables icin.
+
+    Sabit bir "_smoke.hdf5" yolu yazmak yerine bunu kullanin: smoke test
+    calistirilmadiysa o dosya YOKTUR ama uretim ciktisi vardir.
+    """
+    files = sample_files(name, SAMPLES)
+    if files:
+        if verbose:
+            print("%s: %d HDF5 bulundu, ilki inceleniyor -> %s"
+                  % (name, len(files), os.path.basename(files[0])))
+        return files[0]
+    if verbose:
+        print("[!] %s icin HDF5 yok: %s"
+              % (name, SAMPLES[name]["hdf5"].replace(".hdf5", "*.hdf5")))
+        print("    Once bolum 1'i calistirin (run_all).")
+    return None
+
+
 def load_sample(name, SAMPLES, wanted, max_files=None):
     """Bir ornegin tum HDF5 dosyalarini oku ve birlestir."""
-    pattern = SAMPLES[name]["hdf5"].replace(".hdf5", "*.hdf5")
-    files = sorted(f for f in glob.glob(pattern) if "_smoke" not in f)
-    if not files:
-        files = sorted(glob.glob(pattern))
+    files = sample_files(name, SAMPLES)
     if max_files:
         files = files[:max_files]
     if not files:
-        print("[!] %s: HDF5 bulunamadi (%s)" % (name, pattern)); return None
+        print("[!] %s: HDF5 bulunamadi (%s)"
+              % (name, SAMPLES[name]["hdf5"].replace(".hdf5", "*.hdf5")))
+        return None
 
     parts = [load_one_file(f, wanted) for f in files]
     keys = parts[0].keys()
