@@ -95,6 +95,8 @@ Yardımcı/tanı scriptleri:
   (`configure_runner`, `run_process`, `run_all`).
 - `l4_data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
   `check_feature_map`, `load_sample`, `add_weights`.
+- `AKIS_SEMASI.md` — **hangi dosya ne zaman çalışır**: iki aşamanın tam
+  akışı, tray modül sırası, çalışmayan (referans) dosyalar.
 - `TEKNIK_NOT_KARSILASTIRMA.md` — HDF5'e tam olarak ne yazdığımız +
   teknik notla satır satır karşılaştırma (Tablo 7/10/11/12/13).
 - `diagnose_env.py` — ortamda ne var/yok (pybdt kontrolü dahil).
