@@ -16,21 +16,32 @@ Referans: oscNext technical note v00.07, bolum 3.4-3.6, Tablo 11-12.
 '''
 
 import os
+import sys
 import numpy as np
 
-from icecube import dataclasses, icetray, DomTools
-from icecube import linefit, tensor_of_inertia, fill_ratio
+# icetray_env bu dosyanin yanindadir; baska bir dizinden import edildiginde
+# de bulunabilmesi icin sys.path'e ekleniyor.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from icetray_env import (require_icetray, optional_project, require_project,
+                         load_deserialization_libs, deepcore_doms,
+                         deepcore_veto_domset, load_lib)
+
+require_icetray()
+from icecube import dataclasses, icetray
+from icecube.icetray import I3Units
+
+# --- Opsiyonel projeler -----------------------------------------------------
+# Modul seviyesinde SERT import etmiyoruz: tek bir eksik proje (orn. kendi
+# derlediginiz build'de tensor_of_inertia yoksa) tum repoyu import edilemez
+# hale getirmesin.  Eksik olan, o degiskeni ureten segment cagrildiginda
+# net bir hata verir; digerleri calismaya devam eder.
+DomTools          = optional_project("DomTools")
+linefit           = optional_project("linefit")
+tensor_of_inertia = optional_project("tensor_of_inertia")
+fill_ratio        = optional_project("fill_ratio")
 
 # Deserialization icin gerekli (dogrudan kullanilmasalar da)
-for _lib in ("simclasses", "recclasses", "genie_icetray", "genie_reader",
-             "sim_services"):
-    try:
-        __import__("icecube." + _lib)
-    except ImportError:
-        pass
-from icecube.icetray import I3Units
-from icecube import DeepCore_Filter
-from icecube.DeepCore_Filter import DOMS
+load_deserialization_libs()
 
 
 # ---------------------------------------------------------------------------
@@ -484,7 +495,9 @@ def _vich(frame, uncleaned_pulses, cleaned_pulses,
         return True
     cx, cy, cz, ct = cog
 
-    veto_doms = set(DOMS.DOMS("IC86").DeepCoreVetoDOMs)
+    # NOT: eskiden burada her olayda DOMS.DOMS("IC86") yeniden kuruluyordu.
+    # Artik cache'li (icetray_env.deepcore_veto_domset).
+    veto_doms = deepcore_veto_domset("IC86")
 
     n_doms, n_pulses, qtot = 0, 0, 0.0
     for omkey, pulses in iter_map(unc):
@@ -520,6 +533,11 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
                                              run_qr_box=False):
     '''L4 atmosferik muon reddi siniflandiricisinin girdileri.'''
 
+    # Bu segment'in gerektirdigi projeler -- yoksa BURADA net hata ver
+    # (import zamaninda degil, ki geri kalan repo import edilebilsin).
+    require_project("tensor_of_inertia")
+    require_project("linefit")
+
     # --- Tensor of inertia (BDT girdisi degil; aday/legacy) ---
     tray.AddModule("I3TensorOfInertia", name + "_ToI",
                    AmplitudeOption=1,
@@ -538,7 +556,8 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
     # --- QR box (slc-veto; opsiyonel, BDT girdisi degil) ---
     if run_qr_box:
         try:
-            icetray.load("slc-veto", False)
+            if not load_lib("slc-veto"):
+                raise RuntimeError("slc-veto kutuphanesi bu build'de yok")
             tray.AddModule("SmallQ_Box", name + "_QRBox",
                            BoxName=L4_QRBOX_KEY,
                            RecoPulsesKey=cleaned_pulses)
@@ -603,7 +622,14 @@ def oscNext_L4_noise_cut_variables(tray, name,
     # microcount ile tamamlayicidir: parametreleri farkli oldugu icin ikisi tam
     # korele degil, BDT ikisinden de bilgi cikarir.
 
-    icetray.load("static-twc", False)
+    require_project("DomTools")
+    require_project("STTools")
+    require_project("fill_ratio")
+    if not load_lib("static-twc"):
+        raise RuntimeError(
+            "C++ kutuphanesi 'static-twc' bu build'de yok -- micro_count "
+            "hesaplanamaz.  DomTools/static-twc derlenmis mi kontrol edin "
+            "(python diagnose_env.py).")
 
     tw_pulses = "L4_TWPulses"
     tray.AddModule("I3StaticTWC<I3RecoPulseSeries>", name + "_StaticTWC_DC",
@@ -636,7 +662,7 @@ def oscNext_L4_noise_cut_variables(tray, name,
                    SeedProcedure="AllHLCHits")
 
     # Klasik IC86 DeepCore fiducial hacmi
-    dom_list = DOMS.DOMS("IC86")
+    dom_list = deepcore_doms("IC86")
     tw_fid_pulses = tw_pulses + "_DCFid"
 
     tray.AddModule("I3OMSelection<I3RecoPulseSeries>", name + "_DCFidPulses",
@@ -680,6 +706,7 @@ def oscNext_L4_hit_statistics(tray, name, cleaned_pulses):
     common_variables ile hit statistics ve multiplicity hesapla.
     L3'te zaten hesaplaniyorsa bu segment atlanabilir.
     '''
+    require_project("common_variables")
     from icecube.common_variables import hit_statistics, hit_multiplicity
 
     tray.AddSegment(hit_statistics.I3HitStatisticsCalculatorSegment,

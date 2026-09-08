@@ -27,8 +27,16 @@ import sys
 import glob
 import argparse
 
+from icetray_env import (require_icetray, get_I3Tray, report_missing,
+                         load_deserialization_libs, IceTrayNotAvailable)
+
+try:
+    require_icetray()
+except IceTrayNotAvailable as _e:
+    # Yigin izi degil, ne yapilmasi gerektigini goster.
+    sys.exit("\n" + str(_e) + "\n")
 from icecube import icetray, dataio, dataclasses
-from icecube.icetray import I3Tray
+I3Tray = get_I3Tray()
 
 # Frame nesnelerinin deserialize edilebilmesi icin gerekli.  Kodda dogrudan
 # kullanilmasalar da import edilmeleri SART -- yoksa
@@ -37,12 +45,7 @@ from icecube.icetray import I3Tray
 #   recclasses     -> I3DST, PoleMuonLlhFitFitParams, ...
 #   genie_icetray  -> I3GenieInfo, I3GenieResult   <-- n_flux_events icin
 #   sim_services   -> I3MCPEShifter vb.
-for _lib in ("simclasses", "recclasses", "genie_icetray", "genie_reader",
-             "sim_services", "phys_services"):
-    try:
-        __import__(f"icecube.{_lib}")
-    except ImportError:
-        pass
+load_deserialization_libs()
 
 from simple_booker import add_booker
 from oscNext_L4_variables import (
