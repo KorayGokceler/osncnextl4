@@ -91,6 +91,8 @@ Yardımcı/tanı scriptleri:
   başarısız olursa sebebini raporlar. `require_pybdt()` de burada.
 - `setup_env.sh` — ortamı bul / shell aç / tek komut çalıştır / Jupyter kernel.
 - `scan_files.py` — bozuk `.i3.zst` dosyalarını bul, sağlam liste üret.
+- `TEKNIK_NOT_KARSILASTIRMA.md` — HDF5'e tam olarak ne yazdığımız +
+  teknik notla satır satır karşılaştırma (Tablo 7/10/11/12/13).
 - `diagnose_env.py` — ortamda ne var/yok (pybdt kontrolü dahil).
 
 HDF5 kolonlarını dökmek için notebook bölüm 2.
@@ -124,19 +126,39 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
 
 ## Açık riskler / fikir yürütülebilecek noktalar
 
-1. **VICH tanımı** (`_vich` fonksiyonu, `oscNext_L4_variables.py:458`) —
-   veto bölgesi hit'lerinin COG vertex'ine göre nedensellik hızı [0.25, 0.4]
-   m/ns aralığıyla işaretleniyor. Orijinal `tau_bdt.I3CutL7Module`
-   mevcut olmadığı için birebir doğrulama yapılamadı. Teknik nottaki
-   tanımla (bölüm 3.4) satır satır karşılaştırma faydalı olur.
-2. **accumulated_time / separation_in_cogs** (Dunkman değişkenleri) —
-   orijinal `analysis.event_selection.CalculateVariables` modülü yok;
-   tanım teknik nottan (Tablo 12) çıkarıldı. `separation_in_cogs` BDT
-   girdisi değil (kritik değil) ama `accumulated_time` muon BDT'sinde
-   kullanılıyor — yanlışsa model performansını doğrudan etkiler.
-3. **FullTimeLengthRatio yönü** — kod "temizlenmiş/temizlenmemiş" (~1 iyi
-   olay, ~0 gürültü) varsayıyor; teknik notun Şekil 13'üyle yön tutarlılığı
-   gerçek veri üzerinde tekrar kontrol edilmeli.
+> Teknik not okundu ve kodla satır satır karşılaştırıldı:
+> **`TEKNIK_NOT_KARSILASTIRMA.md`**. Aşağıdaki 1–3 o karşılaştırmaya göre
+> güncellendi.
+
+1. **VICH** (`_vich`, `oscNext_L4_variables.py`) — büyük ölçüde **doğrulandı**:
+   §3.4 hız penceresini ([0.25, 0.4] m/ns) ve "veto region"un DeepCore
+   **Filter'ın** (L2) tanımı olduğunu açıkça yazıyor — `DeepCore_Filter.DOMS`
+   kullanımımız doğru. (L3'ün Tablo 7'deki fiducial tanımı **farklı**, onu
+   kullanmak yanlış olurdu.) `dt = t_COG − t_hit > 0` yönü de fizikle uyumlu.
+   **Bulunan sapma (düzeltildi):** not COG'un *fiducial hacimdeki* hitlerden
+   hesaplandığını söylüyor; kod tüm temizlenmiş seriyi kullanıyordu. Muonlu
+   olaylarda veto hitleri COG'u yukarı çekiyordu (test: z −400 → −43).
+   `fiducial_cog=True` artık varsayılan; `False` eski davranış.
+   **Kalan açık:** COG yük ağırlıklı mı? Not söylemiyor, biz yük ağırlıklı
+   alıyoruz. Ayrıca not DC Filter'ın kendi SRT temizlemesini kullanıyor,
+   biz ham `SplitInIcePulses`.
+2. **accumulated_time** — **doğrulandı**: Tablo 12 "Time to reach 75% of an
+   event's charge in the cleaned pulse series" diyor; kod `fraction=0.75` ve
+   `cleaned_pulses` kullanıyor. Fraksiyon ve seri artık tahmin değil.
+   **Kalan açık:** referans zamanı — kod `t[idx] − t[0]` (ilk pulse) alıyor,
+   not sıfır noktasını söylemiyor (tetikleme zamanı da olabilirdi).
+   `separation_in_cogs` BDT girdisi değil, düşük öncelik.
+3. **FullTimeLengthRatio yönü** — not (Tablo 11) oranın yönünü söylemiyor.
+   Ama temizlenmiş seri temizlenmemişin alt kümesi olduğu için
+   `cleaned/uncleaned ∈ [0,1]` sınırlı ve fiziksel; kodun aldığı yön bu.
+   Ayrıca not bunu **L3 değişkeni** olarak listeliyor
+   (`IC2018_LE_L3_Vars.FullTimeLengthRatio`); pass3 L3 map'inde oran yok,
+   bileşenleri var (`CleanedFullTimeLength`, `UncleanedFullTimeLength`).
+3b. **`iLineFit_speed` kolonu — kontrol edilmeli.** Tablo 11 girdiyi
+   `L4_iLineFit.speed` (I3Particle alanı) diye veriyor; pybdt notebook'u
+   `L4_iLineFitParams.LFVel` okuyor, LightGBM notebook'u ise pass3 kolonunun
+   `lf_vel` olduğunu "DOĞRULANDI" diye not düşmüş. Yanlışsa **sessiz NaN**.
+   Bölüm 2'de `dump_tables(..., only=["iLineFit"])` ile 10 saniyede çözülür.
 4. **Ağırlık zinciri** (`PropagateGenieInfo`, `process_L4.py` MC_KEYS/
    NOISE_MC_KEYS/CORSIKA_KEYS) — pass3'te I3GenieInfo yoksa NEvents*fraksiyon
    fallback'ine düşülüyor; bunun ne sıklıkla tetiklendiği ve ne kadar sapma

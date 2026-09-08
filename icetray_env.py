@@ -303,10 +303,25 @@ def deepcore_doms(detector="IC86"):
 
 
 def deepcore_veto_domset(detector="IC86"):
-    '''VICH icin OMKey seti -- olay basina degil, bir kez kurulur.'''
+    '''VICH icin veto OMKey seti -- olay basina degil, bir kez kurulur.'''
     key = ("veto", detector)
     if key not in _doms_cache:
         _doms_cache[key] = set(deepcore_doms(detector).DeepCoreVetoDOMs)
+    return _doms_cache[key]
+
+
+def deepcore_fiducial_domset(detector="IC86"):
+    '''
+    Fiducial OMKey seti -- VICH'in COG'u BUNLARLA sinirlanmali.
+
+    Teknik not §3.4: "the center-of-gravity (COG) of the hits inside the
+    FIDUCIAL VOLUME is calculated".  Bu, DeepCore Filter'in (L2) kendi
+    fiducial/veto ayrimi; L3'un Tablo 7'deki daha genis fiducial tanimi
+    DEGIL.
+    '''
+    key = ("fiducial", detector)
+    if key not in _doms_cache:
+        _doms_cache[key] = set(deepcore_doms(detector).DeepCoreFiducialDOMs)
     return _doms_cache[key]
 
 

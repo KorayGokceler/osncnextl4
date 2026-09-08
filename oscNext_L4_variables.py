@@ -24,7 +24,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from icetray_env import (require_icetray, optional_project, require_project,
                          load_deserialization_libs, deepcore_doms,
-                         deepcore_veto_domset, load_lib)
+                         deepcore_veto_domset, deepcore_fiducial_domset,
+                         load_lib)
 
 require_icetray()
 from icecube import dataclasses, icetray
@@ -467,7 +468,8 @@ def _separation_in_cogs(frame, pulses_key, output_key, geometry_key="I3Geometry"
 
 
 def _vich(frame, uncleaned_pulses, cleaned_pulses,
-          nch_key, npulses_key, qtot_key, geometry_key="I3Geometry"):
+          nch_key, npulses_key, qtot_key, geometry_key="I3Geometry",
+          fiducial_cog=True):
     '''
     Veto Identified Causal Hits.
 
@@ -480,6 +482,20 @@ def _vich(frame, uncleaned_pulses, cleaned_pulses,
     bolgesindeki zayif, izole hit'lerini siler ve muon tam da o hit'lerden
     taninir.  COG vertex'i ise TEMIZLENMIS seriden alinir.
 
+    COG KAPSAMI (fiducial_cog):
+      Teknik not §3.4 aynen: "the center-of-gravity (COG) of the hits
+      INSIDE THE FIDUCIAL VOLUME is calculated".  Yani COG sadece fiducial
+      DOM'lardan hesaplanmali.  Ilk yazimda tum temizlenmis seri
+      kullaniliyordu; muonlu olaylarda veto hitleri COG'u yukari/disa
+      cekiyor, dolayisiyla d ve t_COG kayiyor ve hiz penceresine dusme
+      olasiligi degisiyor -- tam da ayirt etme gucunu bozacak yonde.
+
+      fiducial_cog=True  -> nota uygun (VARSAYILAN)
+      fiducial_cog=False -> eski davranis (karsilastirma icin)
+
+      Not COG'un yuk agirlikli olup olmadigini SOYLEMIYOR; biz yuk
+      agirlikli aliyoruz.  Bu hala dogrulanmamis bir varsayim.
+
     Orijinalde tau_bdt.I3CutL7Module yapiyordu.
     '''
     if nch_key in frame:
@@ -490,7 +506,18 @@ def _vich(frame, uncleaned_pulses, cleaned_pulses,
         return True
 
     geo = frame[geometry_key]
-    cog = charge_weighted_cog(iter_hits(cln, geo))
+
+    # COG: teknik not §3.4 -> sadece FIDUCIAL hacimdeki hitler
+    if fiducial_cog:
+        fid = deepcore_fiducial_domset("IC86")
+        cog = charge_weighted_cog(h for h in iter_hits(cln, geo) if h[0] in fid)
+        if cog is None:
+            # Fiducial'da hic hit yoksa geri dus -- olay zaten atilacak ama
+            # sessizce yanlis sayi uretmektense tum seriyi kullan.
+            cog = charge_weighted_cog(iter_hits(cln, geo))
+    else:
+        cog = charge_weighted_cog(iter_hits(cln, geo))
+
     if cog is None:
         return True
     cx, cy, cz, ct = cog
