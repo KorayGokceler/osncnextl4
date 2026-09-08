@@ -26,6 +26,8 @@ import os
 import re
 import sys
 import glob
+import json
+import time
 import argparse
 
 from icetray_env import (require_icetray, get_I3Tray, report_missing,
@@ -137,6 +139,70 @@ CORSIKA_KEYS = [
 #      cikarilir, kara listeye yazilir ve o dosya haric yeniden denenir.
 
 _BAD_FILE_RE = re.compile(r"Error reading (\S+?) at frame")
+
+
+# ---------------------------------------------------------------------------
+# Ilerleme raporu
+# ---------------------------------------------------------------------------
+#
+# Notebook process_L4.py'yi subprocess olarak calistiriyor.  Ilerleme
+# gorunsun diye stdout'a MAKINE OKUNUR satirlar basiyoruz:
+#
+#   [CHUNK] 3/10 files=30/100 booked=1840 elapsed=312.4
+#   [PROGRESS] frames=15000 physics=7100 booked=4300 elapsed=98.2 rate=152.7
+#
+# Notebook bu satirlari ayristirip bar cizer.  Terminalde de okunabilir.
+# stdout satir-tamponlu olmali, yoksa notebook bitene kadar hicbir sey gormez.
+
+
+def _emit(line):
+    """Ilerleme satiri bas ve HEMEN flush et (subprocess tamponuna takilmasin)."""
+    print(line, flush=True)
+
+
+class ProgressReporter:
+    """Her N frame'de bir [PROGRESS] satiri basan tray modulu (fonksiyon)."""
+
+    def __init__(self, every, counter, t0):
+        self.every = every
+        self.counter = counter
+        self.t0 = t0
+        self.n = 0
+
+    def __call__(self, frame):
+        self.n += 1
+        if self.every and self.n % self.every == 0:
+            dt = time.time() - self.t0
+            _emit("[PROGRESS] frames=%d physics=%d booked=%d elapsed=%.1f rate=%.1f"
+                  % (self.n, self.counter["physics"], self.counter["n"], dt,
+                     self.n / dt if dt > 0 else 0.0))
+        return True
+
+
+def _part_path(path, index):
+    """L4_nue.hdf5 -> L4_nue_part003.hdf5  (notebook glob'u L4_nue*.hdf5 ile eslesir)"""
+    if not path:
+        return None
+    base, ext = os.path.splitext(path)
+    return "%s_part%03d%s" % (base, index, ext)
+
+
+def _write_meta(output, meta):
+    """
+    <cikti>.meta.json yaz.
+
+    EN ONEMLI ALAN: n_l3_files -- bu HDF5'in KAC L3 dosyasindan uretildigi.
+    Agirlik normalizasyonu (OneWeight/n_flux/n_files) bu sayiya bolunmeli;
+    HDF5 dosya sayisina DEGIL.  Notebook bunu sidecar'dan okuyor.
+    """
+    if not output:
+        return
+    path = output + ".meta.json"
+    try:
+        with open(path, "w") as fh:
+            json.dump(meta, fh, indent=2)
+    except OSError as e:
+        print("  [!] meta yazilamadi: %s" % e)
 
 
 def _pct(n, total):
@@ -297,6 +363,16 @@ def main():
                         "(yavas ama kesin), off=tarama yok")
     p.add_argument("--scan-frames", type=int, default=25,
                    help="--scan quick modunda dosya basina okunacak frame (varsayilan 25)")
+    p.add_argument("--progress", type=int, default=5000,
+                   help="Her N frame'de bir [PROGRESS] satiri bas (0=kapali). "
+                        "Notebook bu satirlardan ilerleme cubugu cizer.")
+    p.add_argument("--chunk-files", type=int, default=0,
+                   help="Girdiyi N dosyalik parcalar halinde isle; her parca "
+                        "ayri bir tray ve ayri bir <cikti>_partNNN.hdf5 uretir. "
+                        "Faydasi: GERCEK yuzde/ETA, ve cokme halinde sadece o "
+                        "parca kaybolur (tamamlanan parcalar atlanir).")
+    p.add_argument("--overwrite", action="store_true",
+                   help="--chunk-files ile: var olan parcalari da yeniden uret")
     p.add_argument("--retries", type=int, default=3,
                    help="Calisma aninda bozuk dosya cikarsa onu atip kac kez "
                         "yeniden denensin (varsayilan 3, 0=deneme)")
@@ -306,6 +382,11 @@ def main():
 
     if not args.input and not args.input_list:
         p.error("--input ya da --input-list vermelisiniz.")
+
+    if args.n > 0 and args.chunk_files > 0:
+        p.error("--n ile --chunk-files birlikte kullanilmaz: --n her parcada "
+                "ayri ayri uygulanir ve anlamsiz sonuc verir.  Smoke test icin "
+                "sadece --n, uretim icin sadece --chunk-files.")
 
     # --- girdi dosyalarini coz ---
     infiles = []
@@ -373,6 +454,12 @@ def main():
         tray.Add(_count_physics, "count_physics",
                  Streams=[icetray.I3Frame.Physics])
 
+        # Ilerleme: TUM frame'lerde sayar (Q/P/G/C/D), her --progress frame'de
+        # bir satir basar.  Bu, notebook'un bar'ini besleyen kaynak.
+        if args.progress:
+            tray.Add(ProgressReporter(args.progress, counter, time.time()),
+                     "progress")
+
         # Sadece fizik sub-event stream'ini isle
         tray.Add(lambda f: f["I3EventHeader"].sub_event_stream == args.sub_event_stream,
                  "stream_filter",
@@ -399,9 +486,10 @@ def main():
             return True
         tray.Add(count, "counter")
 
-        if args.output_i3:
+        out_i3 = getattr(build_tray, "output_i3", args.output_i3)
+        if out_i3:
             tray.Add("I3Writer", "writer",
-                     Filename=args.output_i3,
+                     Filename=out_i3,
                      Streams=[icetray.I3Frame.TrayInfo,
                               icetray.I3Frame.DAQ,
                               icetray.I3Frame.Physics,
@@ -409,15 +497,77 @@ def main():
                               icetray.I3Frame.Stream("M")])
 
         add_booker(tray, "booker",
-                   output=args.output_hdf5,
+                   output=getattr(build_tray, "output_hdf5", args.output_hdf5),
                    keys=keys,
                    sub_event_streams=[args.sub_event_stream])
         return tray, counter
 
     build_tray.n_frames = args.n if args.n > 0 else 0
 
-    counts, used = _run_tray(build_tray, infiles, args.output_hdf5, args.retries)
+    # -----------------------------------------------------------------------
+    # Calistir -- tek parca ya da chunk'li
+    # -----------------------------------------------------------------------
+    t_start = time.time()
+    totals = {"physics": 0, "stream": 0, "n": 0}
+    used = []
 
+    if args.chunk_files and args.chunk_files > 0 and args.output_hdf5:
+        chunks = [infiles[i:i + args.chunk_files]
+                  for i in range(0, len(infiles), args.chunk_files)]
+        n_chunks = len(chunks)
+        print("Parca sayisi: %d  (%d dosya/parca)" % (n_chunks, args.chunk_files))
+        _emit("[CHUNK] 0/%d files=0/%d booked=0 elapsed=0.0"
+              % (n_chunks, len(infiles)))
+
+        n_done_files = 0
+        for ci, chunk in enumerate(chunks):
+            out_part = _part_path(args.output_hdf5, ci)
+            n_done_files += len(chunk)
+
+            # Tamamlanmis parcayi atla -> cokme sonrasi kaldigi yerden devam
+            if os.path.exists(out_part) and not args.overwrite:
+                print("[%d/%d] atlandi (zaten var): %s"
+                      % (ci + 1, n_chunks, os.path.basename(out_part)))
+                _emit("[CHUNK] %d/%d files=%d/%d booked=%d elapsed=%.1f"
+                      % (ci + 1, n_chunks, n_done_files, len(infiles),
+                         totals["n"], time.time() - t_start))
+                continue
+
+            build_tray.output_hdf5 = out_part
+            build_tray.output_i3 = _part_path(args.output_i3, ci)
+            counts, chunk_used = _run_tray(build_tray, chunk, out_part, args.retries)
+            for k in totals:
+                totals[k] += counts[k]
+            used.extend(chunk_used)
+
+            _write_meta(out_part, dict(
+                n_l3_files=len(chunk_used),
+                n_l3_files_given=len(chunk),
+                physics_frames=counts["physics"],
+                sub_event_stream=args.sub_event_stream,
+                after_stream_filter=counts["stream"],
+                booked=counts["n"],
+                chunk_index=ci, n_chunks=n_chunks,
+                elapsed_s=round(time.time() - t_start, 1)))
+
+            _emit("[CHUNK] %d/%d files=%d/%d booked=%d elapsed=%.1f"
+                  % (ci + 1, n_chunks, n_done_files, len(infiles),
+                     totals["n"], time.time() - t_start))
+    else:
+        build_tray.output_hdf5 = args.output_hdf5
+        build_tray.output_i3 = args.output_i3
+        totals, used = _run_tray(build_tray, infiles, args.output_hdf5, args.retries)
+        _write_meta(args.output_hdf5, dict(
+            n_l3_files=len(used),
+            n_l3_files_given=len(infiles),
+            physics_frames=totals["physics"],
+            sub_event_stream=args.sub_event_stream,
+            after_stream_filter=totals["stream"],
+            booked=totals["n"],
+            n_frames_limit=args.n,
+            elapsed_s=round(time.time() - t_start, 1)))
+
+    counts = totals
     n_phys, n_stream, n_booked = counts["physics"], counts["stream"], counts["n"]
 
     print()
@@ -439,7 +589,11 @@ def main():
     else:
         print("Islenen dosya           : %d" % len(used))
 
-    print("HDF5:", args.output_hdf5)
+    if args.chunk_files > 0 and args.output_hdf5:
+        print("HDF5 parcalari          : %s"
+              % _part_path(args.output_hdf5, 0).replace("_part000", "_partNNN"))
+    else:
+        print("HDF5:", args.output_hdf5)
     bl = _bad_list_path(args.output_hdf5)
     if os.path.exists(bl):
         print("Bozuk dosya listesi:", bl)
