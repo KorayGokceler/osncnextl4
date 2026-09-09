@@ -162,6 +162,26 @@ def score_range(v, keys, expr, pad=0.02):
     return (lo - pad * span, hi + pad * span)
 
 
+def _setup_matplotlib():
+    """
+    pybdt.validate'in grafik kodunu calisabilir hale getir.
+
+    validate.py sadece `import matplotlib as mpl` yapiyor ama sonra
+    `mpl.backends.backend_agg.FigureCanvasAgg(fig)` cagiriyor.  Alt modul
+    kendiliginden yuklenmedigi icin bu AttributeError verir:
+
+        AttributeError: module 'matplotlib.backends' has no attribute
+                        'backend_agg'
+
+    Alt modulu ACIKCA import edince cozuluyor.  Ayrica cobalt'ta ekran
+    yok -- Agg backend'i sart, yoksa figur olusturma da patlayabilir.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.backends.backend_agg   # noqa: F401  -- yukarida aciklandi
+    import matplotlib.pyplot                 # noqa: F401
+
+
 def make_plots(v, name, outdir, use_purity, bins=60):
     expr = score_expr(use_purity)
     keys = ["train_sig", "test_sig", "train_bg", "test_bg"]
@@ -179,34 +199,50 @@ def make_plots(v, name, outdir, use_purity, bins=60):
             print(f"  [!] {tag} p_KS < 0.01 -- OVERTRAINING, agac derinligini "
                   f"dusurun / prune-strength artirin")
 
-    objs = v.create_overtrain_check_plot(
-        "train_sig", "test_sig", "train_bg", "test_bg",
-        expr=expr, bins=bins, range=rng,
-        xlabel="BDT skoru", title=f"{name} — overtraining kontrolu")
-    path = os.path.join(outdir, f"{name}_overtrain.png")
-    objs["fig"].savefig(path)
-    print(f"  -> {path}")
+    # --- grafikler --------------------------------------------------------
+    # Grafik cizimi ISTEGE BAGLI: model ve KS metrikleri zaten hazir.  Cizim
+    # patlarsa .json'i kaybetmeyelim -- eskiden bir matplotlib hatasi tum
+    # kosuyu (ve meta dosyasini) goturuyordu.
+    made = []
+    try:
+        _setup_matplotlib()
 
-    objs = v.create_plot(
-        expr, "dist", keys,
-        bins=bins, range=rng, dual=True,
-        xlabel="BDT skoru", left_ylabel="agirlikli sayi / bin",
-        title=f"{name} — skor dagilimi")
-    path = os.path.join(outdir, f"{name}_dist.png")
-    objs["fig"].savefig(path)
-    print(f"  -> {path}")
+        objs = v.create_overtrain_check_plot(
+            "train_sig", "test_sig", "train_bg", "test_bg",
+            expr=expr, bins=bins, range=rng,
+            xlabel="BDT skoru", title=f"{name} — overtraining kontrolu")
+        path = os.path.join(outdir, f"{name}_overtrain.png")
+        objs["fig"].savefig(path)
+        made.append(path)
+        print(f"  -> {path}")
 
-    objs = v.create_plot(
-        expr, "rate", keys,
-        bins=bins, range=rng, dual=True,
-        xlabel="BDT skoru", left_ylabel="kesim ustunde kalan agirlik",
-        title=f"{name} — kesim degerine karsi oran")
-    path = os.path.join(outdir, f"{name}_rate.png")
-    objs["fig"].savefig(path)
-    print(f"  -> {path}")
+        objs = v.create_plot(
+            expr, "dist", keys,
+            bins=bins, range=rng, dual=True,
+            xlabel="BDT skoru", left_ylabel="agirlikli sayi / bin",
+            title=f"{name} — skor dagilimi")
+        path = os.path.join(outdir, f"{name}_dist.png")
+        objs["fig"].savefig(path)
+        made.append(path)
+        print(f"  -> {path}")
+
+        objs = v.create_plot(
+            expr, "rate", keys,
+            bins=bins, range=rng, dual=True,
+            xlabel="BDT skoru", left_ylabel="kesim ustunde kalan agirlik",
+            title=f"{name} — kesim degerine karsi oran")
+        path = os.path.join(outdir, f"{name}_rate.png")
+        objs["fig"].savefig(path)
+        made.append(path)
+        print(f"  -> {path}")
+    except Exception as exc:
+        print(f"\n  [!] Grafik cizilemedi ({type(exc).__name__}: {exc})")
+        print("      Model, .validator ve .json YAZILDI -- sadece PNG'ler yok.")
+        print("      Grafikleri notebook'tan .validator uzerinden de cizebilirsin.")
 
     return dict(ks_signal=float(p_sig), ks_background=float(p_bg),
-                score_range=[float(rng[0]), float(rng[1])])
+                score_range=[float(rng[0]), float(rng[1])],
+                plots=made)
 
 
 def report_efficiency(v, use_purity, cut):
