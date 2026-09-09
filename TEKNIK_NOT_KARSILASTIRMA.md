@@ -164,10 +164,21 @@ Satır numaraları `oscNext_L4_variables.py` içindir.
 all weights re-scaled to be in range 0–1" (§3.6.1). `build_training_set`
 tam olarak bunu yapıyor.
 
-**`micro_count`** — Tablo 11: `L4_micro_count.STW_m3500p4000_DTW200`,
-"[-3.5 µs, +4 µs], 200 ns kayan pencere, maks tetiklenen DOM sayısı".
-Kodumuzdaki `MICROCOUNT_SUBKEY` **birebir aynı isim**, pencere ve genişlik
-aynı. L3'ünki farklı: `STW9000_DTW300Hits` ([-4, +5] µs, 300 ns) — bu yüzden
+**`micro_count`** — Tablo 11 tam metni: *"Start with the **cleaned** pulse
+series. Look at pulses occurring within [-3.5 µs, +4 µs] from the trigger
+time. Slide a time window of 200 ns that maximizes the number of triggered
+DOMs in it. Get the number of triggered DOMs in that sliding time window."*
+
+`MICROCOUNT_SUBKEY` **birebir aynı isim**, pencere ve genişlik aynı.
+Sayım semantiği de doğru: `I3TimeWindowCleaning(TimeWindow=200)` DOM
+sayısını maksimize eden pencereyi buluyor, `_micro_count` sonrasında DOM
+sayıyor.
+
+**Bulunan sapma (düzeltildi):** zincir *temizlenmemiş* seriden başlıyordu ve
+içindeki tek temizleme adımı (`I3SeededRTCleaning`) bypass edilmişti — çıktısı
+`L4_SRTTWPulses` hiçbir yerde okunmuyordu. Nota uyarlandı: artık
+`cleaned_pulses` ile başlıyor, SeededRT bloğu kaldırıldı (L3 zaten SRT
+temizliği yapmış). Ayrıntı: `CLAUDE.md` → "Booking/okuma denetimi", madde 4. L3'ünki farklı: `STW9000_DTW300Hits` ([-4, +5] µs, 300 ns) — bu yüzden
 ikisi tam korele değil, BDT ikisinden de bilgi çıkarıyor.
 
 **`accumulated_time`** — Tablo 12: *"Time to reach 75% of an event's charge

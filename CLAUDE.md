@@ -241,6 +241,34 @@ tekrarlıyorsa sessizce yanlış eşleştirmek yerine NaN bırakılıp bildirili
 dosyaların ağırlıkları yanlış çıkıyordu. Artık her `I3GenieInfo`'da
 güncelleniyor, değer değişirse loglanıyor.
 
+**4. `micro_count` gürültü temizliği olmadan sayılıyordu (düzeltildi).**
+Zincir `uncleaned_pulses` → `I3StaticTWC` → `I3SeededRTCleaning` →
+`I3OMSelection` → `I3TimeWindowCleaning` → say olarak **belgelenmişti**, ama
+`I3OMSelection` girdi olarak SeededRT çıktısını (`L4_SRTTWPulses`) değil
+StaticTWC çıktısını (`L4_TWPulses`) alıyordu. `L4_SRTTWPulses` frame'e
+yazılıp **hiçbir yerde okunmuyordu** (grep ile doğrulandı) — yani zincirdeki
+tek gürültü temizleme adımı fiilen devre dışıydı.
+
+Sonuç: `micro_count` ham hitler üzerinden sayılıyordu. Kalan adımların hiçbiri
+gürültü elemiyor (StaticTWC geniş zaman kesiti, OMSelection uzaysal kesim,
+TimeWindowCleaning en yoğun 200 ns penceresi). Saf gürültü olaylarında
+pencereye düşen rastgele hitler de sayılıyor → gürültünün `micro_count`'u
+şişiyor → **gürültü sınıflandırıcısının 5 girdisinden birinin ayırt etme
+gücü düşüyordu.**
+
+Teknik not (Tablo 11) *"Start with the **cleaned** pulse series"* diyor.
+Düzeltme nota göre yapıldı: zincir artık `cleaned_pulses`
+(`SRTTWSplitInIcePulsesDC`) ile başlıyor ve SeededRT bloğu kaldırıldı —
+L3 o seriye zaten SRT temizliği uygulamış (adındaki "SRT" bu), tekrarı
+çift temizleme olurdu. Yeni zincir notun dört adımıyla birebir:
+`cleaned → StaticTWC [-3500,+4000] ns → DeepCore fiducial → 200 ns DTW → say`.
+
+`oscNext_L4_noise_cut_variables` artık `uncleaned_pulses` parametresi
+almıyor; segmentte STTools bağımlılığı da kalmadı.
+
+**Bu düzeltme mevcut HDF5'leri geçersiz kılar** — νe ve CORSIKA yeniden
+işlenmeli (νμ/noise zaten yeniden işlenecekti).
+
 **Küçük:** `--n` ile üretilen smoke çıktısında `n_l3_files` yanıltıcıydı
 (tray erken duruyor, liste tamamen okunmuyor). Artık `None` +
 `n_l3_files_unreliable` yazılıyor, `load_sample` bölen olarak kullanmıyor.

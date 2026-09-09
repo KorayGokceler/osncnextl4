@@ -29,7 +29,6 @@ from icetray_env import (require_icetray, optional_project, require_project,
 
 require_icetray()
 from icecube import dataclasses, icetray
-from icecube.icetray import I3Units
 
 # --- Opsiyonel projeler -----------------------------------------------------
 # Modul seviyesinde SERT import etmiyoruz: tek bir eksik proje (orn. kendi
@@ -657,22 +656,45 @@ def _micro_count(frame, pulses_key, output_key, subkey):
 @icetray.traysegment
 def oscNext_L4_noise_cut_variables(tray, name,
                                    fill_ratio_vertex,
-                                   uncleaned_pulses,
                                    cleaned_pulses):
-    '''L4 saf gurultu reddi siniflandiricisinin girdileri.'''
+    '''
+    L4 saf gurultu reddi siniflandiricisinin girdileri.
+
+    NOT: uncleaned_pulses parametresi KALDIRILDI -- micro_count artik notun
+    dedigi gibi temizlenmis seriden hesaplaniyor, bu segmentte temizlenmemis
+    seriye ihtiyac kalmadi.
+    '''
 
     #
     # Micro count
     #
-    # Zincir:  static TW [-3500,+4000] ns -> SeededRT -> DeepCore fiducial
+    # Teknik not, Tablo 11 (s.36) -- BIREBIR tarif:
+    #   "Start with the cleaned pulse series.  Look at pulses occurring within
+    #    [-3.5 us, +4 us] from the trigger time.  Slide a time window of 200 ns
+    #    that maximizes the number of triggered DOMs in it.  Get the number of
+    #    triggered DOMs in that sliding time window"
+    #
+    # Zincir:  cleaned -> static TW [-3500,+4000] ns -> DeepCore fiducial
     #          -> 200 ns dinamik pencere -> DOM say
     #
-    # Bu GRECO'dan oldugu gibi alinmistir (yeniden optimize edilmedi).  L3'teki
-    # microcount ile tamamlayicidir: parametreleri farkli oldugu icin ikisi tam
-    # korele degil, BDT ikisinden de bilgi cikarir.
+    # DUZELTME (bkz. CLAUDE.md "Booking/okuma denetimi"):  Bu zincir eskiden
+    # TEMIZLENMEMIS seriden basliyor ve araya bir I3SeededRTCleaning koyuyordu
+    # -- ama o modulun ciktisi (L4_SRTTWPulses) HICBIR yerde okunmuyordu:
+    # I3OMSelection girdi olarak SeededRT ciktisini degil StaticTWC ciktisini
+    # aliyordu.  Yani zincirdeki tek gurultu temizleme adimi fiilen devre disiydi
+    # ve micro_count ham (temizlenmemis) hitler uzerinden sayiliyordu.  Gurultu
+    # siniflandiricisinin girdisi icin bu dogrudan zararli: gurultu hitleri de
+    # sayiliyor, degiskenin ayirt etme gucu dusuyordu.
+    #
+    # Artik notun dedigi gibi TEMIZLENMIS seriyle (SRTTWSplitInIcePulsesDC)
+    # basliyoruz.  Ayrica SeededRT blogu kaldirildi: L3 bu seriye zaten SRT
+    # temizligi uygulamis (serinin adindaki "SRT" bu), tekrar uygulamak cift
+    # temizleme olurdu.
+    #
+    # L3'un kendi microcount'u (STW9000_DTW300Hits, [-4,+5] us / 300 ns) farkli
+    # parametrelerde -- ikisi tam korele degil, BDT ikisinden de bilgi cikarir.
 
     require_project("DomTools")
-    require_project("STTools")
     require_project("fill_ratio")
     if not load_lib("static-twc"):
         raise RuntimeError(
@@ -682,33 +704,12 @@ def oscNext_L4_noise_cut_variables(tray, name,
 
     tw_pulses = "L4_TWPulses"
     tray.AddModule("I3StaticTWC<I3RecoPulseSeries>", name + "_StaticTWC_DC",
-                   InputResponse=uncleaned_pulses,
+                   InputResponse=cleaned_pulses,
                    OutputResponse=tw_pulses,
                    TriggerConfigIDs=[1010, 1011],
                    TriggerName="I3TriggerHierarchy",
                    WindowMinus=STW_MINUS,
                    WindowPlus=STW_PLUS)
-
-    from icecube import STTools
-    from icecube.STTools.seededRT.configuration_services import \
-        I3DOMLinkSeededRTConfigurationService
-
-    srt_cfg = I3DOMLinkSeededRTConfigurationService(
-        useDustlayerCorrection=False,
-        dustlayerUpperZBoundary=0 * I3Units.m,
-        dustlayerLowerZBoundary=-150 * I3Units.m,
-        ic_ic_RTTime=1000 * I3Units.ns,
-        ic_ic_RTRadius=150 * I3Units.m)
-
-    srt_tw_pulses = "L4_SRTTWPulses"
-    tray.AddModule("I3SeededRTCleaning_RecoPulse_Module",
-                   name + "_SeededRTCleaning_DC",
-                   AllowNoSeedHits=False,
-                   InputHitSeriesMapName=tw_pulses,
-                   OutputHitSeriesMapName=srt_tw_pulses,
-                   STConfigService=srt_cfg,
-                   MaxNIterations=-1,
-                   SeedProcedure="AllHLCHits")
 
     # Klasik IC86 DeepCore fiducial hacmi
     dom_list = deepcore_doms("IC86")
@@ -880,7 +881,6 @@ def oscNext_L4(tray, name,
 
     tray.Add(oscNext_L4_noise_cut_variables, name + "_noise_vars",
              fill_ratio_vertex=L4_FIRST_HLC_KEY,
-             uncleaned_pulses=uncleaned_pulses,
              cleaned_pulses=cleaned_pulses)
 
     tray.Add(oscNext_L4_atm_muon_classifier_variables, name + "_muon_vars",
