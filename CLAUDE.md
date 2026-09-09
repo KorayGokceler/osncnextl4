@@ -162,12 +162,15 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    **Kalan açık:** referans zamanı — kod `t[idx] − t[0]` (ilk pulse) alıyor,
    not sıfır noktasını söylemiyor (tetikleme zamanı da olabilirdi).
    `separation_in_cogs` BDT girdisi değil, düşük öncelik.
-3. **FullTimeLengthRatio yönü** — not (Tablo 11) oranın yönünü söylemiyor.
-   Ama temizlenmiş seri temizlenmemişin alt kümesi olduğu için
-   `cleaned/uncleaned ∈ [0,1]` sınırlı ve fiziksel; kodun aldığı yön bu.
-   Ayrıca not bunu **L3 değişkeni** olarak listeliyor
+3. **FullTimeLengthRatio yönü — ÇÖZÜLDÜ.** Tablo 11 metni oranın yönünü
+   söylemiyor ama **Şekil 13** söylüyor: `IC2018_LE_L3_Vars.FullTimeLengthRatio`
+   dağılımının x ekseni **0.0 – 1.0** aralığında. Ters yön (uncleaned/cleaned)
+   ≥ 1 olurdu ve bu eksene sığmazdı. Yani `cleaned / uncleaned` — kodun
+   (`_full_time_length_ratio`) aldığı yön. Artık çıkarım değil, notta var.
+   **Kalan (küçük) fark:** not bunu **L3 değişkeni** olarak listeliyor
    (`IC2018_LE_L3_Vars.FullTimeLengthRatio`); pass3 L3 map'inde oran yok,
-   bileşenleri var (`CleanedFullTimeLength`, `UncleanedFullTimeLength`).
+   bileşenleri var (`CleanedFullTimeLength`, `UncleanedFullTimeLength`) —
+   biz oranı L4'te bölerek üretiyoruz, değer aynı olmalı.
 3a. **Muon BDT'de eksik girdi (düzeltildi).** Tablo 12 **10** değişken
    listeliyor, `MUON_FEATURES`'ta **9** vardı — `NchCleaned` atlanmıştı
    (noise listesinde olduğu için gözden kaçmış). Eklendi. Benzersiz BDT
@@ -202,10 +205,28 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    NOISE_MC_KEYS/CORSIKA_KEYS) — pass3'te I3GenieInfo yoksa NEvents*fraksiyon
    fallback'ine düşülüyor; bunun ne sıklıkla tetiklendiği ve ne kadar sapma
    yarattığı ölçülmedi.
-5. **fill_ratio yarıçapı** (`FILL_RATIO_SPHERICAL_RADIUS_MEAN = 1.6`) — GRECO
-   için optimize edilmiş, oscNext için yeniden ayarlanmadı. Bölüm 10'daki
-   feature importance / incremental scan sonuçlarına göre yeniden
-   optimize edilmesi gündeme gelebilir.
+5. **fill_ratio — notta tanım eksik (iki ayrı açık nokta).**
+   a) **Vertex belirsiz.** Tablo 11'in kendi metni: *"Measure of the
+      geometrical spread of the hits about **some vertex (details here)**"* —
+      "(details here)" doldurulmamış bir çapraz referans, yani not hangi
+      vertex'in kullanıldığını **hiç söylemiyor**. Biz `L4_first_hlc`
+      (ilk HLC hit'in konumu) veriyoruz; bu seçim nottan doğrulanamaz.
+      `fill_ratio` Şekil 14'te noise BDT'sinin en güçlü girdilerinden biri,
+      yani yanlış vertex ucuz bir hata değil.
+   b) **Yarıçap** (`FILL_RATIO_SPHERICAL_RADIUS_MEAN = 1.6`) — GRECO
+      için optimize edilmiş, oscNext için yeniden ayarlanmadı; not bu
+      parametreyi de vermiyor. Bölüm 10'daki feature importance /
+      incremental scan sonuçlarına göre yeniden optimize edilebilir.
+   Şekil 13'ten doğrulanan tek şey kolon adı ve aralık:
+   `L4_fill_ratio.fillratio_from_mean`, x ekseni 0.0 – 1.0.
+5a. **iLineFit_speed — hangi "improved LineFit"?** Tablo 11 sadece
+   *"Speed fitted by the improved LineFit algorithm"* diyor, parametre
+   vermiyor. Biz `linefit.simple` traysegment'ini çağırıyoruz
+   (`oscNext_L4_variables.py`, `tray.AddSegment(linefit.simple, ...)`).
+   IceTray'de improved LineFit = delay cleaning + Huber fit + debiasing
+   zinciri; `linefit.simple`'ın bunu yaptığı **kaynak koddan
+   doğrulanmadı** (kaynak artık elde: `$I3_SRC/linefit`). Şekil 13'ün
+   x ekseni log ölçekte 10⁻³ – 10³ (m/ns) — hız ölçeği bu.
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
