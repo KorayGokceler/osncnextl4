@@ -148,6 +148,22 @@ def _table_nodes(h5):
     return {k: v[1] for k, v in best.items()}
 
 
+def _index_node(h5, name):
+    """
+    hdfwriter'in /__I3Index__/<anahtar> tablosu -- yoksa None.
+
+    Bu tablo her FRAME icin bir satir tutar: exists (anahtar bu frame'de
+    var mi), start/stop (veri tablosundaki satir araligi).  Eslestirmenin
+    DOGRU yolu budur; Run/Event/SubEvent uzerinden eslestirme MC'de
+    guvenilmez cunku ucluler bir parca icinde tekrarlayabiliyor
+    (run_id = set no, event_id her L3 dosyasinda sifirdan basliyor).
+    """
+    try:
+        return h5.get_node("/__I3Index__/" + name)
+    except Exception:
+        return None
+
+
 def dump_tables(h5path, only=None, max_cols=40):
     """HDF5'teki tablolari ve kolonlarini listele."""
     if not os.path.exists(h5path):
@@ -212,6 +228,15 @@ def _ids(tbl):
     return (np.asarray(tbl.col("Run"), dtype=np.int64),
             np.asarray(tbl.col("Event"), dtype=np.int64),
             np.asarray(tbl.col("SubEvent"), dtype=np.int64))
+
+
+def _has_duplicate_ids(r, e, s):
+    """Ucluler benzersiz mi?  (hizli kontrol)"""
+    if len(r) == 0:
+        return False
+    arr = np.empty(len(r), dtype=[("r", np.int64), ("e", np.int64), ("s", np.int64)])
+    arr["r"], arr["e"], arr["s"] = r, e, s
+    return len(np.unique(arr)) < len(arr)
 
 
 # Isim varyasyonlari: meta-proje/pass surumune gore kolon adlari degisiyor.
@@ -306,7 +331,18 @@ def load_one_file(path, wanted):
         # cagiran kod KeyError alir.
         for name in unresolved:
             out[name] = np.full(n, np.nan)
-        ref_key = {k: i for i, k in enumerate(zip(run, ev, sub))}
+
+        # Tekrar eden Run/Event/SubEvent var mi?  (bkz. _occurrence_keys)
+        dup = _has_duplicate_ids(run, ev, sub)
+        if dup:
+            key = (_sample_tag(path), "__dup__")
+            if key not in _warned_unresolved:
+                _warned_unresolved.add(key)
+                print("  (i) %s: Run/Event/SubEvent ucluleri parca icinde "
+                      "tekrarliyor (normal: bir parcada birden fazla L3 "
+                      "dosyasi var) -- eslestirme __I3Index__ uzerinden"
+                      % _sample_tag(path))
+        ref_key = None          # gerektiginde kurulur (pahali)
 
         for tbl, cols in need.items():
             node = nodes.get(tbl)
@@ -318,14 +354,42 @@ def load_one_file(path, wanted):
             r2, e2, s2 = _ids(node)
             same = (len(r2) == n and np.array_equal(r2, run)
                     and np.array_equal(e2, ev) and np.array_equal(s2, sub))
+
             if same:
                 idx = None                       # hizali: dogrudan kullan
             else:
-                idx = np.full(n, -1, dtype=np.int64)
-                for j, k in enumerate(zip(r2, e2, s2)):
-                    i = ref_key.get(k)
-                    if i is not None:
-                        idx[i] = j
+                idx = None
+                # 1) DOGRU YOL: hdfwriter'in frame indeksi
+                inode = _index_node(h5, tbl)
+                if inode is not None and len(inode) == n \
+                        and "exists" in inode.colnames and "start" in inode.colnames:
+                    ex = np.asarray(inode.col("exists")).astype(bool)
+                    st = np.asarray(inode.col("start"), dtype=np.int64)
+                    idx = np.where(ex, st, -1)
+                    idx[idx >= len(r2)] = -1     # savunma
+                elif dup:
+                    # 2) Index yok VE ucluler tekrarliyor -> guvenilir
+                    #    eslestirme MUMKUN DEGIL.  Sessizce yanlis
+                    #    eslestirmektense NaN birak ve SOYLE.
+                    key = (_sample_tag(path), "__ambig__" + tbl)
+                    if key not in _warned_unresolved:
+                        _warned_unresolved.add(key)
+                        print("  [!] %s: __I3Index__ yok ve Run/Event/SubEvent "
+                              "tekrarliyor -> guvenilir eslestirme yok, NaN"
+                              % tbl)
+                    idx = np.full(n, -1, dtype=np.int64)
+                else:
+                    # 3) Index yok ama ucluler benzersiz -> sozlukle esle
+                    if ref_key is None:
+                        ref_key = {k: i for i, k in
+                                   enumerate(zip(run.tolist(), ev.tolist(),
+                                                 sub.tolist()))}
+                    idx = np.full(n, -1, dtype=np.int64)
+                    for j, k in enumerate(zip(r2.tolist(), e2.tolist(),
+                                              s2.tolist())):
+                        i = ref_key.get(k)
+                        if i is not None:
+                            idx[i] = j
 
             for name, col in cols:
                 if col not in node.colnames:
