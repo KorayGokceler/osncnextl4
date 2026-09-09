@@ -82,6 +82,71 @@ ihtiyacı olan da bu.
 
 ---
 
+# Bölüm 1b — Hangi değişken nerede hesaplanıyor
+
+Her BDT girdisi için: kodda hangi dosya/fonksiyon, notta hangi sayfa/tablo.
+Satır numaraları `oscNext_L4_variables.py` içindir.
+
+## Noise BDT — 5 girdi (not s.36, Tablo 11)
+
+| Değişken | Nerede hesaplanıyor | Not |
+|---|---|---|
+| `NchCleaned` | **hesaplamıyoruz** — L3'ten hazır geliyor (`IC2018_LE_L3_Vars`) | s.28, §3.5.1 |
+| `micro_count` | `_micro_count()` **:616**<br>zincir: `oscNext_L4_noise_cut_variables` **:636** içinde StaticTWC → SeededRT → I3OMSelection → I3TimeWindowCleaning | s.36, Tablo 11 |
+| `iLineFit_speed` | `linefit.simple` segmenti — `oscNext_L4_atm_muon_classifier_variables` **:557** içinde. Kendi kodumuz değil, IceTray projesi. | s.36, Tablo 11 |
+| `fill_ratio` | `I3FillRatioModule` — `oscNext_L4_noise_cut_variables` **:636** sonunda. IceTray projesi. | s.36, Tablo 11 |
+| `FullTimeLengthRatio` | `_full_time_length_ratio()` **:264** | s.36, Tablo 11 |
+
+## Muon BDT — 10 girdi (not s.41, Tablo 12)
+
+| Değişken | Nerede hesaplanıyor | Not |
+|---|---|---|
+| `ICVetoHits` | **L3'ten** (`IC2018_LE_L3_Vars`) | s.28, §3.5.1 |
+| `RTVeto250Hits` | **L3'ten** | s.28–29, §3.5.1 + Tablo 8 |
+| `NchCleaned` | **L3'ten** | s.28, §3.5.1 |
+| `NAbove200Hits` | **L3'ten** | s.28, §3.5.1 |
+| `VICH_nch` | `_vich()` **:470** — **bizim yeniden yazımımız** | tanım s.26–27, §3.4 |
+| `accumulated_time` | `_accumulated_time()` **:402** — **bizim yeniden yazımımız** | s.41, Tablo 12 |
+| `first_hlc_rho` | `_first_hlc()` **:219** → `_add_rho_36()` **:257** | s.41, Tablo 12 |
+| `cog_z` | `common_variables.hit_statistics` segmenti — `oscNext_L4_hit_statistics` **:731**. IceTray projesi. | s.41, Tablo 12 |
+| `z_sigma` | aynı segment | s.41, Tablo 12 |
+| `z_travel` | aynı segment | s.41, Tablo 12 |
+
+## Özet: kimin kodu?
+
+| Kaynak | Kaç değişken | Hangileri |
+|---|---|---|
+| **L3'ten hazır geliyor** | 5 | `NchCleaned`, `ICVetoHits`, `RTVeto250Hits`, `NAbove200Hits` (+`NchCleaned` iki listede) |
+| **IceTray projeleri** | 5 | `iLineFit_speed` (linefit), `fill_ratio` (fill_ratio), `cog_z`/`z_sigma`/`z_travel` (common_variables) |
+| **Bizim saf Python yeniden yazımımız** | 4 | `micro_count`, `FullTimeLengthRatio`, `first_hlc_rho`, `accumulated_time`, `VICH_nch` |
+
+> Riskin tamamı son satırda. L3'ten gelenler ve IceTray projeleri
+> zaten doğrulanmış kod; **doğrulanmamış olan 4–5 fonksiyon** var ve
+> ikisi (`VICH_nch`, `accumulated_time`) muon BDT'sinin ana girdileri.
+
+## Yardımcı fonksiyonlar (girdi değil ama hepsi bunları kullanıyor)
+
+| Fonksiyon | Satır | Ne yapar |
+|---|---|---|
+| `charge_weighted_cog()` | **:194** | yük ağırlıklı COG — VICH ve separation_in_cogs kullanıyor |
+| `iter_hits()` | **:175** | `(omkey, pos, time, charge)` üzerinde gezinme |
+| `PropagateGenieInfo` | `process_L4.py` | `n_flux_events` S→P frame (ağırlık için) |
+| `l3_cut` | `oscNext_L4` **:809** içinde | `IC2018_LE_L3_Full AND Data_quality_bool` |
+
+## Nota nasıl bakılır
+
+`reference/OscNext_v00.074_pass2_technical_note.pdf`:
+
+- **s.26–27, §3.4** — DeepCore Filter. VICH'in hız penceresi `[0.25, 0.4] m/ns`
+  ve "veto region" tanımı **burada**, Tablo 12'de değil.
+- **s.27–29, §3.5.1 + Tablo 7/8** — L3 değişkenlerinin tanımları
+  (`NchCleaned`, `ICVetoHits`, …) ve L3 fiducial DOM listesi.
+- **s.35, Tablo 10** — LightGBM hiperparametreleri.
+- **s.36, Tablo 11** — noise BDT'nin 5 girdisi.
+- **s.41, Tablo 12** — muon BDT'nin 10 girdisi.
+- **s.48, Tablo 13** — L3/L4 oranları (ağırlık doğrulama hedefleri).
+
+
 # Bölüm 2 — Teknik notla karşılaştırma
 
 ## 2.1 Doğrulananlar
