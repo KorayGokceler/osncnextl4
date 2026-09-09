@@ -178,13 +178,15 @@ class _Bar:
 
 
 def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
-                skip_optional=False):
+                skip_optional=False, extra_args=None):
     """
     process_L4.py'yi bir ornek icin calistir, canli ilerleme goster.
 
     chunk_files : kac L3 dosyasi bir parcada islensin (0 = tek parca).
                   >0 ise gercek yuzde/ETA ve cokme sonrasi devam.
     n_frames    : >0 ise smoke test (chunk_files otomatik kapanir).
+    extra_args  : process_L4.py'ye oldugu gibi eklenecek ek bayraklar,
+                  orn. ["--micro-count-uncleaned"].
     """
     cfg = _cfg("SAMPLES")[name]
     out = cfg["hdf5"] if n_frames == 0 else cfg["hdf5"].replace(".hdf5", "_smoke.hdf5")
@@ -202,6 +204,8 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
         cmd += ["--chunk-files", str(chunk_files)]
     if skip_optional:
         cmd += ["--skip-optional"]
+    if extra_args:
+        cmd += list(extra_args)
 
     print("$ " + " ".join(shlex.quote(c) for c in cmd))
     b = _Bar(name) if bar else None
@@ -256,7 +260,8 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
     return out
 
 
-def run_all(samples=None, chunk_files=10, jobs=1, skip_optional=False):
+def run_all(samples=None, chunk_files=10, jobs=1, skip_optional=False,
+            extra_args=None):
     """
     Tum ornekleri sirayla isle -- her biri icin ayri cubuk + genel ilerleme.
 
@@ -268,6 +273,8 @@ def run_all(samples=None, chunk_files=10, jobs=1, skip_optional=False):
                     8 makul, 64 degil.
     skip_optional : BDT girdisi olmayan hesaplari atla (I3TensorOfInertia,
                     separation_in_cogs).  Ikisi de Tablo 11/12'de yok.
+    extra_args    : process_L4.py'ye oldugu gibi eklenecek ek bayraklar,
+                    orn. ["--micro-count-uncleaned"] (pass2 karsilastirmasi).
 
     Varsayilan jobs=1 -- hizlandirma OTOMATIK DEGIL, acikca istenmeli.
     """
@@ -281,10 +288,11 @@ def run_all(samples=None, chunk_files=10, jobs=1, skip_optional=False):
         if jobs > 1:
             results[name] = run_process_parallel(
                 name, jobs=jobs, chunk_files=chunk_files,
-                skip_optional=skip_optional)
+                skip_optional=skip_optional, extra_args=extra_args)
         else:
             results[name] = run_process(
-                name, chunk_files=chunk_files, skip_optional=skip_optional)
+                name, chunk_files=chunk_files, skip_optional=skip_optional,
+                extra_args=extra_args)
         overall.update(i + 1, "%d/%d ornek" % (i + 1, len(names)))
     ok = sum(v is not None for v in results.values())
     overall.done("%d/%d tamam" % (ok, len(names)))
@@ -325,7 +333,7 @@ def _split(seq, n):
 
 
 def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
-                         skip_optional=False):
+                         skip_optional=False, extra_args=None):
     """
     Bir ornegi N paralel surecte isle.
 
@@ -363,6 +371,8 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
             cmd += ["--chunk-files", str(chunk_files)]
         if skip_optional:
             cmd += ["--skip-optional"]
+        if extra_args:
+            cmd += list(extra_args)
         procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                       stderr=subprocess.STDOUT, text=True,
                                       bufsize=1))

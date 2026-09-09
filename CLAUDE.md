@@ -227,10 +227,15 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    `tray.AddSegment(linefit.simple, ..., inputResponse=cleaned_pulses,
    fitName=L4_LINEFIT_KEY)`. Yani "improved LineFit" = `linefit.simple`,
    ekstra parametre yok. Şekil 13'ün x ekseni log ölçekte 10⁻³ – 10³ (m/ns).
-5b. **micro_count: orijinal kod ile teknik not ÇELİŞİYOR (karar gerekli).**
+5b. **micro_count: orijinal kod ile teknik not ÇELİŞİYOR (anahtarlanabilir).**
    Orijinal pass2 kodu zincire `uncleaned_pulses` ile başlıyor
    (`I3StaticTWC(InputResponse=uncleaned_pulses)`), Tablo 11 ise
-   *"Start with the cleaned pulse series"* diyor. Biz **notu** izledik.
+   *"Start with the cleaned pulse series"* diyor. **Varsayılan notu izliyor.**
+   İkisi de üretilebilir:
+   `process_L4.py --micro-count-uncleaned`, notebook'tan
+   `run_all(extra_args=["--micro-count-uncleaned"])`, doğrudan segmentte
+   `oscNext_L4(micro_count_uncleaned=True)`. `fill_ratio` her iki durumda da
+   temizlenmiş seriyi kullanır (orijinalde de öyle).
    Ayrıntı için "Booking/okuma denetimi" md. 4.
    Orijinalden **doğrulanan** kısımlar: DeepCore fiducial `I3OMSelection`
    adımı (notta yok ama orijinalde var — bizde de var), `TriggerConfigIDs

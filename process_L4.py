@@ -402,6 +402,11 @@ def main():
                    help="BDT girdisi OLMAYAN hesaplari atla: I3TensorOfInertia "
                         "(L4_ToI) ve separation_in_cogs.  Ikisi de Tablo 11/12'de "
                         "yok.  Uretimi hizlandirir.")
+    p.add_argument("--micro-count-uncleaned", action="store_true",
+                   help="micro_count zincirini TEMIZLENMEMIS seriden baslat -- "
+                        "orijinal pass2 kodunun davranisi.  Varsayilan (bayrak "
+                        "yok) teknik notu izler: temizlenmis seriden baslar. "
+                        "Sadece pass2 sayilarini tekrarlamak icin kullanin.")
     p.add_argument("--usage", action="store_true",
                    help="Bitince MODUL BAZLI CPU zamanini bas -- hangi modulun "
                         "yavas oldugunu gormek icin.  Once bunu calistirin, "
@@ -524,7 +529,8 @@ def main():
                  compute_hit_statistics=not args.no_hit_statistics,
                  run_optional=not args.skip_optional,
                  apply_cut=args.apply_cut,
-                 classifier_model_dir=args.model_dir)
+                 classifier_model_dir=args.model_dir,
+                 micro_count_uncleaned=args.micro_count_uncleaned)
 
         # --- L3 kesiminden sonra kalan (book edilecek) ---
         def count(frame):

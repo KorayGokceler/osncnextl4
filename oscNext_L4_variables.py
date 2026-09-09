@@ -656,14 +656,20 @@ def _micro_count(frame, pulses_key, output_key, subkey):
 @icetray.traysegment
 def oscNext_L4_noise_cut_variables(tray, name,
                                    fill_ratio_vertex,
-                                   cleaned_pulses):
+                                   cleaned_pulses,
+                                   micro_count_pulses=None):
     '''
     L4 saf gurultu reddi siniflandiricisinin girdileri.
 
-    NOT: uncleaned_pulses parametresi KALDIRILDI -- micro_count artik notun
-    dedigi gibi temizlenmis seriden hesaplaniyor, bu segmentte temizlenmemis
-    seriye ihtiyac kalmadi.
+    micro_count_pulses: micro_count zincirinin BASLADIGI pulse serisi.
+        None (varsayilan) -> cleaned_pulses, yani teknik notun Tablo 11'de
+        dedigi gibi ("Start with the cleaned pulse series").
+        Orijinal pass2 kodunu birebir tekrarlamak icin buraya temizlenmemis
+        seri verilir -- bkz. CLAUDE.md acik risk 5b.  fill_ratio her iki
+        durumda da cleaned_pulses kullanir (orijinalde de oyle).
     '''
+    if micro_count_pulses is None:
+        micro_count_pulses = cleaned_pulses
 
     #
     # Micro count
@@ -704,7 +710,7 @@ def oscNext_L4_noise_cut_variables(tray, name,
 
     tw_pulses = "L4_TWPulses"
     tray.AddModule("I3StaticTWC<I3RecoPulseSeries>", name + "_StaticTWC_DC",
-                   InputResponse=cleaned_pulses,
+                   InputResponse=micro_count_pulses,
                    OutputResponse=tw_pulses,
                    TriggerConfigIDs=[1010, 1011],
                    TriggerName="I3TriggerHierarchy",
@@ -837,7 +843,8 @@ def oscNext_L4(tray, name,
                compute_hit_statistics=True,
                run_optional=True,
                apply_cut=False,
-               classifier_model_dir=None):
+               classifier_model_dir=None,
+               micro_count_uncleaned=False):
     '''
     oscNext L4 ana tray segment'i.
 
@@ -845,6 +852,10 @@ def oscNext_L4(tray, name,
     egitmeden once bu modda calistirin -- kesim uygulanmadan tum olaylari
     book edersiniz, boylece hem noise hem muon egitim setini tek gecisten
     cikarabilirsiniz.
+
+    micro_count_uncleaned=True: micro_count zinciri temizlenmemis seriden
+    baslar -- orijinal pass2 kodunun (hatali) davranisi.  Sadece pass2
+    sayilarini/Sekil 12'yi tekrarlamak icin.  Varsayilan False = teknik not.
     '''
 
     # I3GenieInfo -> her P frame'e (L3 kesiminden ONCE, S frame'ler kesimden
@@ -881,7 +892,9 @@ def oscNext_L4(tray, name,
 
     tray.Add(oscNext_L4_noise_cut_variables, name + "_noise_vars",
              fill_ratio_vertex=L4_FIRST_HLC_KEY,
-             cleaned_pulses=cleaned_pulses)
+             cleaned_pulses=cleaned_pulses,
+             micro_count_pulses=(uncleaned_pulses if micro_count_uncleaned
+                                 else None))
 
     tray.Add(oscNext_L4_atm_muon_classifier_variables, name + "_muon_vars",
              uncleaned_pulses=uncleaned_pulses,
