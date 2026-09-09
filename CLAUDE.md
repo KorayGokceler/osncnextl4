@@ -154,13 +154,18 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    olaylarda veto hitleri COG'u yukarı çekiyordu (test: z −400 → −43).
    `fiducial_cog=True` artık varsayılan; `False` eski davranış.
    **Kalan açık:** COG yük ağırlıklı mı? Not söylemiyor, biz yük ağırlıklı
-   alıyoruz. Ayrıca not DC Filter'ın kendi SRT temizlemesini kullanıyor,
-   biz ham `SplitInIcePulses`.
+   alıyoruz. **Pulse serisi DOĞRULANDI:** orijinal pass2 kodu
+   (`reference/oscNext_L4_pass2_original.py`) `I3CutL7Module`'e
+   `InputPulses=uncleaned_pulses  # Use uncleaned hits` veriyor — bizim
+   ham `SplitInIcePulses` kullanmamız orijinalle aynı.
 2. **accumulated_time** — **doğrulandı**: Tablo 12 "Time to reach 75% of an
    event's charge in the cleaned pulse series" diyor; kod `fraction=0.75` ve
    `cleaned_pulses` kullanıyor. Fraksiyon ve seri artık tahmin değil.
+   Orijinal pass2 kodu da Dunkman `CalculateVariables`'a
+   `PulseSeries=cleaned_pulses` veriyor — seri seçimi **doğrulandı**.
    **Kalan açık:** referans zamanı — kod `t[idx] − t[0]` (ilk pulse) alıyor,
-   not sıfır noktasını söylemiyor (tetikleme zamanı da olabilirdi).
+   not sıfır noktasını söylemiyor (tetikleme zamanı da olabilirdi); orijinalin
+   içi de `analysis.event_selection` C++ kodunda, elimizde yok.
    `separation_in_cogs` BDT girdisi değil, düşük öncelik.
 3. **FullTimeLengthRatio yönü — ÇÖZÜLDÜ.** Tablo 11 metni oranın yönünü
    söylemiyor ama **Şekil 13** söylüyor: `IC2018_LE_L3_Vars.FullTimeLengthRatio`
@@ -205,28 +210,33 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    NOISE_MC_KEYS/CORSIKA_KEYS) — pass3'te I3GenieInfo yoksa NEvents*fraksiyon
    fallback'ine düşülüyor; bunun ne sıklıkla tetiklendiği ve ne kadar sapma
    yarattığı ölçülmedi.
-5. **fill_ratio — notta tanım eksik (iki ayrı açık nokta).**
-   a) **Vertex belirsiz.** Tablo 11'in kendi metni: *"Measure of the
-      geometrical spread of the hits about **some vertex (details here)**"* —
-      "(details here)" doldurulmamış bir çapraz referans, yani not hangi
-      vertex'in kullanıldığını **hiç söylemiyor**. Biz `L4_first_hlc`
-      (ilk HLC hit'in konumu) veriyoruz; bu seçim nottan doğrulanamaz.
-      `fill_ratio` Şekil 14'te noise BDT'sinin en güçlü girdilerinden biri,
-      yani yanlış vertex ucuz bir hata değil.
-   b) **Yarıçap** (`FILL_RATIO_SPHERICAL_RADIUS_MEAN = 1.6`) — GRECO
-      için optimize edilmiş, oscNext için yeniden ayarlanmadı; not bu
-      parametreyi de vermiyor. Bölüm 10'daki feature importance /
-      incremental scan sonuçlarına göre yeniden optimize edilebilir.
-   Şekil 13'ten doğrulanan tek şey kolon adı ve aralık:
-   `L4_fill_ratio.fillratio_from_mean`, x ekseni 0.0 – 1.0.
-5a. **iLineFit_speed — hangi "improved LineFit"?** Tablo 11 sadece
+5. **fill_ratio — ÇÖZÜLDÜ (orijinal kodla).** Tablo 11 metni vertex'i
+   *"about some vertex (details here)"* diye **boş bırakıyor** (doldurulmamış
+   çapraz referans), yani nottan çıkarılamazdı. Orijinal pass2 kodu söylüyor:
+   ana segment `oscNext_L4_noise_cut_variables`'a
+   `fill_ratio_vertex=L4_FIRST_HLC_KEY` veriyor — yani **ilk HLC hit'in
+   konumu**, bizim verdiğimizle aynı. `RecoPulseName=cleaned_pulses` ve
+   `SphericalRadiusMean=1.6` de birebir aynı; orijinalin kendi yorumu:
+   *"Was optimised for GRECO but has not been re-optimised for oscNext"* —
+   yani 1.6'nın oscNext için ayarlanmamış olması **bilinen** bir durum,
+   bizim eksiğimiz değil. Bölüm 10'daki feature importance / incremental
+   scan ile yeniden optimize edilebilir (orijinal de bunu öneriyor).
+5a. **iLineFit_speed — ÇÖZÜLDÜ (orijinal kodla).** Tablo 11 sadece
    *"Speed fitted by the improved LineFit algorithm"* diyor, parametre
-   vermiyor. Biz `linefit.simple` traysegment'ini çağırıyoruz
-   (`oscNext_L4_variables.py`, `tray.AddSegment(linefit.simple, ...)`).
-   IceTray'de improved LineFit = delay cleaning + Huber fit + debiasing
-   zinciri; `linefit.simple`'ın bunu yaptığı **kaynak koddan
-   doğrulanmadı** (kaynak artık elde: `$I3_SRC/linefit`). Şekil 13'ün
-   x ekseni log ölçekte 10⁻³ – 10³ (m/ns) — hız ölçeği bu.
+   vermiyor. Orijinal pass2 kodu birebir bizim çağrımız:
+   `tray.AddSegment(linefit.simple, ..., inputResponse=cleaned_pulses,
+   fitName=L4_LINEFIT_KEY)`. Yani "improved LineFit" = `linefit.simple`,
+   ekstra parametre yok. Şekil 13'ün x ekseni log ölçekte 10⁻³ – 10³ (m/ns).
+5b. **micro_count: orijinal kod ile teknik not ÇELİŞİYOR (karar gerekli).**
+   Orijinal pass2 kodu zincire `uncleaned_pulses` ile başlıyor
+   (`I3StaticTWC(InputResponse=uncleaned_pulses)`), Tablo 11 ise
+   *"Start with the cleaned pulse series"* diyor. Biz **notu** izledik.
+   Ayrıntı için "Booking/okuma denetimi" md. 4.
+   Orijinalden **doğrulanan** kısımlar: DeepCore fiducial `I3OMSelection`
+   adımı (notta yok ama orijinalde var — bizde de var), `TriggerConfigIDs
+   =[1010, 1011]`, `WindowMinus/Plus = 3500/4000`, `dtw = 200`, alt anahtar
+   adı `STW_m%ip%i_DTW%i`, ve sayımın **DOM** sayısı olduğu
+   (`len(reco_pulse_series.values())` — bizde `len(pmap)`, aynı şey).
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
@@ -270,6 +280,13 @@ StaticTWC çıktısını (`L4_TWPulses`) alıyordu. `L4_SRTTWPulses` frame'e
 yazılıp **hiçbir yerde okunmuyordu** (grep ile doğrulandı) — yani zincirdeki
 tek gürültü temizleme adımı fiilen devre dışıydı.
 
+**Bu hata bizim değil, orijinal pass2 kodundan miras** — sonradan bulundu:
+`reference/oscNext_L4_pass2_original.py` içinde aynı satırlar duruyor ve
+yazarın kendi yorumu bile şüpheli: `srt_tw_pulses = "L4_SRTTWPulses"
+#TODO Is this actually used?`. Yani **pass2 sayıları da gürültü temizliği
+olmadan üretilmiş** (Şekil 12'nin micro_count paneli bu haliyle).
+Bizim düzeltmemiz **notu** izliyor, orijinal kodu değil — bilinçli sapma.
+
 Sonuç: `micro_count` ham hitler üzerinden sayılıyordu. Kalan adımların hiçbiri
 gürültü elemiyor (StaticTWC geniş zaman kesiti, OMSelection uzaysal kesim,
 TimeWindowCleaning en yoğun 200 ns penceresi). Saf gürültü olaylarında
@@ -302,6 +319,17 @@ override edilince çağrılmıyorlar) — kaldırıldı.
   oscNext teknik notu (83 sayfa). **pass3 için değil**, ama L4 mantığının
   büyük kısmı (değişken tanımları, BDT hiperparametreleri) pass3'te de
   aynı kabul ediliyor.
+- `reference/oscNext_L4_pass2_original.py` — **orijinal oscNext L4 tray
+  segment'i** (Tom Stuttard, pass2). Tüm gövde yorum satırı hâlinde
+  (`#TODO migrate` — GitHub IceTray'e taşınmamış), ama parametre değerleri
+  ve modül zincirleri **birinci elden kaynak**. Bizim
+  `oscNext_L4_variables.py`'miz bunun yeniden yazımı. Doğruladığı şeyler:
+  `fill_ratio_vertex=L4_FIRST_HLC_KEY`, `SphericalRadiusMean=1.6`,
+  `linefit.simple`, VICH'in `uncleaned_pulses` kullanması, Dunkman'ın
+  `cleaned_pulses` kullanması, micro_count parametreleri, straight-cut
+  eşikleri, ve L4 kesim eşikleri (noise ProbNu ≥ 0.7, muon ProbNu ≥ 0.65).
+  Tek çelişki: micro_count zincirinin `uncleaned_pulses` ile başlaması
+  (bkz. açık risk 5b).
 - `reference/pass3_L3_process.py` — kullanıcının elindeki **gerçek pass3 L3
   işleme scripti** (GRECO `grecovariables.DeepCoreCleaning`/`DeepCoreCuts`
   kullanıyor). `oscNext_L4_variables.py`'nin varsaydığı L3 çıktısıyla
