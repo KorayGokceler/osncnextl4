@@ -208,6 +208,42 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
    netleşecek.
 
+## Booking/okuma denetimi — bulunan hatalar
+
+Kod baştan sona gözden geçirildi; üçü **sessiz veri bozulması** üreten
+gerçek hatalardı.
+
+**1. `__I3Index__` gerçek veriyi eziyordu (düzeltildi).**
+`h5.walk_nodes("/", "Table")` alt gruplara da iniyor. hdfwriter her anahtar
+için `/X` (veri) ve `/__I3Index__/X` (indeks) yazıyor; sözlük leaf isimle
+kurulunca indeks veriyi eziyordu → her tablo `start/stop` kolonlu görünüyor,
+**tüm değişkenler NaN** oluyordu. `_table_nodes()` `__I3Index__` altını
+atlıyor.
+
+**2. Tekrar eden `Run/Event/SubEvent` yanlış eşleştirme (düzeltildi).**
+Bir tablo `I3EventHeader` ile hizalı değilse (anahtar bazı frame'lerde
+yoksa) eşleştirme `(Run, Event, SubEvent)` sözlüğüyle yapılıyordu. Bu üçlü
+**benzersiz değil**: MC'de `run_id` = set no, `event_id` her L3 dosyasında
+sıfırdan başlıyor ve `--chunk-files` ile bir parçada 10 dosya var. Sözlükte
+son gelen kazanıyor → olaylar ya NaN kalıyor ya **başka bir olayın
+değerini** alıyordu.
+Düzeltme: eşleştirme artık hdfwriter'ın `/__I3Index__/<anahtar>`
+tablosundan (`exists`/`start`) yapılıyor. Indeks yoksa ve üçlüler
+tekrarlıyorsa sessizce yanlış eşleştirmek yerine NaN bırakılıp bildiriliyor.
+
+**3. `n_flux_events` dosya başına güncellenmiyordu (düzeltildi).**
+`PropagateGenieInfo` değeri bir kez okuyup sabitliyordu. Bir tray
+`--chunk-files` ile 10 L3 dosyası işliyor ve **her dosyanın kendi
+`I3GenieInfo`'su** var → ilk dosyanın değeri hepsine uygulanıyordu, sonraki
+dosyaların ağırlıkları yanlış çıkıyordu. Artık her `I3GenieInfo`'da
+güncelleniyor, değer değişirse loglanıyor.
+
+**Küçük:** `--n` ile üretilen smoke çıktısında `n_l3_files` yanıltıcıydı
+(tray erken duruyor, liste tamamen okunmuyor). Artık `None` +
+`n_l3_files_unreliable` yazılıyor, `load_sample` bölen olarak kullanmıyor.
+`PropagateGenieInfo`'daki `DAQ()`/`Simulation()` ölü koddu (`Process()`
+override edilince çağrılmıyorlar) — kaldırıldı.
+
 ## Referans belgeler (`reference/`)
 
 - `reference/OscNext_v00.074_pass2_technical_note.pdf` — pass2 için resmi

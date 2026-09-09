@@ -420,8 +420,14 @@ def n_l3_files(h5path):
     if os.path.exists(meta):
         try:
             with open(meta) as fh:
-                return int(json.load(fh)["n_l3_files"])
-        except (OSError, ValueError, KeyError):
+                m = json.load(fh)
+            v = m.get("n_l3_files")
+            if v is None or m.get("n_l3_files_unreliable"):
+                # --n ile uretilmis smoke ciktisi: tray erken durdugu icin
+                # dosya sayisi guvenilir degil, bolen olarak kullanilamaz.
+                return None
+            return int(v)
+        except (OSError, ValueError, KeyError, TypeError):
             pass
     return None
 

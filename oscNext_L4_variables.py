@@ -349,17 +349,31 @@ class PropagateGenieInfo(icetray.I3Module):
         self.output_key = self.GetParameter("OutputKey")
         self.n_flux = None
         self.warned = False
+        self.n_seen = 0          # kac I3GenieInfo goruldu (= kac L3 dosyasi)
 
     def _grab(self, frame):
         '''
         I3GenieInfo'yu okumayi dene.  Deserialization hatasi (genie_icetray
         import edilmemis) ya da eksik alan job'i COKURMEMELI -- agirlik
         hesabi NEvents fallback'ine duser.
+
+        DIKKAT: her L3 DOSYASININ kendi I3GenieInfo'su var ve bir tray
+        birden fazla dosya isliyor (--chunk-files).  Deger her yeni
+        I3GenieInfo'da GUNCELLENMELI; onceden bir kez okunup sabitleniyordu,
+        yani ilk dosyanin n_flux_events'i sonraki dosyalarin olaylarina da
+        uygulaniyordu ve o olaylarin agirligi yanlis cikiyordu.
         '''
-        if self.n_flux is not None or not frame.Has("I3GenieInfo"):
+        if not frame.Has("I3GenieInfo"):
             return
         try:
-            self.n_flux = float(frame["I3GenieInfo"].n_flux_events)
+            new_val = float(frame["I3GenieInfo"].n_flux_events)
+            self.n_seen += 1
+            if self.n_flux is not None and new_val != self.n_flux:
+                icetray.logging.log_info(
+                    "PropagateGenieInfo: n_flux_events degisti %g -> %g "
+                    "(dosya %d) -- guncelleniyor"
+                    % (self.n_flux, new_val, self.n_seen))
+            self.n_flux = new_val
             icetray.logging.log_info(
                 "PropagateGenieInfo: n_flux_events = %g" % self.n_flux)
         except Exception as e:
@@ -371,13 +385,10 @@ class PropagateGenieInfo(icetray.I3Module):
                     % (type(e).__name__, e))
                 self.warned = True
 
-    # I3GenieInfo hangi stream'de olursa olsun yakala
-    def DAQ(self, frame):
-        self._grab(frame); self.PushFrame(frame)
-
-    def Simulation(self, frame):
-        self._grab(frame); self.PushFrame(frame)
-
+    # NOT: Process() override edildigi icin DAQ()/Simulation() gibi
+    # stream metotlari CAGRILMAZ -- dagitimi asagidaki Process yapiyor ve
+    # her stream'de _grab cagiriyor.  (Eskiden ikisi de vardi; DAQ ve
+    # Simulation olu koddu.)
     def Process(self):
         frame = self.PopFrame()
         if frame.Stop != icetray.I3Frame.Physics:

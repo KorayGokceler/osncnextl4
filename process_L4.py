@@ -603,8 +603,13 @@ def main():
         build_tray.output_hdf5 = args.output_hdf5
         build_tray.output_i3 = args.output_i3
         totals, used = _run_tray(build_tray, infiles, args.output_hdf5, args.retries)
+        # --n verildiginde tray erken duruyor: dosya listesinin tamami
+        # OKUNMAMIS olabilir, o yuzden n_l3_files GUVENILIR DEGIL.  Agirlik
+        # boleni olarak kullanilmasin diye None yaziyoruz; load_sample
+        # sidecar'i eksik sayip uyaracak.
         _write_meta(args.output_hdf5, dict(
-            n_l3_files=len(used),
+            n_l3_files=(None if args.n > 0 else len(used)),
+            n_l3_files_unreliable=bool(args.n > 0),
             n_l3_files_given=len(infiles),
             physics_frames=totals["physics"],
             sub_event_stream=args.sub_event_stream,
