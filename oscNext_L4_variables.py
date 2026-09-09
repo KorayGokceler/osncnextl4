@@ -271,8 +271,25 @@ def _full_time_length_ratio(frame, output_key,
     zamani), ikisinin oranini hesapla."
 
     Yon: temizlenmis / temizlenmemis, yani [0,1] araliginda (Sekil 13'teki
-    x ekseni ile uyumlu).  Gercek olayda temizleme fazla bir sey silmez
-    -> ~1.  Saf gurultude temizlenmis seri birkac izole hit'e iner -> ~0.
+    x ekseni ile uyumlu).
+
+    OLCULEN DAVRANIS (test_noise_vars.py, birer L3 dosyasi: 126 nue,
+    17 noise) -- onceki yorumdaki fizik hikayesi YANLISTI, duzeltildi:
+
+                       oran(medyan)   temizlenmis    temizlenmemis
+        nue                  0.16        1626 ns        10100 ns
+        noise (L3 gecen)     0.27        2780 ns        10290 ns
+
+      * Oran hicbir zaman 1'e yaklasmiyor.  Temizlenmemis sure her olayda
+        ~10 us -- cunku SplitInIcePulses tum okuma penceresini kapliyor ve
+        gurultu hitleri her yerde.  Yani degisken fiilen
+        "temizlenmis sure / 10 us".
+      * Ayirt etme yonu beklediginin TERSI: gurultu olaylarinin temizlenmis
+        serisi nue'ninkinden daha UZUN (dusuk enerjili kaskad zamanda
+        kompakt; L3'u gecmis gurultu olayi zamanda dagilmis birkac hit).
+        Ayirt ediyor, ama "gercek olay ~1 / gurultu ~0" degil.
+        (17 noise olayi az -- siralama bu dosyada boyle, magnitud tespiti
+        ise yapisal ve kesin.)
 
     pass3 L3 ciktisinda IC2018_LE_L3_Vars icinde CleanedFullTimeLength ve
     UncleanedFullTimeLength AYRI AYRI var ama ORANLARI YOK -- bu yuzden
@@ -303,7 +320,25 @@ def _full_time_length_ratio(frame, output_key,
     if cleaned is None or uncleaned is None or uncleaned <= 0:
         return True
 
-    frame[output_key] = dataclasses.I3Double(float(cleaned) / float(uncleaned))
+    # uncleaned <= 0 sifira bolmeyi engelliyor ama NaN'i ENGELLEMIYOR:
+    # NaN <= 0 -> False, yani NaN bir payda bu kontrolden gecip sonuca
+    # sessizce NaN yazardi.  Sonucu dogrudan denetle -- inf de NaN de elenir,
+    # degisken yazilmaz ve HDF5'te eksik gorunur (yanlis sayidan iyidir).
+    ratio = float(cleaned) / float(uncleaned)
+    if not np.isfinite(ratio):
+        return True
+
+    # Temizlenmis seri temizlenmemisin alt kumesi oldugu icin oran <= 1
+    # olmali.  Asiyorsa iki sureyi farkli temel serilerden olcuyoruz
+    # demektir -- sessizce gecmesin.
+    if ratio > 1.0 and not getattr(_full_time_length_ratio, "_warned", False):
+        _full_time_length_ratio._warned = True
+        icetray.logging.log_warn(
+            "FullTimeLengthRatio > 1 (%.3f): temizlenmis (%.1f ns) sure "
+            "temizlenmemisten (%.1f ns) uzun.  Iki sure ayni temel seriden "
+            "olculmuyor olabilir." % (ratio, cleaned, uncleaned))
+
+    frame[output_key] = dataclasses.I3Double(ratio)
     return True
 
 

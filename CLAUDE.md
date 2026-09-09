@@ -175,7 +175,27 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    **Kalan (küçük) fark:** not bunu **L3 değişkeni** olarak listeliyor
    (`IC2018_LE_L3_Vars.FullTimeLengthRatio`); pass3 L3 map'inde oran yok,
    bileşenleri var (`CleanedFullTimeLength`, `UncleanedFullTimeLength`) —
-   biz oranı L4'te bölerek üretiyoruz, değer aynı olmalı.
+   biz oranı L4'te bölerek üretiyoruz, değer aynı olmalı. **Doğrulandı:**
+   `test_noise_vars.py` bölmeyi L3 bileşenleriyle karşılaştırıyor,
+   143 olayda maks sapma 0.
+   **Fizik açıklaması DÜZELTİLDİ (ölçümle).** Docstring "gerçek olay ~1,
+   gürültü ~0" diyordu; gerçek ölçüm (126 νe + 17 noise):
+
+   |  | oran (medyan) | temizlenmiş | temizlenmemiş |
+   |---|---|---|---|
+   | νe | 0.16 | 1626 ns | 10 100 ns |
+   | noise (L3 geçen) | 0.27 | 2780 ns | 10 290 ns |
+
+   Oran **hiçbir zaman 1'e yaklaşmıyor**: `SplitInIcePulses` tüm okuma
+   penceresini kapladığı için temizlenmemiş süre her olayda ~10 µs, yani
+   değişken fiilen "temizlenmiş süre / 10 µs". Ayırt etme yönü de **ters**:
+   gürültünün temizlenmiş serisi νe'ninkinden daha uzun. Ayırt ediyor ama
+   beklenen hikâye değil. (17 noise olayı az; sıralama tek dosyada böyle,
+   magnitüd tespiti yapısal.)
+   Kodda ayrıca `inf`/`NaN` koruması eklendi: `uncleaned <= 0` kontrolü
+   sıfıra bölmeyi engelliyordu ama **NaN paydayı geçiriyordu**
+   (`NaN <= 0` → False), sonuç sessizce NaN yazılıyordu. Artık sonuç
+   `np.isfinite` ile denetleniyor ve oran > 1 çıkarsa bir kez uyarı basılıyor.
 3a. **Muon BDT'de eksik girdi (düzeltildi).** Tablo 12 **10** değişken
    listeliyor, `MUON_FEATURES`'ta **9** vardı — `NchCleaned` atlanmıştı
    (noise listesinde olduğu için gözden kaçmış). Eklendi. Benzersiz BDT
@@ -227,11 +247,20 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    `tray.AddSegment(linefit.simple, ..., inputResponse=cleaned_pulses,
    fitName=L4_LINEFIT_KEY)`. Yani "improved LineFit" = `linefit.simple`,
    ekstra parametre yok. Şekil 13'ün x ekseni log ölçekte 10⁻³ – 10³ (m/ns).
-5b. **micro_count: orijinal kod ile teknik not ÇELİŞİYOR (anahtarlanabilir).**
+5b. **micro_count: orijinal kod ile teknik not çelişiyor — KARAR: not.**
    Orijinal pass2 kodu zincire `uncleaned_pulses` ile başlıyor
    (`I3StaticTWC(InputResponse=uncleaned_pulses)`), Tablo 11 ise
-   *"Start with the cleaned pulse series"* diyor. **Varsayılan notu izliyor.**
-   İkisi de üretilebilir:
+   *"Start with the cleaned pulse series"* diyor. **Notu izliyoruz**
+   (varsayılan, kalıcı karar).
+   **Ölçüldü — fark neredeyse yok:** `test_noise_vars.py` iki zinciri aynı
+   olayda hesaplıyor. νe'de 126 olayın 115'i, noise'da 17 olayın 16'sı
+   **birebir eşit**; medyanlar aynı (5 ve 3). Sebep: zincirin sonundaki
+   200 ns'lik pencere zaten belirleyici — gürültü hitleri ~10 µs'ye yayılmış
+   olduğu için en yoğun 200 ns penceresine iki seride de aynı hitler düşüyor.
+   Pass2'deki ölü SeededRT kodunun yıllarca fark edilmemesinin sebebi de bu.
+   Yani düzeltme **doğru ama etkisi küçük**; "sınıflandırıcının ayırt etme
+   gücü ciddi düşüyordu" değerlendirmesi (md. 4) fazla iddialıydı.
+   Karşılaştırma için ikisi de üretilebilir:
    `process_L4.py --micro-count-uncleaned`, notebook'tan
    `run_all(extra_args=["--micro-count-uncleaned"])`, doğrudan segmentte
    `oscNext_L4(micro_count_uncleaned=True)`. `fill_ratio` her iki durumda da
@@ -294,10 +323,13 @@ Bizim düzeltmemiz **notu** izliyor, orijinal kodu değil — bilinçli sapma.
 
 Sonuç: `micro_count` ham hitler üzerinden sayılıyordu. Kalan adımların hiçbiri
 gürültü elemiyor (StaticTWC geniş zaman kesiti, OMSelection uzaysal kesim,
-TimeWindowCleaning en yoğun 200 ns penceresi). Saf gürültü olaylarında
-pencereye düşen rastgele hitler de sayılıyor → gürültünün `micro_count`'u
-şişiyor → **gürültü sınıflandırıcısının 5 girdisinden birinin ayırt etme
-gücü düşüyordu.**
+TimeWindowCleaning en yoğun 200 ns penceresi).
+
+**Etkisi sonradan ölçüldü ve KÜÇÜK çıktı** (bkz. açık risk 5b): iki zincir
+νe'de olayların %91'inde, noise'da %94'ünde birebir aynı sayıyı veriyor.
+200 ns'lik pencere zaten gürültüyü fiilen eliyor. Düzeltme nota uygunluk
+için doğru, ama buraya ilk yazılan "ayırt etme gücü düşüyordu" ifadesi
+ölçümle desteklenmiyor — abartılıydı.
 
 Teknik not (Tablo 11) *"Start with the **cleaned** pulse series"* diyor.
 Düzeltme nota göre yapıldı: zincir artık `cleaned_pulses`
