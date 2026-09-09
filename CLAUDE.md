@@ -172,6 +172,11 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    listeliyor, `MUON_FEATURES`'ta **9** vardı — `NchCleaned` atlanmıştı
    (noise listesinde olduğu için gözden kaçmış). Eklendi. Benzersiz BDT
    değişkeni: 14 (5 noise + 10 muon, `NchCleaned` ortak).
+3c. **`noise_weight` kolonu (düzeltildi).** `AUX`'ta `("noise_weight",
+   "value")` yazıyordu; eski LightGBM notebook'unda doğrulanmış hali
+   `("noise_weight", "weight")`. Yanlış olduğu için gürültü ağırlığı
+   **tamamen NaN** kalıyordu → noise örneğinin `w_phys`'i sıfır olurdu.
+   Düzeltildi, ikisi de `ALTS`'te.
 3b. **`iLineFit_speed` kolonu — kontrol edilmeli.** Tablo 11 girdiyi
    `L4_iLineFit.speed` (I3Particle alanı) diye veriyor; pybdt notebook'u
    `L4_iLineFitParams.LFVel` okuyor, LightGBM notebook'u ise pass3 kolonunun

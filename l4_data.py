@@ -92,7 +92,9 @@ AUX = {
     "NEvents":       ("I3MCWeightDict", "NEvents"),
     "pdg":           ("I3MCWeightDict", "PrimaryNeutrinoType"),
     "n_flux_events": ("L4_n_flux_events", "value"),
-    "noise_weight":  ("noise_weight", "value"),
+    # Eski (LightGBM) notebook'ta dogrulanmis hali: kolon "weight".
+    # "value" yanlis varsayimdi -> gurultu agirligi NaN kaliyordu.  ALTS'te ikisi de var.
+    "noise_weight":  ("noise_weight", "weight"),
 }
 
 # AUX kolonu -> hangi ornek turlerinde bulunur (SAMPLES[...]["kind"])
@@ -218,6 +220,8 @@ ALTS = {
     # ASAGIDAKILERIN HEPSI AYNI BUYUKLUK (mean'e gore fill ratio) --
     # from_rms / from_nch gibi FARKLI buyuklukleri BILEREK koymuyoruz,
     # yoksa sessizce baska bir fizik okunur.
+    "noise_weight":   [("noise_weight", "weight"),
+                       ("noise_weight", "value")],
     "fill_ratio":     [("L4_fill_ratio", "fill_ratio_from_mean"),
                        ("L4_fill_ratio", "fillratio_from_mean"),
                        ("L4_fill_ratio", "fillRatioFromMean"),
@@ -225,6 +229,15 @@ ALTS = {
 }
 
 _warned_unresolved = set()
+
+
+def _sample_tag(path):
+    """L4_nue_job3_part002.hdf5 -> 'L4_nue'  (uyarilari ornek basina teklestirmek icin)"""
+    b = os.path.basename(path)
+    for sep in ("_job", "_part"):
+        if sep in b:
+            b = b.split(sep)[0]
+    return b
 
 
 def resolve_one(name, available):
@@ -256,12 +269,21 @@ def load_one_file(path, wanted):
             need.setdefault(hit[0], []).append((name, hit[1]))
         else:
             unresolved.append(name)
-            # Cozulemeyen degisken -> NaN.  Ornek basina bir kez uyar.
-            key = (os.path.basename(path).split("_part")[0], name)
+            # Cozulemeyen degisken -> NaN.  ORNEK basina bir kez uyar
+            # (dosya basina degil: 16 parcada 16 kez basiyordu).
+            key = (_sample_tag(path), name)
             if key not in _warned_unresolved:
                 _warned_unresolved.add(key)
                 pair = REGISTRY.get(name, AUX.get(name))
-                print("  [!] %-22s cozulemedi (%s) -> NaN" % (name, pair))
+                tbl = pair[0] if pair else "?"
+                if tbl not in available:
+                    print("  [!] %-20s TABLO YOK: %s -> NaN" % (name, tbl))
+                else:
+                    cols = sorted(available[tbl])
+                    print("  [!] %-20s %s icinde '%s' kolonu YOK -> NaN"
+                          % (name, tbl, pair[1]))
+                    print("      mevcut kolonlar: %s"
+                          % (", ".join(cols[:10]) + (" ..." if len(cols) > 10 else "")))
 
     with tables.open_file(path, "r") as h5:
         nodes = _table_nodes(h5)
@@ -372,6 +394,17 @@ def find_hdf5(name, SAMPLES, verbose=True):
 
 def load_sample(name, SAMPLES, wanted, max_files=None):
     """Bir ornegin tum HDF5 dosyalarini oku ve birlestir."""
+    # Bu ornekte BULUNMASI BEKLENMEYEN AUX kolonlarini isteme.  Aksi halde
+    # her CORSIKA dosyasi icin "OneWeight yok" gibi yaniltici uyarilar cikar.
+    kind = SAMPLES[name].get("kind")
+    if kind:
+        drop = set(AUX) - set(aux_for(kind))
+        skipped = [w for w in wanted if w in drop]
+        wanted = [w for w in wanted if w not in drop]
+        if skipped:
+            print("  (%s: bu ornekte beklenmeyen %d AUX kolonu atlandi: %s)"
+                  % (name, len(skipped), ", ".join(sorted(skipped))))
+
     files = sample_files(name, SAMPLES)
     if max_files:
         files = files[:max_files]
