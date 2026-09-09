@@ -557,22 +557,31 @@ def _vich(frame, uncleaned_pulses, cleaned_pulses,
 def oscNext_L4_atm_muon_classifier_variables(tray, name,
                                              uncleaned_pulses,
                                              cleaned_pulses,
-                                             run_qr_box=False):
-    '''L4 atmosferik muon reddi siniflandiricisinin girdileri.'''
+                                             run_qr_box=False,
+                                             run_optional=True):
+    '''
+    L4 atmosferik muon reddi siniflandiricisinin girdileri.
+
+    run_optional=False: BDT girdisi OLMAYAN hesaplar atlanir
+    (I3TensorOfInertia ve separation_in_cogs).  Ikisi de Tablo 12'de yok;
+    aday/legacy olarak duruyorlar ama olay basina gercek maliyetleri var.
+    Uretim hizlandirmak icin process_L4.py --skip-optional ile kapatilir.
+    '''
 
     # Bu segment'in gerektirdigi projeler -- yoksa BURADA net hata ver
     # (import zamaninda degil, ki geri kalan repo import edilebilsin).
-    require_project("tensor_of_inertia")
     require_project("linefit")
 
     # --- Tensor of inertia (BDT girdisi degil; aday/legacy) ---
-    tray.AddModule("I3TensorOfInertia", name + "_ToI",
-                   AmplitudeOption=1,
-                   AmplitudeWeight=1,
-                   InputReadout=cleaned_pulses,
-                   InputSelection="",
-                   MinHits=3,
-                   Name=L4_TOI_KEY)
+    if run_optional:
+        require_project("tensor_of_inertia")
+        tray.AddModule("I3TensorOfInertia", name + "_ToI",
+                       AmplitudeOption=1,
+                       AmplitudeWeight=1,
+                       InputReadout=cleaned_pulses,
+                       InputSelection="",
+                       MinHits=3,
+                       Name=L4_TOI_KEY)
 
     # --- improved LineFit ---
     # BDT'de kullanilan alan hiz: L4_iLineFitParams.LFVel
@@ -596,9 +605,11 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
              pulses_key=cleaned_pulses,
              output_key=L4_ACC_TIME_KEY)
 
-    tray.Add(_separation_in_cogs, name + "_SepCOG",
-             pulses_key=cleaned_pulses,
-             output_key=L4_SEP_IN_COGS_KEY)
+    # BDT girdisi degil (Tablo 12'de yok) -- saf Python, olay basina maliyeti var
+    if run_optional:
+        tray.Add(_separation_in_cogs, name + "_SepCOG",
+                 pulses_key=cleaned_pulses,
+                 output_key=L4_SEP_IN_COGS_KEY)
 
     # --- VICH (tau_bdt yeniden yazim) ---
     tray.Add(_vich, name + "_VICH",
@@ -812,6 +823,7 @@ def oscNext_L4(tray, name,
                apply_l3_cut=True,
                is_genie=False,
                compute_hit_statistics=True,
+               run_optional=True,
                apply_cut=False,
                classifier_model_dir=None):
     '''
@@ -862,7 +874,8 @@ def oscNext_L4(tray, name,
 
     tray.Add(oscNext_L4_atm_muon_classifier_variables, name + "_muon_vars",
              uncleaned_pulses=uncleaned_pulses,
-             cleaned_pulses=cleaned_pulses)
+             cleaned_pulses=cleaned_pulses,
+             run_optional=run_optional)
 
     if apply_cut:
         if classifier_model_dir is None:

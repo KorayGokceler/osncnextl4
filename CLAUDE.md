@@ -362,6 +362,40 @@ Elenen dosyalar `<çıktı>.hdf5.badfiles.txt`'ye yazılır. Set başına bir ke
 `scan_files.py --good-list` ile tarayıp `--input-list ... --scan off`
 kullanmak en verimlisi.
 
+## HDF5 üretimini hızlandırma
+
+Ölçülen: νe 100 dosya / 1019 s (~10 s/dosya), CORSIKA 500 dosya / 2578 s.
+Tek süreç, tek çekirdek.
+
+**Önce ölç, sonra optimize et:**
+```bash
+python process_L4.py --usage --n 2000 --scan off --input <tek_dosya> ...
+```
+IceTray modül bazlı CPU zamanını basar. En yavaş modülü görmeden
+optimize etmeye çalışma.
+
+**1. Paralellik (en büyük kazanç).** Girdi dosyalarını N sürece böl:
+```python
+from l4_run import run_process_parallel
+run_process_parallel("nue", jobs=8, chunk_files=10)
+```
+Ayrı süreçler, ayrı çıktılar (`L4_nue_job0_part000.hdf5` …), ortak durum
+yok → neredeyse doğrusal hızlanma. Hepsi `L4_nue*.hdf5` glob'una uyar ve
+her parça kendi `.meta.json`'ını yazar, `n_l3_files` doğru toplanır.
+**cobalt paylaşılan makine** — `jobs=8` makul, `jobs=64` değil.
+
+**2. Gereksiz hesabı atla.** `--skip-optional` → `I3TensorOfInertia`
+(`L4_ToI`) ve `separation_in_cogs` hesaplanmaz. İkisi de Tablo 11/12'de
+**yok**, yani BDT girdisi değil; aday/legacy olarak duruyorlar.
+
+**3. Taramayı bir kez yap.** `scan_files.py --good-list` ile set başına bir
+kez tara, sonra `--input-list ... --scan off`. `run_process_parallel`
+zaten `--scan off` kullanıyor.
+
+**4. Az anahtar book et.** 33 anahtar yazılıyor; `I3GenieSystWeightDict`
+gibi büyük map'ler gerekmiyorsa `process_L4.build_key_list`'ten çıkarmak
+hem yazmayı hızlandırır hem dosyayı küçültür.
+
 ## `--n` frame sayar, olay saymaz
 
 `process_L4.py --n N` → `tray.Execute(N)` → **N frame** işlenir. Frame ≠ olay:

@@ -205,6 +205,40 @@ def _write_meta(output, meta):
         print("  [!] meta yazilamadi: %s" % e)
 
 
+_WANT_USAGE = {"on": False}
+
+
+def _print_usage(tray):
+    """
+    Modul bazli CPU zamanini bas (--usage).
+
+    IceTray her modulun ne kadar surdugunu zaten tutuyor; tahmin etmek
+    yerine buna bakin.  Ciktida "usermodule" satirlari en yavas modulleri
+    gosterir -- optimizasyona oradan baslayin.
+    """
+    if not _WANT_USAGE["on"]:
+        return
+    try:
+        usage = tray.Usage()
+    except Exception as e:
+        print("  [!] modul zamanlamasi alinamadi: %s" % e)
+        return
+    rows = []
+    for key, u in usage.items():
+        rows.append((getattr(u, "usertime", 0.0) + getattr(u, "systime", 0.0),
+                     getattr(u, "ncall", 0), key))
+    rows.sort(reverse=True)
+    total = sum(r[0] for r in rows) or 1.0
+    print()
+    print("=" * 66)
+    print("MODUL BAZLI CPU ZAMANI  (toplam %.1f s)" % total)
+    print("=" * 66)
+    print("%-38s %9s %7s %8s" % ("modul", "cpu [s]", "%", "cagri"))
+    for t, n, key in rows[:25]:
+        print("%-38s %9.1f %6.1f%% %8d" % (key[:38], t, 100 * t / total, n))
+    print()
+
+
 def _pct(n, total):
     return "%.1f%%" % (100.0 * n / total) if total else "-"
 
@@ -280,6 +314,7 @@ def _run_tray(build, infiles, output_hdf5, retries):
                 tray.Execute(n_frames)
             else:
                 tray.Execute()
+            _print_usage(tray)
             return counter, infiles
         except RuntimeError as e:
             m = _BAD_FILE_RE.search(str(e))
@@ -363,6 +398,14 @@ def main():
                         "(yavas ama kesin), off=tarama yok")
     p.add_argument("--scan-frames", type=int, default=25,
                    help="--scan quick modunda dosya basina okunacak frame (varsayilan 25)")
+    p.add_argument("--skip-optional", action="store_true",
+                   help="BDT girdisi OLMAYAN hesaplari atla: I3TensorOfInertia "
+                        "(L4_ToI) ve separation_in_cogs.  Ikisi de Tablo 11/12'de "
+                        "yok.  Uretimi hizlandirir.")
+    p.add_argument("--usage", action="store_true",
+                   help="Bitince MODUL BAZLI CPU zamanini bas -- hangi modulun "
+                        "yavas oldugunu gormek icin.  Once bunu calistirin, "
+                        "sonra optimize edin.")
     p.add_argument("--progress", type=int, default=5000,
                    help="Her N frame'de bir [PROGRESS] satiri bas (0=kapali). "
                         "Notebook bu satirlardan ilerleme cubugu cizer.")
@@ -382,6 +425,8 @@ def main():
 
     if not args.input and not args.input_list:
         p.error("--input ya da --input-list vermelisiniz.")
+
+    _WANT_USAGE["on"] = args.usage
 
     if args.n > 0 and args.chunk_files > 0:
         p.error("--n ile --chunk-files birlikte kullanilmaz: --n her parcada "
@@ -477,6 +522,7 @@ def main():
                  apply_l3_cut=not args.no_l3_cut,
                  is_genie=args.genie,
                  compute_hit_statistics=not args.no_hit_statistics,
+                 run_optional=not args.skip_optional,
                  apply_cut=args.apply_cut,
                  classifier_model_dir=args.model_dir)
 

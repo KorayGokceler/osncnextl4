@@ -247,3 +247,125 @@ def run_all(samples=None, chunk_files=10):
         print("\n[!] Basarisiz: %s"
               % ", ".join(n for n, v in results.items() if v is None))
     return results
+
+
+# ---------------------------------------------------------------------------
+# Paralel calistirma
+# ---------------------------------------------------------------------------
+#
+# En buyuk hizlanma burada.  process_L4.py tek surec ve tek cekirdek
+# kullaniyor; cobalt'ta onlarca cekirdek var.  Girdi dosyalarini N gruba
+# bolup N ayri process_L4.py surecinde islemek neredeyse dogrusal hizlanma
+# verir -- ayri surecler, ayri cikti dosyalari, ortak durum yok.
+#
+# Cikti adlari:  L4_nue_job0_part000.hdf5, L4_nue_job1_part000.hdf5, ...
+# Hepsi notebook'un L4_nue*.hdf5 glob'una uyar; her parca kendi
+# .meta.json'ini yazar, n_l3_files dogru toplanir.
+#
+# DIKKAT: cobalt paylasilan bir makine.  jobs=8 makul, jobs=64 degil.
+
+import threading
+
+
+def _split(seq, n):
+    """seq'i n gruba bol (son gruplar bir eksik olabilir)."""
+    n = max(1, min(n, len(seq)))
+    k, r = divmod(len(seq), n)
+    out, i = [], 0
+    for j in range(n):
+        m = k + (1 if j < r else 0)
+        out.append(seq[i:i + m])
+        i += m
+    return [g for g in out if g]
+
+
+def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True):
+    """
+    Bir ornegi N paralel surecte isle.
+
+    jobs        : kac process_L4.py sureci
+    chunk_files : her surec kendi icinde kac dosyalik parcalar halinde islesin
+                  (cokme sonrasi kaldigi yerden devam icin)
+    """
+    cfg = _cfg("SAMPLES")[name]
+    out = cfg["hdf5"]
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+
+    files = sorted(glob.glob(cfg["l3"]))
+    if not files:
+        print("[!] %s: L3 dosyasi yok -> %s" % (name, cfg["l3"]))
+        return None
+    groups = _split(files, jobs)
+    print("%s: %d L3 dosyasi -> %d surec (%s dosya/surec)"
+          % (name, len(files), len(groups), "/".join(str(len(g)) for g in groups)))
+
+    listdir = os.path.join(os.path.dirname(out), "_filelists")
+    os.makedirs(listdir, exist_ok=True)
+
+    procs, state = [], {}
+    for j, grp in enumerate(groups):
+        lst = os.path.join(listdir, "%s_job%d.txt" % (name, j))
+        with open(lst, "w") as fh:
+            fh.write("\n".join(grp) + "\n")
+        base, ext = os.path.splitext(out)
+        cmd = [sys.executable, "-u", _cfg("PROCESS_PY"),
+               "--gcd", _cfg("GCD"),
+               "--input-list", lst,
+               "--scan", "off",          # tarama bir kez, asagida
+               "--output-hdf5", "%s_job%d%s" % (base, j, ext)] + cfg["flags"]
+        if chunk_files:
+            cmd += ["--chunk-files", str(chunk_files)]
+        procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True,
+                                      bufsize=1))
+        state[j] = {"done": 0, "total": len(grp), "booked": 0, "tail": []}
+
+    b = _Bar(name, total=len(files)) if bar else None
+    lock = threading.Lock()
+
+    def reader(j, p):
+        for line in p.stdout:
+            line = line.rstrip("\n")
+            st = state[j]
+            st["tail"].append(line)
+            if len(st["tail"]) > 60:
+                del st["tail"][:30]
+            m = _CHUNK_RE.match(line)
+            if m:
+                _, _, fdone, _, booked, _ = m.groups()
+                with lock:
+                    st["done"] = int(fdone)
+                    st["booked"] = int(booked)
+                    if b:
+                        d = sum(v["done"] for v in state.values())
+                        bk = sum(v["booked"] for v in state.values())
+                        b.update(d, "%d surec  olay %d" % (len(procs), bk))
+        p.wait()
+
+    t0 = time.time()
+    threads = [threading.Thread(target=reader, args=(j, p), daemon=True)
+               for j, p in enumerate(procs)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    dt = time.time() - t0
+    rc = [p.returncode for p in procs]
+    parts = sorted(glob.glob(out.replace(".hdf5", "*.hdf5")))
+    sz = sum(os.path.getsize(f) for f in parts) / 1e6
+    msg = "%.1f MB, %d dosya, %.0f s" % (sz, len(parts), dt)
+
+    if any(r != 0 for r in rc):
+        if b:
+            b.fail("basarisiz surec: %s" % [j for j, r in enumerate(rc) if r])
+        for j, r in enumerate(rc):
+            if r:
+                print("\n--- job %d (rc=%d) ---" % (j, r))
+                print("\n".join(state[j]["tail"][-log_tail:]))
+        return None
+
+    if b:
+        b.done(msg)
+    print("-> %s  (%s)" % (out, msg))
+    return out
