@@ -80,7 +80,7 @@ pybdt_classifier_module.py  (PyBDTClassifier tray modülü)
 
 **Referans (LightGBM) yolu** — resmi yöntem, artık aktif kullanılmıyor:
 `oscNext_L4_feature_engineering.ipynb` (eski arayüz, parquet export) →
-`train_L4_classifier.py` → `L4_{tag}_model.txt`/`.json` →
+`reference/train_L4_classifier.py` → `L4_{tag}_model.txt`/`.json` →
 `l4_classifier_module.py`. Eski notebook'ta yeni notebook'a
 **taşınmamış** bölümler var ve bu yüzden duruyor: §6 yeniden yazılan
 değişkenlerin referansla karşılaştırılması, §8 türetilmiş değişkenler,
@@ -311,7 +311,7 @@ v00.074, bölüm 3.6.1) L4 noise/muon sınıflandırıcılarının LightGBM
 (gradient boosting) ile eğitildiğini açıkça yazıyor, pybdt hiç
 geçmiyor; Tablo 10'daki hiperparametreler de (`max_depth`, `num_leaves`,
 `max_bin`, `lambda_l1`, `lambda_l2`, `min_gain_to_split`) LightGBM'in
-native isimleri. `train_L4_classifier.py` şu an bu resmi yaklaşımı
+native isimleri. `reference/train_L4_classifier.py` şu an bu resmi yaklaşımı
 (LightGBM) doğru şekilde uyguluyor ve referans olarak repoda duruyor.
 
 pybdt'ye geçiş şu sonuçları doğurur:
@@ -338,7 +338,7 @@ pybdt'ye geçiş şu sonuçları doğurur:
   şüpheye düşüldü). Doğrusu: `import pybdt` / `from pybdt import ml,
   util` (pybdt'nin kendi kaynak kodu da bunu kullanıyor, bkz.
   `pybdt/python/pybdtmodule.py`). `l4_classifier_module.py` ve
-  `train_L4_classifier.py`'nin aksine pybdt `icecube.*` namespace
+  `reference/train_L4_classifier.py`'nin aksine pybdt `icecube.*` namespace
   paketi değil, bağımsız üst düzey bir pip-tarzı pakettir.
 - Bu özel build'in ortamı: `eval $(/cvmfs/.../py3-v4.4.2/setup.sh)` →
   `cd <build_dizini> && ./env-shell.sh`. Jupyter de bu ortamdan
@@ -355,7 +355,7 @@ pybdt'nin kendi önerdiği iş akışını izler (bkz. `pybdt/resources/docs/`
 ```
 
 - `pybdt_train.py` — eğitim + doğrulama, **tamamen standalone**:
-  sklearn / lightgbm / pandas kullanmaz, `train_L4_classifier.py`'den
+  sklearn / lightgbm / pandas kullanmaz, `reference/train_L4_classifier.py`'den
   hiçbir şey import etmez. Girdi olarak pybdt native `.ds` dosyaları
   alır. Değerlendirme için pybdt'nin kendi `validate.Validator`'ını
   kullanır — KS testli overtraining kontrolü (`p_KS < 0.01` uyarısı,

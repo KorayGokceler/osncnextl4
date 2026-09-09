@@ -23,7 +23,6 @@ noise + muon sınıflandırıcılarını eğitir.
 | `oscNext_L4_pybdt.ipynb` | pybdt build'i | **ANA ARAYÜZ** — uçtan uca tüm süreç |
 | `pybdt_train.py` | pybdt build'i | `.ds` → BDT eğitimi + doğrulama grafikleri |
 | `pybdt_classifier_module.py` | pybdt build'i | Eğitilmiş pybdt modelini frame'e uygular |
-| `train_L4_classifier.py` | herhangi | *(referans)* Parquet → LightGBM modeli |
 | `l4_classifier_module.py` | IceTray | *(referans)* LightGBM modelini frame'e uygular + `FEATURE_MAP` |
 | `oscNext_L4_feature_engineering.ipynb` | IceTray | *(referans)* Eski uçtan uca arayüz |
 | `diagnose_env.py` | IceTray | Ortamda ne var ne yok (pybdt kontrolü dahil) |
