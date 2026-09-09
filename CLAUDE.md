@@ -271,6 +271,30 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    =[1010, 1011]`, `WindowMinus/Plus = 3500/4000`, `dtw = 200`, alt anahtar
    adı `STW_m%ip%i_DTW%i`, ve sayımın **DOM** sayısı olduğu
    (`len(reco_pulse_series.values())` — bizde `len(pmap)`, aynı şey).
+5c. **YAPILACAK — sinyal train/test ayrımı iki BDT'de farklı.** Notebook
+   bölüm 6'da `make_datasets` noise ve muon BDT'si için ayrı ayrı
+   çağrılıyor ve her çağrıda `istrain = rng.random(...)` **yeniden**
+   çekiliyor. İkisi de aynı νe+νμ sinyal olaylarını kullandığı için bir
+   olay noise BDT'sinin *eğitim*, muon BDT'sinin *test* setinde olabiliyor.
+   Tek tek modeller için sorun değil; ama L4 kesimi ikisinin **birleşimi**
+   (orijinal: `noise ≥ 0.7 AND muon ≥ 0.65`) ve birleşik kesimi
+   değerlendirecek ortak held-out set yok → nihai verim olduğundan iyi
+   görünür. **Çözüm:** sinyal ayrımını bir kez çekip iki BDT'de de aynısını
+   kullanmak (üç satır). Bilinçli olarak ertelendi.
+5d. **Ölçülmemiş — `NOISE_NS_SCALE = 1e9`** (`l4_data.py`). Vuvuzela
+   `noise_weight`'in birimi pass3'te 1/ns varsayılıyor. **Eğitim buna
+   bağışık** (`make_datasets` her sınıfın ağırlık toplamını 1'e normalize
+   ediyor, sabit çarpan sadeleşir); etkilenen yer **bölüm 9 kesim seçimi**,
+   orada mutlak orana bakılıyor. `add_weights`'in Tablo 13 karşılaştırması
+   noise satırında ~36.6 mHz gösteriyorsa varsayım doğru — gerçek koşuda
+   bu satıra bakılmalı.
+5e. **Ölçülmemiş — noise MC istatistiği.** `test_noise_vars.py`'de noise
+   dosyasında 205 Physics frame'in **17'si** L3'ü geçti (%8; νe'de %84).
+   Beklenen ama 100 dosyadan kaç eğitim olayı çıkacağı bilinmiyor. İnce
+   kalırsa iki şey tetiklenir: `pybdt_train.py`'nin KS overtraining
+   uyarısı ve `add_weights`'in "maks/toplam > %5" uyarısı (tek olay oranı
+   domine ediyorsa `scale = max(...)` normalizasyonu diğer bütün olayları
+   sıfıra doğru ezer).
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
