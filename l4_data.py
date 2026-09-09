@@ -95,6 +95,10 @@ AUX = {
     # Eski (LightGBM) notebook'ta dogrulanmis hali: kolon "weight".
     # "value" yanlis varsayimdi -> gurultu agirligi NaN kaliyordu.  ALTS'te ikisi de var.
     "noise_weight":  ("noise_weight", "weight"),
+    # CORSIKA -- simweights yoksa elle hesap icin
+    "cwm_Weight":       ("CorsikaWeightMap", "Weight"),
+    "cwm_NEvents":      ("CorsikaWeightMap", "NEvents"),
+    "cwm_OverSampling": ("CorsikaWeightMap", "OverSampling"),
 }
 
 # AUX kolonu -> hangi ornek turlerinde bulunur (SAMPLES[...]["kind"])
@@ -105,6 +109,9 @@ AUX_KINDS = {
     "pdg":           ("signal",),
     "n_flux_events": ("signal",),
     "noise_weight":  ("noise_bg",),
+    "cwm_Weight":       ("muon_bg",),
+    "cwm_NEvents":      ("muon_bg",),
+    "cwm_OverSampling": ("muon_bg",),
 }
 
 
@@ -431,6 +438,10 @@ def load_sample(name, SAMPLES, wanted, max_files=None):
         print("      yeniden calistirin ya da n_l3_files'i elle dogrulayin.")
     data["_n_files"] = float(n_l3)
     data["_n_hdf5"] = len(files)
+    # CORSIKA agirligi dosyalari YENIDEN acmak zorunda (simweights HDF5'i
+    # dogrudan okuyor), o yuzden listeyi ve parca basina L3 sayisini sakla.
+    data["_files"] = list(files)
+    data["_n_l3_per_file"] = [n_l3_files(f) for f in files]
 
     print("%-8s %8d olay, %d HDF5, %d L3 dosyasi (%s)"
           % (name, len(data["Run"]), len(files), n_l3, src))
@@ -477,11 +488,110 @@ def noise_weight(d):
     return d["noise_weight"] * NOISE_NS_SCALE / d["_n_files"]
 
 
+def _corsika_weight_manual(d):
+    """
+    simweights yoksa: CorsikaWeightMap.Weight / (NEvents * OverSampling).
+
+    Eski (LightGBM) notebook'un fallback'i ile ayni.  Mutlak oran
+    guvenilmez ama en azindan olaylar SPEKTRUMA gore agirliklanir --
+    duz 1.0 vermekten cok daha iyisi.
+    """
+    print("  [!] simweights YOK -> CorsikaWeightMap ile yaklasik agirlik.")
+    print("      Mutlak oran guvenilmez; egitim icin spektrum en azindan dogru.")
+    w = np.asarray(d.get("cwm_Weight"), dtype=np.float64)
+    nev = np.asarray(d.get("cwm_NEvents"), dtype=np.float64)
+    osamp = np.asarray(d.get("cwm_OverSampling"), dtype=np.float64)
+    osamp = np.where(np.isfinite(osamp) & (osamp > 0), osamp, 1.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return w / (nev * osamp * d["_n_files"])
+
+
+def _open_for_simweights(path):
+    """simweights'e verilebilecek bir dosya nesnesi ac (pytables, yoksa h5py)."""
+    try:
+        return tables.open_file(path, "r"), "tables"
+    except Exception:
+        pass
+    try:
+        import h5py
+        return h5py.File(path, "r"), "h5py"
+    except Exception as e:
+        raise RuntimeError("acilamadi: %s" % e)
+
+
 def corsika_weight(d):
-    """simweights yoksa kaba yaklasim -- mutlak oran guvenilmez."""
-    print("  [!] CORSIKA agirligi yaklasik (simweights entegrasyonu yok). "
-          "Mutlak oranlara guvenmeyin; sekil/egitim icin yeterli.")
-    return np.ones(len(d["Run"])) / d["_n_files"]
+    """
+    CORSIKA agirligi -- simweights + GaisserH3a (eski notebook ile ayni yontem).
+
+    simweights HDF5'i DOGRUDAN okuyor (CorsikaWeightMap, PolyplopiaPrimary,
+    I3CorsikaInfo ...), o yuzden dosyalari yeniden aciyoruz.  Sonuc
+    Run/Event/SubEvent uzerinden geri eslestiriliyor -- satir sirasina
+    guvenmiyoruz.
+
+    NORMALIZASYON -- eski notebook'tan FARKLI ve bilerek:
+      Eski kod her HDF5 icin nfiles=1 verip sonunda HDF5 sayisina
+      boluyordu.  Bizim her parcamizda birden fazla L3 dosyasi var
+      (--chunk-files), o yuzden parcanin KENDI n_l3_files'i nfiles olarak
+      veriliyor ve sonda AYRICA bolme YAPILMIYOR.  Aksi halde agirliklar
+      parca basina dosya sayisi kadar kucuk cikardi.
+    """
+    try:
+        import simweights
+    except ImportError:
+        return _corsika_weight_manual(d)
+
+    files = d.get("_files") or []
+    n_l3 = d.get("_n_l3_per_file") or []
+    if not files:
+        print("  [!] dosya listesi yok -> yaklasik agirliga dusuluyor")
+        return _corsika_weight_manual(d)
+
+    key2w, n_fail = {}, 0
+    for path, nl3 in zip(files, n_l3):
+        if not nl3:
+            print("  [!] %s: meta.json yok, nfiles bilinmiyor -> atlandi"
+                  % os.path.basename(path))
+            n_fail += 1
+            continue
+        fh = kind = None
+        try:
+            fh, kind = _open_for_simweights(path)
+            wobj = simweights.CorsikaWeighter(fh, nfiles=nl3)
+            w = np.asarray(wobj.get_weights(simweights.GaisserH3a()), dtype=np.float64)
+            with tables.open_file(path, "r") as h5:
+                eh = _table_nodes(h5)["I3EventHeader"]
+                r, e, sub = _ids(eh)
+            if len(w) != len(r):
+                print("  [!] %s: simweights %d agirlik, %d olay -> atlandi"
+                      % (os.path.basename(path), len(w), len(r)))
+                n_fail += 1
+                continue
+            for k, ww in zip(zip(r, e, sub), w):
+                key2w[k] = ww
+        except Exception as ex:
+            print("  [!] simweights basarisiz (%s): %s"
+                  % (os.path.basename(path), str(ex)[:120]))
+            n_fail += 1
+        finally:
+            if fh is not None:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+
+    if not key2w:
+        print("  [!] simweights hicbir dosyada calismadi -> yaklasik agirlik")
+        return _corsika_weight_manual(d)
+
+    out = np.array([key2w.get(k, np.nan) for k in
+                    zip(d["Run"], d["Event"], d["SubEvent"])], dtype=np.float64)
+    matched = np.isfinite(out).mean()
+    print("  simweights + GaisserH3a: %d olay agirliklandirildi (%.0f%% eslesme%s)"
+          % (len(key2w), 100 * matched,
+             ", %d dosya basarisiz" % n_fail if n_fail else ""))
+    if matched < 0.99:
+        print("      [!] eslesmeyen olaylar NaN -> w_phys 0 sayilacak")
+    return out
 
 
 WEIGHTERS = {"nue": genie_weight, "numu": genie_weight,

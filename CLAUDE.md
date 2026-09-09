@@ -182,6 +182,19 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    `L4_iLineFitParams.LFVel` okuyor, LightGBM notebook'u ise pass3 kolonunun
    `lf_vel` olduğunu "DOĞRULANDI" diye not düşmüş. Yanlışsa **sessiz NaN**.
    Bölüm 2'de `dump_tables(..., only=["iLineFit"])` ile 10 saniyede çözülür.
+3d. **CORSIKA ağırlığı (düzeltildi).** pybdt yolundaki `corsika_weight`
+   her olaya **eşit** ağırlık veriyordu (`np.ones/n_files`) — yani
+   ağırlıklandırma hiç yoktu. Sadece mutlak oranı bozmuyordu; muon BDT'si
+   atmosferik spektrumu değil simülasyonun düz spektrumunu görüyordu,
+   yani **eğitim setinin şekli yanlıştı**. Eski LightGBM notebook'undaki
+   yöntem taşındı: `simweights` + `GaisserH3a`, yoksa
+   `CorsikaWeightMap.Weight / (NEvents × OverSampling)`.
+   Eşleştirme `Run/Event/SubEvent` üzerinden (satır sırasına güvenilmiyor).
+   **Normalizasyon eski koddan bilerek farklı:** eski kod her HDF5 için
+   `nfiles=1` verip sonda HDF5 sayısına bölüyordu; bizim parçalarımızda
+   `--chunk-files` yüzünden birden fazla L3 dosyası var, o yüzden parçanın
+   kendi `n_l3_files`'i `nfiles` olarak veriliyor ve sonda ayrıca bölme
+   yapılmıyor.
 4. **Ağırlık zinciri** (`PropagateGenieInfo`, `process_L4.py` MC_KEYS/
    NOISE_MC_KEYS/CORSIKA_KEYS) — pass3'te I3GenieInfo yoksa NEvents*fraksiyon
    fallback'ine düşülüyor; bunun ne sıklıkla tetiklendiği ve ne kadar sapma
