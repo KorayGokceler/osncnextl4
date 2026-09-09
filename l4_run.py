@@ -53,10 +53,39 @@ _CFG = {"SAMPLES": None, "PROCESS_PY": None, "GCD": None}
 
 
 def configure_runner(SAMPLES, PROCESS_PY, GCD):
-    """Notebook'taki tanimlari bu module tanit.  Bir kez cagrilir."""
+    """
+    Notebook'taki tanimlari bu module tanit.  Bir kez cagrilir.
+
+    Yollari BURADA dogruluyoruz.  Aksi halde process_L4.py bulunamadiginda
+    alt surec anlamsiz bir "returncode=2" ile oluyor ve sebebi gorunmuyor.
+    Tipik sebep: Jupyter eski/silinmis bir dizinden baslatilmis (calisma
+    dizini ~/.local/share/Trash/... cikar) -- goreli "./process_L4.py"
+    orada aranir.
+    """
     _CFG["SAMPLES"] = SAMPLES
     _CFG["PROCESS_PY"] = PROCESS_PY
     _CFG["GCD"] = GCD
+
+    cwd = os.getcwd()
+    problems = []
+    if not os.path.exists(PROCESS_PY):
+        problems.append("process_L4.py bulunamadi: %s" % os.path.abspath(PROCESS_PY))
+    if not os.path.exists(GCD):
+        problems.append("GCD bulunamadi: %s" % GCD)
+    if "Trash" in cwd or "/.Trash" in cwd:
+        problems.append("calisma dizini COP KUTUSUNDA: %s" % cwd)
+
+    if problems:
+        print("[!] configure_runner: sorun var")
+        for x in problems:
+            print("    " + x)
+        print("    calisma dizini: %s" % cwd)
+        print()
+        print("    Jupyter'i DOGRU dizinden baslatmis olmalisin -- kernel")
+        print("    yeniden baslatmak yetmez, calisma dizini sunucudan gelir:")
+        print("        cd ~/l4/osncnextl4 && python -m jupyter lab ...")
+    else:
+        print("configure_runner OK  (cwd: %s)" % cwd)
 
 
 def _cfg(key):

@@ -324,6 +324,26 @@ print("hafizada :", hasattr(l4_data, "aux_for"))
 İkisi de False → `git pull` yapılmamış.
 Notebook bölüm 0 artık `%autoreload 2` açıyor, bu sorun tekrarlamamalı.
 
+**2b. Jupyter'in CALISMA DIZINI kernel restart ile degismez.**
+Belirti: alt surec `returncode=2` ile oluyor ve yol
+`~/.local/share/Trash/files/...` gibi bir yeri gosteriyor. Sebep: repo
+klasoru silinmis/tasinmis ama Jupyter sunucusu hala eski dizinde
+calisiyor; `./process_L4.py` gibi **goreli** yollar oraya cozuluyor.
+Ayni sebep eski `l4_data.py`'nin okunmasina da yol acar.
+
+Kernel Restart YETMEZ — calisma dizini **sunucudan** gelir. Jupyter
+sunucusunu kapatip dogru dizinden yeniden baslat:
+```bash
+cd ~/l4/osncnextl4 && python -m jupyter lab --no-browser --port=8896
+```
+Notebook'ta kontrol: `import os; os.getcwd()`.
+`configure_runner` artik bunu basta yakalayip soyluyor.
+
+> Klasoru dosya yoneticisinden ya da Jupyter'in sil dugmesinden silmek
+> `rm` degil, **cop kutusuna tasima**dir (`~/.local/share/Trash/files/`).
+> Dosyalar orada durur ve home kotasindan yer yer — kurtarilacak bir sey
+> varsa oradan alin, sonra `rm -rf` ile gercekten silin.
+
 **2. Jupyter kernel'i.** Notebook'un IceTray/pybdt'yi görmesinin tek yolu
 kernel'in env-shell içindeki python olması. Jupyter'i ortam içinden
 başlatmak en temizi (README adım 4); başlatılmadıysa `./setup_env.sh kernel`
