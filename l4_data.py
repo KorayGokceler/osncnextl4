@@ -48,7 +48,10 @@ REGISTRY = {
     # boyle); "LFVel" eski varsayimdi.  Teknik not Tablo 11 ise degiskeni
     # "L4_iLineFit.speed" (I3Particle alani) diye veriyor.  Ucu de ALTS'te.
     "iLineFit_speed":      ("L4_iLineFitParams", "lf_vel"),
-    "fill_ratio":          ("L4_fill_ratio", "fill_ratio_from_mean"),
+    # DOGRULANDI (gercek pass3 HDF5 ciktisi): kolon "fillratio_from_mean"
+    # -- alt cizgisiz.  Teknik not Tablo 11 "fill_ratio_from_mean" yaziyor,
+    # hdfwriter cevirici farkli adlandiriyor.  Ikisi de ALTS'te.
+    "fill_ratio":          ("L4_fill_ratio", "fillratio_from_mean"),
     "FullTimeLengthRatio": ("L4_FullTimeLengthRatio", "value"),
 
     # --- muon BDT (Tablo 12) ---
@@ -254,8 +257,8 @@ ALTS = {
     # yoksa sessizce baska bir fizik okunur.
     "noise_weight":   [("noise_weight", "weight"),
                        ("noise_weight", "value")],
-    "fill_ratio":     [("L4_fill_ratio", "fill_ratio_from_mean"),
-                       ("L4_fill_ratio", "fillratio_from_mean"),
+    "fill_ratio":     [("L4_fill_ratio", "fillratio_from_mean"),
+                       ("L4_fill_ratio", "fill_ratio_from_mean"),
                        ("L4_fill_ratio", "fillRatioFromMean"),
                        ("L4_fill_ratio", "FillRatioFromMean")],
 }
@@ -761,6 +764,37 @@ def read_feature_map(path=None):
     return fmap
 
 
+def read_column_alts(path=None):
+    """
+    l4_classifier_module.COLUMN_ALTS'i AST ile oku.
+
+    O modul frame tarafinda alan adi varyantlarini deniyor; HDF5 kolon adi
+    ile frame alan adi AYNI OLMAK ZORUNDA DEGIL (hdfwriter cevirici
+    yeniden adlandirabiliyor -- orn. fill_ratio_from_mean -> fillratio_from_mean).
+    Bu yuzden tutarlilik kontrolu iki tarafin da alternatiflerini bilmeli,
+    yoksa mesru bir isim farkini "cakisma" sanip yanlis alarm verir.
+    """
+    import ast
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "l4_classifier_module.py")
+    if not os.path.exists(path):
+        return {}
+    tree = ast.parse(open(path).read())
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "COLUMN_ALTS"
+                and isinstance(node.value, ast.Dict)):
+            out = {}
+            for k, v in zip(node.value.keys, node.value.values):
+                try:
+                    out[tuple(ast.literal_eval(k))] = list(ast.literal_eval(v))
+                except Exception:
+                    pass
+            return out
+    return {}
+
+
 def check_feature_map(verbose=True):
     """
     l4_classifier_module.FEATURE_MAP ile REGISTRY ayni mi?
@@ -782,12 +816,23 @@ def check_feature_map(verbose=True):
     # ust kume (aday degiskenler de icinde), bu beklenen bir durum.
     only_fmap = []
 
+    colalts = read_column_alts()
+
+    def _accepts(pair, extra_cols):
+        """(tablo, kolon) + o cifte tanimli alternatif kolon adlari."""
+        tbl, col = pair
+        return {(tbl, col)} | {(tbl, c) for c in extra_cols}
+
     for name, pair in sorted(fmap.items()):
         mine = REGISTRY.get(name)
         if mine is None:
             only_fmap.append(name)
-        elif tuple(mine) != tuple(pair):
-            conflict.append((name, tuple(mine), pair))
+            continue
+        # Her iki tarafin kabul ettigi (tablo, kolon) kumeleri kesisiyor mu?
+        mine_set = set(ALTS.get(name, [tuple(mine)]))
+        fmap_set = _accepts(tuple(pair), colalts.get(tuple(pair), []))
+        if not (mine_set & fmap_set):
+            conflict.append((name, tuple(mine), tuple(pair)))
 
     for name in sorted(set(NOISE_FEATURES) | set(MUON_FEATURES)):
         if name in REGISTRY and name not in fmap:

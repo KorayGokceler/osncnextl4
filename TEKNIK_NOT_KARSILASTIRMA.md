@@ -264,37 +264,26 @@ Benzersiz BDT değişkeni: **14** (5 noise + 10 muon, `NchCleaned` ortak).
 
 ---
 
-## 2.5 İsim uyuşmazlığı — kontrol edilmeli
+## 2.5 İsim uyuşmazlıkları — çözüldü
 
-Tablo 11 noise girdisini **`L4_iLineFit.speed`** diye veriyor — yani
-`L4_iLineFit` **I3Particle**'ının `speed` alanı.
+Gerçek pass3 HDF5 çıktısı üzerinde `check_registry` ile doğrulandı:
 
-`oscNext_L4_pybdt.ipynb` REGISTRY'si ise:
-```python
-"iLineFit_speed": ("L4_iLineFitParams", "LFVel"),
-```
+| Değişken | Not (Tablo 11) | Gerçek HDF5 kolonu |
+|---|---|---|
+| `fill_ratio` | `L4_fill_ratio.fill_ratio_from_mean` | **`fillratio_from_mean`** (alt çizgisiz) |
+| `iLineFit_speed` | `L4_iLineFit.speed` | `L4_iLineFitParams.lf_vel` |
+| `noise_weight` | — | `noise_weight.weight` (`value` değil) |
 
-İki ayrı sorun:
+Üçü de `l4_data.ALTS` içinde; dosyada gerçekten hangisi varsa o kullanılıyor.
+`bulundu: 5/5` ve `10/10` — 14 BDT girdisinin hepsi bulundu.
 
-1. **Tablo vs Params.** `L4_iLineFit.speed` ile `L4_iLineFitParams.LFVel`
-   normalde aynı değeri taşır (linefit fit hızını her ikisine de yazar),
-   ama aynı olduğunu **doğrulamadan** güvenmeyin.
-2. **Kolon adı.** LightGBM notebook'unda "DOĞRULANDI: pass3 hdfwriter kolonu
-   `lf_vel`, eski varsayım `LFVel` DEĞİL" notu var. pybdt notebook'u hâlâ
-   `LFVel` kullanıyor → kolon bulunamazsa **sessizce NaN** olur.
-
-Elinde artık gerçek bir HDF5 var, 10 saniyede çözülür:
-
-```python
-# notebook bölüm 2
-dump_tables(SAMPLES["nue"]["hdf5"].replace(".hdf5", "_smoke.hdf5"),
-            only=["iLineFit"])
-```
-
-`check_registry` zaten bunu yakalamak için var — bölüm 3'ü çalıştırdığında
-`[!] iLineFit_speed ... kolon yok` yazarsa sebep budur.
-
----
+**HDF5 kolon adı ile frame alan adı aynı olmak zorunda değil.** hdfwriter'ın
+çeviricisi yeniden adlandırabiliyor (`fill_ratio_from_mean` →
+`fillratio_from_mean`). Bu yüzden `check_feature_map()` iki tarafın da
+alternatiflerini (`l4_data.ALTS` ve `l4_classifier_module.COLUMN_ALTS`)
+dikkate alıyor — yoksa meşru bir isim farkını çakışma sanıp yanlış alarm
+verirdi. Kontrol yine de gerçek çakışmayı yakalıyor (regresyon testi
+yapıldı: `cog_z` → `cog_x` enjekte edildi, yakalandı).
 
 ## 2.6 Ağırlık doğrulama hedefleri (Tablo 13)
 

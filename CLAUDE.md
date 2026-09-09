@@ -132,7 +132,7 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
 - [x] νe işleme çalıştı (100 dosya → 256 799 olay, 1019 s)
 - [x] CORSIKA işleme çalıştı (500 dosya → 6 462 olay, 2578 s)
 - [ ] νμ / noise yeniden çalıştırılmalı — bozuk `.i3.zst` yüzünden yarım kaldı
-- [ ] Sütun isimleri kesinleştirilmedi
+- [x] Sütun isimleri kesinleştirildi (14/14 BDT girdisi bulundu)
 - [ ] Yeniden yazılan değişkenler (VICH, accumulated_time, separation_in_cogs)
       referansla doğrulanmadı
 - [ ] Ağırlıklar doğrulanmadı
@@ -177,11 +177,14 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    `("noise_weight", "weight")`. Yanlış olduğu için gürültü ağırlığı
    **tamamen NaN** kalıyordu → noise örneğinin `w_phys`'i sıfır olurdu.
    Düzeltildi, ikisi de `ALTS`'te.
-3b. **`iLineFit_speed` kolonu — kontrol edilmeli.** Tablo 11 girdiyi
-   `L4_iLineFit.speed` (I3Particle alanı) diye veriyor; pybdt notebook'u
-   `L4_iLineFitParams.LFVel` okuyor, LightGBM notebook'u ise pass3 kolonunun
-   `lf_vel` olduğunu "DOĞRULANDI" diye not düşmüş. Yanlışsa **sessiz NaN**.
-   Bölüm 2'de `dump_tables(..., only=["iLineFit"])` ile 10 saniyede çözülür.
+3b. **Kolon adları — ÇÖZÜLDÜ.** Gerçek pass3 çıktısı üzerinde
+   `check_registry` ile doğrulandı: `fill_ratio` → **`fillratio_from_mean`**
+   (alt çizgisiz), `iLineFit_speed` → `lf_vel`, `noise_weight` → `weight`.
+   Üçü de `ALTS`'te. `bulundu: 5/5` ve `10/10` — 14 BDT girdisinin hepsi
+   bulundu.
+   HDF5 kolon adı ile frame alan adı aynı olmak zorunda değil (hdfwriter
+   çeviricisi yeniden adlandırıyor); `check_feature_map()` iki tarafın da
+   alternatiflerini dikkate alıyor.
 3d. **CORSIKA ağırlığı (düzeltildi).** pybdt yolundaki `corsika_weight`
    her olaya **eşit** ağırlık veriyordu (`np.ones/n_files`) — yani
    ağırlıklandırma hiç yoktu. Sadece mutlak oranı bozmuyordu; muon BDT'si
