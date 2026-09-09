@@ -16,21 +16,33 @@ Referans: oscNext technical note v00.07, bolum 3.4-3.6, Tablo 11-12.
 '''
 
 import os
+import sys
 import numpy as np
 
-from icecube import dataclasses, icetray, DomTools
-from icecube import linefit, tensor_of_inertia, fill_ratio
+# icetray_env bu dosyanin yanindadir; baska bir dizinden import edildiginde
+# de bulunabilmesi icin sys.path'e ekleniyor.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from icetray_env import (require_icetray, optional_project, require_project,
+                         load_deserialization_libs, deepcore_doms,
+                         deepcore_veto_domset, deepcore_fiducial_domset,
+                         load_lib)
+
+require_icetray()
+from icecube import dataclasses, icetray
+from icecube.icetray import I3Units
+
+# --- Opsiyonel projeler -----------------------------------------------------
+# Modul seviyesinde SERT import etmiyoruz: tek bir eksik proje (orn. kendi
+# derlediginiz build'de tensor_of_inertia yoksa) tum repoyu import edilemez
+# hale getirmesin.  Eksik olan, o degiskeni ureten segment cagrildiginda
+# net bir hata verir; digerleri calismaya devam eder.
+DomTools          = optional_project("DomTools")
+linefit           = optional_project("linefit")
+tensor_of_inertia = optional_project("tensor_of_inertia")
+fill_ratio        = optional_project("fill_ratio")
 
 # Deserialization icin gerekli (dogrudan kullanilmasalar da)
-for _lib in ("simclasses", "recclasses", "genie_icetray", "genie_reader",
-             "sim_services"):
-    try:
-        __import__("icecube." + _lib)
-    except ImportError:
-        pass
-from icecube.icetray import I3Units
-from icecube import DeepCore_Filter
-from icecube.DeepCore_Filter import DOMS
+load_deserialization_libs()
 
 
 # ---------------------------------------------------------------------------
@@ -337,17 +349,31 @@ class PropagateGenieInfo(icetray.I3Module):
         self.output_key = self.GetParameter("OutputKey")
         self.n_flux = None
         self.warned = False
+        self.n_seen = 0          # kac I3GenieInfo goruldu (= kac L3 dosyasi)
 
     def _grab(self, frame):
         '''
         I3GenieInfo'yu okumayi dene.  Deserialization hatasi (genie_icetray
         import edilmemis) ya da eksik alan job'i COKURMEMELI -- agirlik
         hesabi NEvents fallback'ine duser.
+
+        DIKKAT: her L3 DOSYASININ kendi I3GenieInfo'su var ve bir tray
+        birden fazla dosya isliyor (--chunk-files).  Deger her yeni
+        I3GenieInfo'da GUNCELLENMELI; onceden bir kez okunup sabitleniyordu,
+        yani ilk dosyanin n_flux_events'i sonraki dosyalarin olaylarina da
+        uygulaniyordu ve o olaylarin agirligi yanlis cikiyordu.
         '''
-        if self.n_flux is not None or not frame.Has("I3GenieInfo"):
+        if not frame.Has("I3GenieInfo"):
             return
         try:
-            self.n_flux = float(frame["I3GenieInfo"].n_flux_events)
+            new_val = float(frame["I3GenieInfo"].n_flux_events)
+            self.n_seen += 1
+            if self.n_flux is not None and new_val != self.n_flux:
+                icetray.logging.log_info(
+                    "PropagateGenieInfo: n_flux_events degisti %g -> %g "
+                    "(dosya %d) -- guncelleniyor"
+                    % (self.n_flux, new_val, self.n_seen))
+            self.n_flux = new_val
             icetray.logging.log_info(
                 "PropagateGenieInfo: n_flux_events = %g" % self.n_flux)
         except Exception as e:
@@ -359,13 +385,10 @@ class PropagateGenieInfo(icetray.I3Module):
                     % (type(e).__name__, e))
                 self.warned = True
 
-    # I3GenieInfo hangi stream'de olursa olsun yakala
-    def DAQ(self, frame):
-        self._grab(frame); self.PushFrame(frame)
-
-    def Simulation(self, frame):
-        self._grab(frame); self.PushFrame(frame)
-
+    # NOT: Process() override edildigi icin DAQ()/Simulation() gibi
+    # stream metotlari CAGRILMAZ -- dagitimi asagidaki Process yapiyor ve
+    # her stream'de _grab cagiriyor.  (Eskiden ikisi de vardi; DAQ ve
+    # Simulation olu koddu.)
     def Process(self):
         frame = self.PopFrame()
         if frame.Stop != icetray.I3Frame.Physics:
@@ -456,7 +479,8 @@ def _separation_in_cogs(frame, pulses_key, output_key, geometry_key="I3Geometry"
 
 
 def _vich(frame, uncleaned_pulses, cleaned_pulses,
-          nch_key, npulses_key, qtot_key, geometry_key="I3Geometry"):
+          nch_key, npulses_key, qtot_key, geometry_key="I3Geometry",
+          fiducial_cog=True):
     '''
     Veto Identified Causal Hits.
 
@@ -469,6 +493,20 @@ def _vich(frame, uncleaned_pulses, cleaned_pulses,
     bolgesindeki zayif, izole hit'lerini siler ve muon tam da o hit'lerden
     taninir.  COG vertex'i ise TEMIZLENMIS seriden alinir.
 
+    COG KAPSAMI (fiducial_cog):
+      Teknik not §3.4 aynen: "the center-of-gravity (COG) of the hits
+      INSIDE THE FIDUCIAL VOLUME is calculated".  Yani COG sadece fiducial
+      DOM'lardan hesaplanmali.  Ilk yazimda tum temizlenmis seri
+      kullaniliyordu; muonlu olaylarda veto hitleri COG'u yukari/disa
+      cekiyor, dolayisiyla d ve t_COG kayiyor ve hiz penceresine dusme
+      olasiligi degisiyor -- tam da ayirt etme gucunu bozacak yonde.
+
+      fiducial_cog=True  -> nota uygun (VARSAYILAN)
+      fiducial_cog=False -> eski davranis (karsilastirma icin)
+
+      Not COG'un yuk agirlikli olup olmadigini SOYLEMIYOR; biz yuk
+      agirlikli aliyoruz.  Bu hala dogrulanmamis bir varsayim.
+
     Orijinalde tau_bdt.I3CutL7Module yapiyordu.
     '''
     if nch_key in frame:
@@ -479,12 +517,25 @@ def _vich(frame, uncleaned_pulses, cleaned_pulses,
         return True
 
     geo = frame[geometry_key]
-    cog = charge_weighted_cog(iter_hits(cln, geo))
+
+    # COG: teknik not §3.4 -> sadece FIDUCIAL hacimdeki hitler
+    if fiducial_cog:
+        fid = deepcore_fiducial_domset("IC86")
+        cog = charge_weighted_cog(h for h in iter_hits(cln, geo) if h[0] in fid)
+        if cog is None:
+            # Fiducial'da hic hit yoksa geri dus -- olay zaten atilacak ama
+            # sessizce yanlis sayi uretmektense tum seriyi kullan.
+            cog = charge_weighted_cog(iter_hits(cln, geo))
+    else:
+        cog = charge_weighted_cog(iter_hits(cln, geo))
+
     if cog is None:
         return True
     cx, cy, cz, ct = cog
 
-    veto_doms = set(DOMS.DOMS("IC86").DeepCoreVetoDOMs)
+    # NOT: eskiden burada her olayda DOMS.DOMS("IC86") yeniden kuruluyordu.
+    # Artik cache'li (icetray_env.deepcore_veto_domset).
+    veto_doms = deepcore_veto_domset("IC86")
 
     n_doms, n_pulses, qtot = 0, 0, 0.0
     for omkey, pulses in iter_map(unc):
@@ -517,17 +568,31 @@ def _vich(frame, uncleaned_pulses, cleaned_pulses,
 def oscNext_L4_atm_muon_classifier_variables(tray, name,
                                              uncleaned_pulses,
                                              cleaned_pulses,
-                                             run_qr_box=False):
-    '''L4 atmosferik muon reddi siniflandiricisinin girdileri.'''
+                                             run_qr_box=False,
+                                             run_optional=True):
+    '''
+    L4 atmosferik muon reddi siniflandiricisinin girdileri.
+
+    run_optional=False: BDT girdisi OLMAYAN hesaplar atlanir
+    (I3TensorOfInertia ve separation_in_cogs).  Ikisi de Tablo 12'de yok;
+    aday/legacy olarak duruyorlar ama olay basina gercek maliyetleri var.
+    Uretim hizlandirmak icin process_L4.py --skip-optional ile kapatilir.
+    '''
+
+    # Bu segment'in gerektirdigi projeler -- yoksa BURADA net hata ver
+    # (import zamaninda degil, ki geri kalan repo import edilebilsin).
+    require_project("linefit")
 
     # --- Tensor of inertia (BDT girdisi degil; aday/legacy) ---
-    tray.AddModule("I3TensorOfInertia", name + "_ToI",
-                   AmplitudeOption=1,
-                   AmplitudeWeight=1,
-                   InputReadout=cleaned_pulses,
-                   InputSelection="",
-                   MinHits=3,
-                   Name=L4_TOI_KEY)
+    if run_optional:
+        require_project("tensor_of_inertia")
+        tray.AddModule("I3TensorOfInertia", name + "_ToI",
+                       AmplitudeOption=1,
+                       AmplitudeWeight=1,
+                       InputReadout=cleaned_pulses,
+                       InputSelection="",
+                       MinHits=3,
+                       Name=L4_TOI_KEY)
 
     # --- improved LineFit ---
     # BDT'de kullanilan alan hiz: L4_iLineFitParams.LFVel
@@ -538,7 +603,8 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
     # --- QR box (slc-veto; opsiyonel, BDT girdisi degil) ---
     if run_qr_box:
         try:
-            icetray.load("slc-veto", False)
+            if not load_lib("slc-veto"):
+                raise RuntimeError("slc-veto kutuphanesi bu build'de yok")
             tray.AddModule("SmallQ_Box", name + "_QRBox",
                            BoxName=L4_QRBOX_KEY,
                            RecoPulsesKey=cleaned_pulses)
@@ -550,9 +616,11 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
              pulses_key=cleaned_pulses,
              output_key=L4_ACC_TIME_KEY)
 
-    tray.Add(_separation_in_cogs, name + "_SepCOG",
-             pulses_key=cleaned_pulses,
-             output_key=L4_SEP_IN_COGS_KEY)
+    # BDT girdisi degil (Tablo 12'de yok) -- saf Python, olay basina maliyeti var
+    if run_optional:
+        tray.Add(_separation_in_cogs, name + "_SepCOG",
+                 pulses_key=cleaned_pulses,
+                 output_key=L4_SEP_IN_COGS_KEY)
 
     # --- VICH (tau_bdt yeniden yazim) ---
     tray.Add(_vich, name + "_VICH",
@@ -603,7 +671,14 @@ def oscNext_L4_noise_cut_variables(tray, name,
     # microcount ile tamamlayicidir: parametreleri farkli oldugu icin ikisi tam
     # korele degil, BDT ikisinden de bilgi cikarir.
 
-    icetray.load("static-twc", False)
+    require_project("DomTools")
+    require_project("STTools")
+    require_project("fill_ratio")
+    if not load_lib("static-twc"):
+        raise RuntimeError(
+            "C++ kutuphanesi 'static-twc' bu build'de yok -- micro_count "
+            "hesaplanamaz.  DomTools/static-twc derlenmis mi kontrol edin "
+            "(python diagnose_env.py).")
 
     tw_pulses = "L4_TWPulses"
     tray.AddModule("I3StaticTWC<I3RecoPulseSeries>", name + "_StaticTWC_DC",
@@ -636,7 +711,7 @@ def oscNext_L4_noise_cut_variables(tray, name,
                    SeedProcedure="AllHLCHits")
 
     # Klasik IC86 DeepCore fiducial hacmi
-    dom_list = DOMS.DOMS("IC86")
+    dom_list = deepcore_doms("IC86")
     tw_fid_pulses = tw_pulses + "_DCFid"
 
     tray.AddModule("I3OMSelection<I3RecoPulseSeries>", name + "_DCFidPulses",
@@ -680,6 +755,7 @@ def oscNext_L4_hit_statistics(tray, name, cleaned_pulses):
     common_variables ile hit statistics ve multiplicity hesapla.
     L3'te zaten hesaplaniyorsa bu segment atlanabilir.
     '''
+    require_project("common_variables")
     from icecube.common_variables import hit_statistics, hit_multiplicity
 
     tray.AddSegment(hit_statistics.I3HitStatisticsCalculatorSegment,
@@ -758,6 +834,7 @@ def oscNext_L4(tray, name,
                apply_l3_cut=True,
                is_genie=False,
                compute_hit_statistics=True,
+               run_optional=True,
                apply_cut=False,
                classifier_model_dir=None):
     '''
@@ -808,7 +885,8 @@ def oscNext_L4(tray, name,
 
     tray.Add(oscNext_L4_atm_muon_classifier_variables, name + "_muon_vars",
              uncleaned_pulses=uncleaned_pulses,
-             cleaned_pulses=cleaned_pulses)
+             cleaned_pulses=cleaned_pulses,
+             run_optional=run_optional)
 
     if apply_cut:
         if classifier_model_dir is None:

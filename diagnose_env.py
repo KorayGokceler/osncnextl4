@@ -6,14 +6,48 @@ Bu scripti IceTray ortaminda calistirin ve ciktinin tamamini paylasin.
 Sonuca gore hangi fallback'lerin gerektigine karar verilir.
 '''
 
+import os
 import sys
 import importlib
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 print("=" * 70)
 print("PYTHON")
 print("=" * 70)
 print(sys.version)
 print(sys.executable)
+
+# icecube hic import edilemiyorsa detayli teshis basar ve cikar --
+# asagidaki tum kontroller anlamsiz olur.
+try:
+    import icetray_env as _ienv
+except ImportError:
+    _ienv = None
+
+if _ienv is not None and not _ienv.have_icetray():
+    print()
+    print(_ienv._env_report())
+    print()
+    print("Bulunan env-shell.sh adaylari:")
+    _c = _ienv.find_env_shells()
+    if not _c:
+        print("  (yok)  -> export OSCNEXT_I3_BUILD=/tam/yol/build")
+    for _kind, _path in _c:
+        print("  [%-12s] %s" % (_kind, _path))
+    sys.exit(1)
+
+if _ienv is not None:
+    print()
+    print("=" * 70)
+    print("ORTAM")
+    print("=" * 70)
+    for _v in ("I3_BUILD", "I3_SRC", "SROOT"):
+        print("  %-10s %s" % (_v, os.environ.get(_v, "<bos>")))
+    try:
+        print("  %-10s %s" % ("I3Tray", _ienv.get_I3Tray()))
+    except Exception as _e:
+        print("  %-10s BULUNAMADI -- %s" % ("I3Tray", _e))
 
 
 def try_import(name, note=""):
