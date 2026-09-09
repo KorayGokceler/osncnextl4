@@ -183,10 +183,11 @@ pip install --user nbstripout && nbstripout --install
 - [x] pybdt kaynaktan derlendi ve çalışıyor
 - [x] νe işleme çalışıyor, tüm tablolar book ediliyor
 - [x] Uçtan uca notebook yazıldı (`oscNext_L4_pybdt.ipynb`)
-- [ ] Notebook hiç çalıştırılmadı → HDF5 sütun isimleri doğrulanmadı,
-      3. bölümdeki `REGISTRY` düzeltme gerektirebilir
+- [x] L3 girdisi gerçek dosyayla doğrulandı — `IC2018_LE_L3_Vars` var,
+      okuduğumuz 14 kolonun hepsi yerinde (bkz. `CLAUDE.md`)
+- [ ] Notebook hiç çalıştırılmadı → üretilen L4 HDF5'in sütun isimleri
+      hâlâ doğrulanmadı (2. bölüm bunun için)
 - [ ] νμ / CORSIKA / noise işleme denenmedi
-- [ ] Sütun isimleri kesinleştirilmedi
 - [ ] Yeniden yazılan değişkenler (VICH, accumulated_time) doğrulanmadı
 - [ ] Ağırlıklar doğrulanmadı
 - [ ] Model eğitilmedi

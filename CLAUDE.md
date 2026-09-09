@@ -155,6 +155,42 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
   - SLOP filtresi / LID errata veri kalitesi kesimi de kod yorumundaki
     varsayımla eşleşiyor
 
+  **Dikkat:** Bu script `IC2018_LE_L3_Vars`'ı hiç anmıyor (ne yazıyor ne
+  okuyor) — `DeepCoreCuts`'ın onu da ürettiği bir *çıkarımdı*. Aşağıdaki
+  gerçek dosya dökümüyle doğrulandı.
+
+## Gerçek L3 dosyasında ne var (doğrulandı)
+
+`genie_NuE_IC86.023800.000000.i3.zst` Physics frame'i dökülerek
+**doğrulandı** — artık varsayım değil:
+
+- **`IC2018_LE_L3_Vars`** (`I3MapStringDouble`) **VAR**, 14 kolon:
+  `C2HR6`, `CausalVetoHits`, `CleanedFullTimeLength`, `DCFiducialHits`,
+  `ICVetoHits`, `NAbove200Hits`, `NchCleaned`, `NoiseEngine`,
+  `RTVeto250Hits`, `RTVetoCutHit`, `STW9000_DTW300Hits`,
+  `UncleanedFullTimeLength`, `VertexGuessZ`, `VetoFiducialRatioHits`.
+  `FEATURE_MAP`/`REGISTRY`'de L3'ten okuduğumuz her kolon bu listede.
+- `IC2018_LE_L3_bools` (`I3MapStringBool`): `IC2018_LE_L3_Full`,
+  `..._No_Nch`, `..._No_Nch_No_RTVeto`, `..._No_RTVeto`,
+  `..._No_UncleanedTime`
+- `SRTTWSplitInIcePulsesDC` ve `SplitInIcePulses` VAR — ikisi de
+  `I3RecoPulseSeriesMapMask`, `get_pulses()` bunları `.apply(frame)` ile
+  açıyor
+- `L3_oscNext_bool`, `Data_quality_bool` VAR
+- `I3GenieInfo` VAR → ağırlıkta `NEvents × 0.7/0.3` fallback'ine
+  düşmemeliyiz
+- `MCInIcePrimary` **YOK** → truth bilgisi `I3MCWeightDict`'ten alınmalı
+- HitStatistics / HitMultiplicity **YOK** → L3 bunları siliyor, bizim
+  yeniden hesaplamamız (`oscNext_L4_hit_statistics`) gerekli
+
+**İki tuzak:**
+1. `I3GenieResult` deserialize **edilemiyor**: *"Attempting to read
+   version 2 from file but running version 1 of I3GenieResult"* — dosya
+   kurulu `simclasses`'tan yeni. Bu anahtarı book etmediğimiz için
+   şimdilik zararsız, ama `--output-i3` kullanılırsa iş çökebilir.
+2. Frame'de ayrıca `pole_grecofilter_onlineLowEnL3_Vars` var — bu
+   *online* filtrenin ayrı map'i, `IC2018_LE_L3_Vars` ile karıştırılmamalı.
+
 ## BDT eğitimi: pybdt kullanılacak (bilinçli sapma — dikkat)
 
 `icecube/icetray` (private) içindeki `pybdt` (IceCube'un kendi AdaBoost
