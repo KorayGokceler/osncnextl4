@@ -311,6 +311,19 @@ düzeltme gerektirecek (2. bölüm zaten bunu tespit etmek için var).
 edilmiyor" hatasının 1 numaralı sebebi. Tek komut için:
 `./env-shell.sh -- python ...` ya da `./setup_env.sh run python ...`.
 
+**2a. `cannot import name '...' from 'l4_data'` — modül önbelleği.**
+Python bir modülü bir kez import edince kernel'de tutar; `git pull` dosyayı
+güncelleşe bile `from l4_data import yeni_fonksiyon` eski modül nesnesine
+bakar ve ImportError verir. Ayırt etmek için:
+```python
+import l4_data
+print("dosyada  :", "def aux_for" in open(l4_data.__file__).read())
+print("hafizada :", hasattr(l4_data, "aux_for"))
+```
+`dosyada True, hafizada False` → önbellek; **Kernel → Restart**.
+İkisi de False → `git pull` yapılmamış.
+Notebook bölüm 0 artık `%autoreload 2` açıyor, bu sorun tekrarlamamalı.
+
 **2. Jupyter kernel'i.** Notebook'un IceTray/pybdt'yi görmesinin tek yolu
 kernel'in env-shell içindeki python olması. Jupyter'i ortam içinden
 başlatmak en temizi (README adım 4); başlatılmadıysa `./setup_env.sh kernel`
