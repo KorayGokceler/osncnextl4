@@ -407,10 +407,13 @@ python process_L4.py --usage --n 2000 --scan off --input <tek_dosya> ...
 IceTray modül bazlı CPU zamanını basar. En yavaş modülü görmeden
 optimize etmeye çalışma.
 
+**Hızlandırma OTOMATİK DEĞİL** — açıkça istenmeli. Varsayılan
+`run_all()` hâlâ tek süreç ve tüm değişkenleri hesaplar.
+
 **1. Paralellik (en büyük kazanç).** Girdi dosyalarını N sürece böl:
 ```python
-from l4_run import run_process_parallel
-run_process_parallel("nue", jobs=8, chunk_files=10)
+run_all(jobs=8, chunk_files=10, skip_optional=True)   # tüm örnekler
+run_process_parallel("numu", jobs=8, chunk_files=10)  # tek örnek
 ```
 Ayrı süreçler, ayrı çıktılar (`L4_nue_job0_part000.hdf5` …), ortak durum
 yok → neredeyse doğrusal hızlanma. Hepsi `L4_nue*.hdf5` glob'una uyar ve
