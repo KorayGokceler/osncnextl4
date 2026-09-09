@@ -81,6 +81,11 @@ MUON_FEATURES = ["ICVetoHits", "RTVeto250Hits", "NchCleaned", "NAbove200Hits",
                  "z_travel"]
 
 # Agirlik hesabi icin gereken ek kolonlar (BDT girdisi DEGIL)
+#
+# DIKKAT: bunlarin hepsi HER ORNEKTE YOK.  noise_weight sadece vuvuzela
+# gurultu MC'sinde, OneWeight/PrimaryNeutrino* sadece GENIE'de bulunur.
+# Hepsini tek bir ornege karsi kontrol etmek YANLIS ALARM uretir --
+# aux_for(kind) ile ilgili olanlari secin.
 AUX = {
     "true_energy":   ("I3MCWeightDict", "PrimaryNeutrinoEnergy"),
     "OneWeight":     ("I3MCWeightDict", "OneWeight"),
@@ -89,6 +94,22 @@ AUX = {
     "n_flux_events": ("L4_n_flux_events", "value"),
     "noise_weight":  ("noise_weight", "value"),
 }
+
+# AUX kolonu -> hangi ornek turlerinde bulunur (SAMPLES[...]["kind"])
+AUX_KINDS = {
+    "true_energy":   ("signal",),
+    "OneWeight":     ("signal",),
+    "NEvents":       ("signal",),
+    "pdg":           ("signal",),
+    "n_flux_events": ("signal",),
+    "noise_weight":  ("noise_bg",),
+}
+
+
+def aux_for(kind):
+    """Bu ornek turunde BEKLENEN AUX kolonlari."""
+    return [k for k, kinds in AUX_KINDS.items() if kind in kinds]
+
 
 def _table_nodes(h5):
     """
@@ -139,20 +160,44 @@ def dump_tables(h5path, only=None, max_cols=40):
             print("      ... (+%d kolon)" % (len(cols) - max_cols))
     return found
 
-def check_registry(found, names):
-    """Registry'deki kolonlar HDF5'te gercekten var mi?"""
-    ok, bad = [], []
+def check_registry(found, names, verbose=True):
+    """
+    Registry'deki kolonlar HDF5'te gercekten var mi?
+
+    ALTS'i de dener -- yukleme sirasinda hangi varyant kullanilacaksa
+    burada da AYNISI raporlanir.  (Onceden sadece REGISTRY'ye bakiyordu,
+    yani ALTS bir varyanti cozse bile "kolon yok" diyordu.)
+
+    found: dump_tables ciktisi  {tablo: (nrows, [kolonlar])}
+    Bulunamayanlarin listesini dondurur.
+    """
+    available = {t: set(cols) for t, (_, cols) in found.items()}
+    ok, bad, alt_used = [], [], []
     for n in names:
-        tbl, col = REGISTRY.get(n, AUX.get(n, (None, None)))
-        if tbl in found and col in found[tbl][1]:
-            ok.append(n)
-        else:
-            bad.append((n, tbl, col))
-    print("bulundu: %d/%d" % (len(ok), len(names)))
-    for n, tbl, col in bad:
-        why = "tablo yok" if tbl not in found else "kolon yok"
-        print("  [!] %-22s %s[%s]  -- %s" % (n, tbl, col, why))
+        hit = resolve_one(n, available)
+        if hit is None:
+            bad.append((n, REGISTRY.get(n, AUX.get(n))))
+            continue
+        ok.append(n)
+        first = (ALTS.get(n) or [REGISTRY.get(n, AUX.get(n))])[0]
+        if tuple(hit) != tuple(first):
+            alt_used.append((n, hit, first))
+
+    if verbose:
+        print("bulundu: %d/%d" % (len(ok), len(names)))
+        for n, hit, first in alt_used:
+            print("  [i] %-22s %s[%s]  (ilk aday %s[%s] yoktu)"
+                  % (n, hit[0], hit[1], first[0], first[1]))
+        for n, pair in bad:
+            tbl = pair[0] if pair else "?"
+            why = "tablo yok" if tbl not in available else "kolon yok"
+            print("  [!] %-22s %s  -- %s" % (n, pair, why))
+            if tbl in available:
+                cols = sorted(available[tbl])
+                print("      %s icindeki kolonlar: %s"
+                      % (tbl, ", ".join(cols[:12]) + (" ..." if len(cols) > 12 else "")))
     return bad
+
 
 def _ids(tbl):
     return (np.asarray(tbl.col("Run"), dtype=np.int64),
@@ -168,6 +213,15 @@ ALTS = {
                        ("L4_iLineFit", "speed")],       # not Tablo 11 boyle diyor
     "micro_count":    [("L4_micro_count", "STW_m3500p4000_DTW200"),
                        ("L4_micro_count", "STW7500_DTW200")],
+    # Tablo 11: "L4_fill_ratio.fill_ratio_from_mean".  hdfwriter'in
+    # I3FillRatioInfo cevirici isimlendirmesi surume gore degisiyor.
+    # ASAGIDAKILERIN HEPSI AYNI BUYUKLUK (mean'e gore fill ratio) --
+    # from_rms / from_nch gibi FARKLI buyuklukleri BILEREK koymuyoruz,
+    # yoksa sessizce baska bir fizik okunur.
+    "fill_ratio":     [("L4_fill_ratio", "fill_ratio_from_mean"),
+                       ("L4_fill_ratio", "fillratio_from_mean"),
+                       ("L4_fill_ratio", "fillRatioFromMean"),
+                       ("L4_fill_ratio", "FillRatioFromMean")],
 }
 
 _warned_unresolved = set()
