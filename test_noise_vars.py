@@ -66,7 +66,17 @@ def add_micro_count_chain(tray, name, pulses, out_key):
     yazar), o yuzden pass2 surumu icin zinciri burada tekrar kuruyoruz --
     adimlar oscNext_L4_noise_cut_variables ile birebir ayni, sadece
     baslangic serisi ve cikti anahtari farkli.
+
+    DIKKAT: I3OMSelection yan urun olarak frame'e "BadOMSelection" yazar ve
+    bu anahtar parametreyle degistirilmiyor.  Tray'de iki I3OMSelection
+    oldugu icin (segmentinki + buradaki) ikincisi ayni anahtari yazmaya
+    calisip "frame already contains" ile patliyordu.  Araya Delete koyup
+    onceki adimin biraktigi anahtari siliyoruz -- sadece bu testte gerekli,
+    uretimde tek OMSelection var.
     '''
+    tray.AddModule("Delete", name + "_DelBadOM",
+                   Keys=["BadOMSelection"])
+
     tw = name + "_TW"
     tray.AddModule("I3StaticTWC<I3RecoPulseSeries>", name + "_STWC",
                    InputResponse=pulses,
