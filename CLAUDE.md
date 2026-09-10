@@ -583,6 +583,44 @@ sayılarına güvenmeyin** (incelendi):
 early stopping için eğitim setinden ayrılan dilimi kullanıyor, ve
 yalnızca test setinde ölçüyor.
 
+**`lightgbm_compare.py` — `noise-bdt-fix` merge'ünden sonra düzeltilenler.**
+Script `noise-bdt-fix`'ten önce yazılmıştı, yani 5i/5h'te varılan
+sonuçlardan habersizdi. Merge sonrası gözden geçirildi:
+
+1. **Ölçüt uyuşmuyordu (en önemlisi).** Script verimi `w_phys` ile
+   ağırlıklı ölçüyordu; `compare_models.py` ise bilinçli olarak
+   **ağırlıksız olay sayısı** kullanıyor (uydurma E⁻³ akısını
+   karşılaştırmadan çıkarmak için). Yani "kafa kafaya" denilen sayı
+   5h/5k tablolarıyla karşılaştırılamıyordu. Artık ana tablo
+   ağırlıksız; `w_phys`'li sayı ayrı bir "cross-check" bölümünde
+   duruyor.
+2. **Overtraining ölçütü, 5i'de elenen ölçüttü.** `p_KS < 0.01`
+   damgası basıyordu. Artık asıl ölçüt **train/test verim açığı**
+   (`--gap-at`, varsayılan %90 red — `compare_models.py` ile aynı);
+   `p_KS` yalnızca bilgi olarak yazılıyor.
+3. **Ölçüm kodu kopyalanmıştı.** `report_curve` kendi lineer kesim
+   ızgarasını kuruyordu — LightGBM çıktısı 0/1'e yığıldığı için bu
+   ızgara neredeyse boş satır üretir. Artık `curve`/`eff_on_grid`/
+   `kept_counts`/`REJ_LEVELS` doğrudan `compare_models.py`'den
+   **import ediliyor**: iki motoru tek implementasyon puanlıyor.
+4. **Arka plan tükenmesi görünmüyordu.** %99'un sağında ölçüm yok
+   (5h); tablo artık her satırda kalan arka plan olayını basıyor ve
+   10'un altına düşünce `<-- NOT A MEASUREMENT` işaretliyor.
+5. **`min_data_in_leaf=500` uyarısı eklendi.** Tablo 10 bu değeri
+   referansın çok daha büyük istatistiğine göre veriyor; bizim ~1 000
+   arka plan olayımızla (5e) tek başına sonucu belirleyebilir. Script
+   başta uyarıyor — yoksa "LightGBM de kötü" diye yanlış sonuç
+   çıkarılırdı.
+6. **Küçükler:** early stopping sonrası `num_trees()` basılıyordu ama
+   `predict()` `best_iteration` kullanıyor (raporlanan ağaç sayısı
+   değerlendirilen modele ait değildi) — artık `best_iteration`
+   basılıyor, model de onunla kaydediliyor; erken durma hiç
+   tetiklenmediyse söyleniyor; `.ds` içinde olmayan değişken için net
+   hata; bilinmeyen `--params` anahtarı için net hata;
+   `--learning-rate 0` sessizce yok sayılmıyor.
+
+**Hâlâ koşturulmadı** — bu ortamda ne `lightgbm` ne veri var.
+
 pybdt'ye geçiş şu sonuçları doğurur:
 - pybdt AdaBoost yapıyor, LightGBM'in gradient-boosting + leaf/lambda
   regularizasyon mantığı yok — Tablo 10 parametreleri pybdt'ye
@@ -832,8 +870,10 @@ Aktif branch'ler:
   `plot_noise_inputs.py`, `test_noise_vars.py`). **Ana branch'e
   (`claude/oscnext-l4-scripts-35min0`) merge edilmeyi bekliyor** — noise
   değişkenleri tarafında açık iş kalmadı.
-- `claude/lightgbm-compare` — `lightgbm_compare.py` hazır, cobalt'ta
-  **henüz koşturulmadı**.
+- `claude/lightgbm-compare` — **aktif branch.** `noise-bdt-fix` bunun
+  içine merge edildi (7 commit'lik açık kapandı), `lightgbm_compare.py`
+  merge sonrası gözden geçirilip düzeltildi (yukarıdaki 6 madde).
+  Cobalt'ta **henüz koşturulmadı** — sıradaki iş bu.
 
 Yapılacaklar:
 1. **Daha fazla noise MC gelince**: aynı modeli arka planın artan
@@ -861,7 +901,8 @@ Yapılacaklar:
   (`CLAUDE.md`) ve diğer `.md` belgeleri Türkçe kalıyor; onlar proje
   anlatısı, kod değil.
   Devam eden geçiş — İngilizceye çevrilenler:
-  `plot_noise_inputs.py`, `pybdt_diagnose.py`, `pybdt_scan.py`.
+  `plot_noise_inputs.py`, `pybdt_diagnose.py`, `pybdt_scan.py`,
+  `compare_models.py`, `lightgbm_compare.py`.
   Sırada: `pybdt_train.py`, `test_noise_vars.py`,
   `pybdt_classifier_module.py`, `scan_files.py`, `diagnose_env.py`,
   `simple_booker.py`, `l4_classifier_module.py`, `l4_run.py`,
