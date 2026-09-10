@@ -281,20 +281,44 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    değerlendirecek ortak held-out set yok → nihai verim olduğundan iyi
    görünür. **Çözüm:** sinyal ayrımını bir kez çekip iki BDT'de de aynısını
    kullanmak (üç satır). Bilinçli olarak ertelendi.
-5d. **Ölçülmemiş — `NOISE_NS_SCALE = 1e9`** (`l4_data.py`). Vuvuzela
-   `noise_weight`'in birimi pass3'te 1/ns varsayılıyor. **Eğitim buna
-   bağışık** (`make_datasets` her sınıfın ağırlık toplamını 1'e normalize
-   ediyor, sabit çarpan sadeleşir); etkilenen yer **bölüm 9 kesim seçimi**,
-   orada mutlak orana bakılıyor. `add_weights`'in Tablo 13 karşılaştırması
-   noise satırında ~36.6 mHz gösteriyorsa varsayım doğru — gerçek koşuda
-   bu satıra bakılmalı.
-5e. **Ölçülmemiş — noise MC istatistiği.** `test_noise_vars.py`'de noise
-   dosyasında 205 Physics frame'in **17'si** L3'ü geçti (%8; νe'de %84).
-   Beklenen ama 100 dosyadan kaç eğitim olayı çıkacağı bilinmiyor. İnce
-   kalırsa iki şey tetiklenir: `pybdt_train.py`'nin KS overtraining
-   uyarısı ve `add_weights`'in "maks/toplam > %5" uyarısı (tek olay oranı
-   domine ediyorsa `scale = max(...)` normalizasyonu diğer bütün olayları
-   sıfıra doğru ezer).
+5d. **`NOISE_NS_SCALE = 1e9` — DOĞRULANDI (ölçümle).** Vuvuzela
+   `noise_weight`'inin birimi pass3'te 1/ns varsayılıyordu. İlk gerçek
+   koşuda test setinin toplam gürültü oranı **20.5 mHz** çıktı; test seti
+   2 051 olayın 1 016'sı (%49.5) olduğuna göre tam örnek **41.4 mHz** →
+   teknik not Tablo 13'teki **36.6 mHz** ile **%13 uyum**. Varsayım doğru.
+   Sinyal tarafı: 3.99 mHz (test) → 7.97 mHz (tam), notun νe CC + νμ CC +
+   NC toplamı 5.25 mHz — **1.5 kat**, uydurma E⁻³ güç yasası için beklenen.
+   Ayrıca gürültü ağırlıkları **tam olarak düzgün** (her olay %0.10 =
+   1/1016): vuvuzela sabit livetime üzerinde üretildiği için beklenen,
+   hata değil. Sonuç: gürültü için ağırlıklı ve ağırlıksız verim/red
+   **her kesimde birebir aynı**.
+5e. **Noise MC istatistiği — ÖLÇÜLDÜ, YETERSİZ.** 100 L3 dosyasından
+   toplam **2 051** olay (train 1 035 / test 1 016); sinyal 329 545.
+   Oran **159:1**. `test_noise_vars.py`'deki %8'lik L3 geçme oranıyla
+   (νe'de %84) tutarlı. Referansın istatistiği çok daha büyük olmalı:
+   Tablo 10 noise BDT'si için `min data in leaf = 500` veriyor — bizim
+   1 035 eğitim olayımızla bu ayar 2 yaprak demek olurdu.
+5f. **İlk eğitilen noise BDT — çalışıyor ama referanstan zayıf.**
+   pybdt/AdaBoost, 300 ağaç, derinlik 3, `p_KS` sinyal 0.207 / arkaplan
+   0.099 (**overtraining YOK** — notun kendi noise BDT'si için
+   *"some overtraining is observed"* dediği düşünülürse iyi).
+   Verim/red eğrisi (test, `w_phys`):
+
+   | kesim | red | sinyal verimi |
+   |---|---|---|
+   | 0.00 | %34 | %99.1 |
+   | 0.50 | %67 | %96.1 |
+   | 0.70 | %81 | %90.5 |
+   | 0.90 | %95 | %78.1 |
+   | **0.945** | **%98.9** | **%52.7** |
+
+   **Hedef (Tablo 13): %99.2 redde ~%96 verim.** Aradaki fark ağırlıktan
+   DEĞİL (yukarıda elendi), iki şeyden: (a) arka plan istatistiği (5e),
+   (b) model kapasitesi — Tablo 10 `max depth = 6`, `num leaves = 25`
+   diyor; bizim `--depth 3` (≤8 yaprak) keyfi bir seçimdi, nottan
+   gelmiyor. `--prune-strength 35` de keyfi ve fazla agresif olabilir.
+   Sıradaki denemeler: daha çok noise dosyası; `--depth 6`,
+   `--num-trees 500`, budamasız.
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
