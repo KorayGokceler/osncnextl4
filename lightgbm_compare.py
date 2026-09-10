@@ -54,10 +54,25 @@ READ THE RESULT WITH CARE
   result under those conditions says "not enough background", not
   "gradient boosting loses".
 
+PLOTS (with --outdir)
+  The same set the AdaBoost side produces:
+    <tag>_lightgbm_overtrain.png   train vs test score shapes
+    <tag>_lightgbm_dist.png        score distribution, linear and log
+    <tag>_lightgbm_rate.png        weight surviving each cut
+  (the three pybdt_train.py draws through pybdt's Validator, redrawn here
+   because the Validator only takes pybdt BDT objects), plus
+    <tag>_lightgbm_cuts.png        cut curves + efficiency vs rejection,
+                                   the compare_models.py figure for one engine
+  --pybdt-model puts an AdaBoost curve on that last panel, trained on the
+  same .ds files through the same build_learner compare_models.py uses.
+
 Usage:
 
     python lightgbm_compare.py --ds-dir L4_output/ds --tag L4_noise \
-        --features NchCleaned,micro_count,iLineFit_speed,fill_ratio,FullTimeLengthRatio
+        --features NchCleaned,micro_count,iLineFit_speed,fill_ratio,FullTimeLengthRatio \
+        --outdir L4_output/plots \
+        --pybdt-model "d2t500:depth=2,trees=500" \
+        --pybdt-model "d4t500:depth=4,trees=500"
 '''
 
 import os
@@ -71,12 +86,18 @@ import numpy as np
 
 from pybdt import util
 from pybdt.validate import kolmogorov_smirnov_probability
-from pybdt_train import RESERVED_COLS
+from pybdt_train import RESERVED_COLS, build_learner
 from pybdt_scan import eff_at_rejection
 # The measurement itself comes from compare_models so that both engines are
 # scored by one implementation.  REJ_LEVELS keeps the table rows identical
-# to the pybdt tables as well.
-from compare_models import curve, eff_on_grid, kept_counts, REJ_LEVELS
+# to the pybdt tables as well, and parse_model lets --pybdt-model take the
+# very same spec strings compare_models.py takes.
+from compare_models import (curve, eff_on_grid, kept_counts, parse_model,
+                            REJ_LEVELS, REJ_GRID)
+
+import matplotlib
+matplotlib.use("Agg")           # headless -- same guard pybdt_train.py needs
+import matplotlib.pyplot as plt
 
 try:
     import lightgbm as lgb
@@ -176,6 +197,198 @@ def report_table(s, b, levels=REJ_LEVELS):
                  k["bg_kept"], k["bg_total"], mark))
 
 
+# ---------------------------------------------------------------------------
+# Plots -- the LightGBM counterparts of what the AdaBoost side produces.
+#
+#   pybdt_train.py  ->  <name>_overtrain.png, <name>_dist.png, <name>_rate.png
+#                       (drawn by pybdt's own Validator)
+#   compare_models.py -> <tag>_model_comparison.png  (cut curves + overlay)
+#
+# The Validator only takes pybdt BDT objects, so the first three are redrawn
+# here with matplotlib against the same definitions -- same four series, same
+# weighting, same dual linear/log layout.
+# ---------------------------------------------------------------------------
+
+SERIES = [("train_sig", "signal (train)", "tab:blue"),
+          ("test_sig", "signal (test)", "tab:cyan"),
+          ("train_bg", "background (train)", "tab:red"),
+          ("test_bg", "background (test)", "tab:orange")]
+
+
+def _range(scores, pad=0.02):
+    vals = np.concatenate([np.asarray(v) for v in scores.values()])
+    vals = vals[np.isfinite(vals)]
+    lo, hi = float(vals.min()), float(vals.max())
+    if hi <= lo:
+        return (0.0, 1.0)
+    span = hi - lo
+    return (lo - pad * span, hi + pad * span)
+
+
+def plot_overtrain(scores, weights, tag, outdir, p_sig, p_bg, bins=60):
+    """
+    Train vs test score shapes -- the counterpart of pybdt's
+    create_overtrain_check_plot.
+
+    Normalised to unit area so the comparison is about SHAPE: the training and
+    test sets do not have the same size, and a size difference is not
+    overtraining.  Training sets are drawn filled, test sets as points, which
+    is how the pybdt plot reads too.
+    """
+    rng = _range(scores)
+    fig, ax = plt.subplots(figsize=(7.2, 4.6))
+    for key, label, color in SERIES:
+        h, edges = np.histogram(scores[key], bins=bins, range=rng,
+                                weights=weights[key], density=True)
+        mid = 0.5 * (edges[1:] + edges[:-1])
+        if key.startswith("train"):
+            ax.hist(mid, bins=edges, weights=h, histtype="stepfilled",
+                    alpha=.35, color=color, label=label)
+        else:
+            ax.plot(mid, h, "o", ms=3, color=color, label=label)
+    ax.set_xlabel("LightGBM score")
+    ax.set_ylabel("normalised weight / bin")
+    ax.set_yscale("log")
+    ax.grid(alpha=.3)
+    ax.legend(fontsize=8)
+    ax.set_title("%s - overtraining check   (p_KS signal %.3f, background %.3f)"
+                 % (tag, p_sig, p_bg), fontsize=10)
+    return _save(fig, outdir, "%s_lightgbm_overtrain.png" % tag)
+
+
+def plot_dist(scores, weights, tag, outdir, weight_name, bins=60):
+    """Score distribution, weighted count per bin -- linear and log."""
+    rng = _range(scores)
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2))
+    for ax, logy in zip(axes, (False, True)):
+        for key, label, color in SERIES:
+            ax.hist(scores[key], bins=bins, range=rng, weights=weights[key],
+                    histtype="step", lw=1.4, color=color, label=label)
+        ax.set_xlabel("LightGBM score")
+        ax.set_ylabel("%s / bin" % weight_name)
+        ax.grid(alpha=.3)
+        if logy:
+            ax.set_yscale("log")
+    axes[0].legend(fontsize=8)
+    fig.suptitle("%s - score distribution (weight column: %s)"
+                 % (tag, weight_name), fontsize=11)
+    return _save(fig, outdir, "%s_lightgbm_dist.png" % tag, suptitle=True)
+
+
+def plot_rate(scores, weights, tag, outdir, weight_name, bins=200):
+    """
+    Weight surviving each cut -- 'if I cut here, what is left'.  The
+    counterpart of pybdt_train's _rate plot.
+    """
+    rng = _range(scores)
+    grid = np.linspace(rng[0], rng[1], bins)
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.2))
+    for ax, logy in zip(axes, (False, True)):
+        for key, label, color in SERIES:
+            v, w = np.asarray(scores[key]), np.asarray(weights[key])
+            above = np.array([w[v >= c].sum() for c in grid])
+            ax.plot(grid, above, lw=1.4, color=color, label=label)
+        ax.set_xlabel("cut on LightGBM score")
+        ax.set_ylabel("%s above the cut" % weight_name)
+        ax.grid(alpha=.3)
+        if logy:
+            ax.set_yscale("log")
+    axes[0].legend(fontsize=8)
+    fig.suptitle("%s - weight surviving the cut (weight column: %s)"
+                 % (tag, weight_name), fontsize=11)
+    return _save(fig, outdir, "%s_lightgbm_rate.png" % tag, suptitle=True)
+
+
+def plot_cuts(s_te, b_te, tag, outdir, n_bg_te, extra=None):
+    """
+    The compare_models.py figure for one engine: where to cut on the left,
+    efficiency vs rejection on the right.
+
+    `extra` is a list of (label, s_test, b_test) from other engines -- the
+    right-hand panel is the only fair way to put them on one axis, because
+    the score scales differ.  The grey lines mark where the test-set
+    background runs out; right of "10 events" nothing here is a measurement.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6))
+
+    cuts, eff, rej = curve(s_te, b_te)
+    ax = axes[0]
+    ax.plot(cuts, 100 * eff, color="tab:blue", lw=1.5, label="signal kept")
+    ax.plot(cuts, 100 * rej, color="tab:red", lw=1.5, label="background rejected")
+    ax.set_xlabel("cut on LightGBM score")
+    ax.set_ylabel("% of events")
+    ax.set_ylim(0, 102)
+    ax.grid(alpha=.3)
+    ax.legend(fontsize=8, loc="center left")
+    ax.set_title("LightGBM (Table 10) - where do I cut", fontsize=10)
+
+    ax = axes[1]
+    ax.plot(100 * REJ_GRID, 100 * eff_on_grid(eff, rej, REJ_GRID), lw=1.8,
+            color="tab:green", label="LightGBM")
+    for label, es, eb in (extra or []):
+        c2, e2, r2 = curve(es, eb)
+        ax.plot(100 * REJ_GRID, 100 * eff_on_grid(e2, r2, REJ_GRID), lw=1.5,
+                ls="--", label=label)
+
+    for n_left, style in ((100, "-."), (10, "--"), (1, ":")):
+        r = 100 * (1.0 - n_left / float(n_bg_te))
+        ax.axvline(r, color="0.4", ls=style, lw=1)
+        ax.text(r, 4, " %d bg events left" % n_left, rotation=90,
+                fontsize=7, color="0.3", va="bottom")
+
+    # Table 13 target of the technical note -- same marker compare_models uses.
+    ax.plot([99.2], [96.0], marker="*", ms=14, color="k", zorder=5)
+    ax.text(99.2, 96.0, "  note target", fontsize=8, va="center")
+
+    ax.set_xlabel("background rejection [%]")
+    ax.set_ylabel("signal efficiency [%]")
+    ax.set_xlim(80, 100)
+    ax.set_ylim(0, 102)
+    ax.grid(alpha=.3)
+    ax.legend(fontsize=8, loc="lower left")
+    ax.set_title("Efficiency vs rejection - the only comparable axis",
+                 fontsize=10)
+
+    fig.suptitle("%s - cut curves, efficiency counted in events" % tag,
+                 fontsize=12)
+    return _save(fig, outdir, "%s_lightgbm_cuts.png" % tag, suptitle=True)
+
+
+def _save(fig, outdir, name, suptitle=False):
+    fig.tight_layout(rect=[0, 0, 1, 0.94] if suptitle else None)
+    path = os.path.join(outdir, name)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    print("  -> %s" % path)
+    return path
+
+
+def train_pybdt(ds_dir, tag, features, specs, weight_col="weight"):
+    """
+    Train the given pybdt models on the SAME .ds files, for the overlay.
+
+    Deliberately reuses parse_model and build_learner rather than
+    reimplementing: the overlay is only worth drawing if the AdaBoost curve on
+    it is the same curve compare_models.py would draw.
+    """
+    parts = {}
+    for part in ("sig_train", "bg_train", "sig_test", "bg_test"):
+        parts[part] = util.load(os.path.join(ds_dir, "%s_%s.ds" % (tag, part)))
+    out = []
+    for spec in specs:
+        label, cfg = parse_model(spec)
+        print("  training pybdt %s ..." % label)
+        learner = build_learner(features, weight_col, cfg)
+        bdt = learner.train(parts["sig_train"], parts["bg_train"])
+        out.append((
+            "pybdt %s" % label,
+            np.asarray(bdt.score(parts["sig_test"], use_purity=cfg.use_purity,
+                                 quiet=True)),
+            np.asarray(bdt.score(parts["bg_test"], use_purity=cfg.use_purity,
+                                 quiet=True))))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="AdaBoost (pybdt) vs LightGBM on identical data")
@@ -200,7 +413,21 @@ def main():
     ap.add_argument("--learning-rate", type=float, default=None)
     ap.add_argument("--seed", type=int, default=12345)
     ap.add_argument("--outdir", default=None,
-                    help="if given, the model is written there as .txt")
+                    help="if given, the model (.txt) and the plots are written there")
+    ap.add_argument("--no-plots", action="store_true",
+                    help="skip the plots even with --outdir")
+    ap.add_argument("--plot-weight", choices=("weight", "w_phys"),
+                    default="weight",
+                    help="weighting for the dist/rate/overtrain plots. "
+                         "'weight' (default) is the class-balanced training "
+                         "weight, the same one pybdt_train.py plots with, so "
+                         "the figures are comparable side by side.")
+    ap.add_argument("--pybdt-model", action="append", default=[],
+                    metavar="SPEC",
+                    help="also train this pybdt model on the same .ds files "
+                         "and draw it on the efficiency-vs-rejection panel. "
+                         "Same spec syntax as compare_models.py, repeatable, "
+                         'e.g. --pybdt-model "d2t500:depth=2,trees=500"')
     args = ap.parse_args()
 
     features = [f.strip() for f in args.features.split(",") if f.strip()]
@@ -221,8 +448,8 @@ def main():
     p["seed"] = args.seed
 
     # --- data ---------------------------------------------------------------
-    Xs, ws_tr, _ = load_side(args.ds_dir, args.tag, "sig_train", features)
-    Xb, wb_tr, _ = load_side(args.ds_dir, args.tag, "bg_train", features)
+    Xs, ws_tr, wps_tr = load_side(args.ds_dir, args.tag, "sig_train", features)
+    Xb, wb_tr, wpb_tr = load_side(args.ds_dir, args.tag, "bg_train", features)
     Xst, ws_te, wps_te = load_side(args.ds_dir, args.tag, "sig_test", features)
     Xbt, wb_te, wpb_te = load_side(args.ds_dir, args.tag, "bg_test", features)
 
@@ -352,11 +579,53 @@ def main():
     for f, v in sorted(zip(features, imp), key=lambda x: -x[1]):
         print("  %-22s %8.1f  (%.1f%%)" % (f, v, 100 * v / tot))
 
+    # --- outputs ------------------------------------------------------------
     if args.outdir:
         os.makedirs(args.outdir, exist_ok=True)
         path = os.path.join(args.outdir, "%s_lightgbm.txt" % args.tag)
         booster.save_model(path, num_iteration=best)
         print("\n  -> %s" % path)
+
+        if not args.no_plots:
+            # The same figures the AdaBoost side produces: three from
+            # pybdt_train.py's Validator, one from compare_models.py.
+            scores = {"train_sig": s_tr, "test_sig": s_te,
+                      "train_bg": b_tr, "test_bg": b_te}
+            if args.plot_weight == "w_phys":
+                weights = {"train_sig": wps_tr, "test_sig": wps_te,
+                           "train_bg": wpb_tr, "test_bg": wpb_te}
+            else:
+                weights = {"train_sig": ws_tr, "test_sig": ws_te,
+                           "train_bg": wb_tr, "test_bg": wb_te}
+
+            extra = []
+            if args.pybdt_model:
+                print("\n--- AdaBoost overlay (same .ds, same features) ---")
+                extra = train_pybdt(args.ds_dir, args.tag, features,
+                                    args.pybdt_model)
+
+            print("\n--- Plots ---")
+            try:
+                plot_overtrain(scores, weights, args.tag, args.outdir,
+                               p_sig, p_bg)
+                plot_dist(scores, weights, args.tag, args.outdir,
+                          args.plot_weight)
+                plot_rate(scores, weights, args.tag, args.outdir,
+                          args.plot_weight)
+                plot_cuts(s_te, b_te, args.tag, args.outdir, len(b_te),
+                          extra=extra)
+            except Exception as exc:
+                # Same guard pybdt_train.py grew after a matplotlib error took
+                # a whole run down: the numbers above are already printed and
+                # the model is already saved, so a drawing failure must not
+                # lose them.
+                print("  [!] plotting failed (%s: %s)" % (type(exc).__name__, exc))
+                print("      The numbers above and the saved model are unaffected.")
+            if not args.pybdt_model:
+                print("\n  hint: add --pybdt-model \"d2t500:depth=2,trees=500\" to put")
+                print("        the AdaBoost curve on the same axis.")
+    else:
+        print("\n  (no --outdir given: no model and no plots were written)")
 
     print("\n" + "=" * 70)
     print("Compare the HEADLINE line against the same row of the pybdt run")

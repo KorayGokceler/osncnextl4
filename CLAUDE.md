@@ -406,6 +406,50 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    değişkenin önde görünmesi **ölçüm değil**: orada 10 / 5 / 1 arka plan
    olayı kalıyor (5h). Yani "BDT ekmeğini çıkarmıyor" doğru değil;
    doğrusu **red eşiğini yükseltecek arka plan istatistiğimiz yok**.
+5l. **LightGBM ÖLÇÜLDÜ — darboğaz arka plan istatistiği DEĞİL, motormuş.
+   5e/5j/5k'daki "kapasite değil, veri" çıkarımı GERİ ÇEKİLDİ.**
+   `lightgbm_compare.py` aynı `.ds`, aynı 5 değişken, aynı train/test
+   ayrımı, aynı ağırlıklar, aynı ölçüm koduyla (compare_models'ın
+   `curve`/`eff_on_grid`/`kept_counts`'u) koşturuldu. Test seti,
+   ağırlıksız olay sayısı:
+
+   | red | pybdt en iyi (5h) | LightGBM | fark |
+   |---|---|---|---|
+   | %90 | 94.0 (d2t500) | **99.0** | +5.0 |
+   | %95 | 91.7 (d2t500) | **98.5** | +6.8 |
+   | %99 | 65.8 (d4t500) | **95.9** | **+30.1** |
+
+   **Tablo 13 hedefi (%99.2 redde ~%96) tutturuldu.** Üstelik
+   `min_data_in_leaf=500` handikabıyla — 828 arka plan olayı fit
+   ediliyor, yani Tablo 10 bu ayarı bizimkinden çok daha büyük bir
+   istatistiğe göre veriyor ve LightGBM buna rağmen hedefi buldu.
+   122 ağaçta erken durdu (limit 2000), yani kapasiteyi zorlamadı bile.
+   Overtraining yok: train/test verim açığı **+0.1 puan** (%90 redde
+   train 99.1 / test 99.0). `p_KS` 0.87 / 0.54 (zaten ölçüt değil, 5i).
+   `w_phys` cross-check tutarlı: %95.2 verim / %98.92 red — 5d'nin
+   dediği gibi ağırlıklı ve ağırlıksız neredeyse aynı.
+
+   **Güven notu:** %99 satırı 10 arka plan olayı üzerinde duruyor, yani
+   ölçülebilirliğin tam sınırında. Ama sonuç tek bir kırılgan noktaya
+   asılı değil: %95 satırı 50 olayla 98.5 vs 91.7 diyor.
+
+   **Sonuç:** pybdt/AdaBoost sapmasının bedeli %99 redde ~30 puan.
+   1 035 arka plan olayı LightGBM için **yetiyor**; AdaBoost için
+   yetmiyordu. "Daha çok vuvuzela MC" talebi hâlâ değerli (istatistik
+   her zaman iyidir) ama **engelleyici değil** — Jana'ya yazılan
+   gerekçenin bu ölçümle güncellenmesi gerekir.
+
+5m. **`fill_ratio` baskın çıktı — 5. açık riski büyüttü.** LightGBM gain
+   dağılımı: `fill_ratio` **%60.9**, `NchCleaned` %26.0,
+   `FullTimeLengthRatio` %8.1, `micro_count` %3.9, `iLineFit_speed`
+   **%1.1** (neredeyse ölü). pybdt tarafındaki tek değişkenli baseline
+   (5k) `NchCleaned` üzerine kuruluydu — yanlış değişkenmiş.
+   Modelin en çok yaslandığı değişken, orijinal kodun kendi yorumunda
+   *"Was optimised for GRECO but has not been re-optimised for oscNext"*
+   dediği `SphericalRadiusMean=1.6` parametresine bağlı olan değişken.
+   Yani 5'teki "yeniden optimize edilebilir" notu artık düşük öncelikli
+   bir merak değil, **en yüksek getirili tek ayar**.
+
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
@@ -619,7 +663,23 @@ sonuçlardan habersizdi. Merge sonrası gözden geçirildi:
    hata; bilinmeyen `--params` anahtarı için net hata;
    `--learning-rate 0` sessizce yok sayılmıyor.
 
-**Hâlâ koşturulmadı** — bu ortamda ne `lightgbm` ne veri var.
+7. **Grafikler eklendi.** AdaBoost tarafıyla birebir aynı set:
+   `<tag>_lightgbm_overtrain.png` / `_dist.png` / `_rate.png`
+   (pybdt_train'in Validator'la çizdiği üçünün karşılığı — Validator
+   yalnızca pybdt BDT nesnesi aldığı için matplotlib'le yeniden
+   çizildi, aynı dört seri / aynı ağırlık / aynı linear+log düzen) ve
+   `<tag>_lightgbm_cuts.png` (compare_models'ın figürünün tek motorluk
+   hâli: solda kesim eğrisi, sağda verim-vs-red, arka plan tükenme
+   çizgileri ve Tablo 13 hedef yıldızı dahil). `--outdir` ile yazılır,
+   `--no-plots` ile kapatılır, `--plot-weight` ağırlığı seçer
+   (varsayılan `weight`, pybdt_train ile yan yana bakılabilsin diye).
+   **`--pybdt-model "d2t500:depth=2,trees=500"`** aynı `.ds` üzerinde
+   bir AdaBoost modeli eğitip verim-vs-red panelinde üstüne çizer —
+   spec sözdizimi ve `build_learner` compare_models'la ortak, yani
+   overlay'deki eğri compare_models'ın çizeceği eğrinin aynısı.
+   Çizim hatası koşuyu götürmüyor (pybdt_train'deki aynı koruma).
+
+**Koşturuldu** — sonuç 5l/5m'de.
 
 pybdt'ye geçiş şu sonuçları doğurur:
 - pybdt AdaBoost yapıyor, LightGBM'in gradient-boosting + leaf/lambda
@@ -872,8 +932,8 @@ Aktif branch'ler:
   değişkenleri tarafında açık iş kalmadı.
 - `claude/lightgbm-compare` — **aktif branch.** `noise-bdt-fix` bunun
   içine merge edildi (7 commit'lik açık kapandı), `lightgbm_compare.py`
-  merge sonrası gözden geçirilip düzeltildi (yukarıdaki 6 madde).
-  Cobalt'ta **henüz koşturulmadı** — sıradaki iş bu.
+  gözden geçirilip düzeltildi, grafikler eklendi, **koşturuldu**.
+  Sonuç 5l: LightGBM Tablo 13 hedefini tutturuyor, pybdt tutturmuyor.
 
 Yapılacaklar:
 1. **Daha fazla noise MC gelince**: aynı modeli arka planın artan
