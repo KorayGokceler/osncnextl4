@@ -35,7 +35,7 @@ find_env_shell() {
     fi
     # 3) Kendi derlediginiz build'ler
     #    /data/user/$USER en olasi yer: cobalt'ta home kotali oldugu icin
-    #    build oraya yapiliyor (bkz. README "pybdt'yi derle").
+    #    build oraya yapiliyor (bkz. README).
     for p in /data/user/"$(whoami)"/icetray_build/build/env-shell.sh \
              /data/user/"$(whoami)"/*/build/env-shell.sh \
              /data/user/"$(whoami)"/build/env-shell.sh \
@@ -93,7 +93,7 @@ report() {
         local ts; ts="$(detect_toolset "$bd")"
         [ -n "${ts:-}" ] && echo "Derleme toolset (CMakeCache): $ts"
         echo
-        echo "icecube + pybdt import testi:"
+        echo "icecube + lightgbm import testi:"
         "$es" -- python "$HERE/icetray_env.py" 2>&1 | sed 's/^/  /'
     else
         echo "env-shell.sh BULUNAMADI."

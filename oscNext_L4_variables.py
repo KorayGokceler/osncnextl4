@@ -273,7 +273,7 @@ def _full_time_length_ratio(frame, output_key,
     Yon: temizlenmis / temizlenmemis, yani [0,1] araliginda (Sekil 13'teki
     x ekseni ile uyumlu).
 
-    OLCULEN DAVRANIS (test_noise_vars.py, birer L3 dosyasi: 126 nue,
+    OLCULEN DAVRANIS (birer L3 dosyasi uzerinde: 126 nue,
     17 noise) -- onceki yorumdaki fizik hikayesi YANLISTI, duzeltildi:
 
                        oran(medyan)   temizlenmis    temizlenmemis

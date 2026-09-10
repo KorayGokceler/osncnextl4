@@ -274,7 +274,7 @@ def add_L4_classifiers(tray, name, model_dir,
     Her iki siniflandiriciyi ekle ve L4 kesimini hesapla.
 
     Kesim degerleri v00.07 referansi; kendi modelinizin optimal degerini
-    reference/train_L4_classifier.py'nin rate-vs-cut grafiginden secin.
+    train_L4_classifier.py'nin rate-vs-cut grafiginden secin.
     '''
     tray.Add(L4Classifier, name + "_noise",
              ModelFile=os.path.join(model_dir, "L4_noise_model.txt"),

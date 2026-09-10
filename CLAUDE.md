@@ -1,20 +1,27 @@
 # oscNext L4 — proje bilgilendirmesi
 
 Bu dosya her Claude Code session'ında otomatik yüklenir. Amacı: kod tabanını
-hiç görmemiş bir session'ın, fizik/IceTray bağlamını ve mevcut riskleri hızlıca
-kavrayıp anlamlı fikir yürütebilmesi.
+hiç görmemiş bir session'ın, fizik/IceTray bağlamını ve mevcut riskleri
+hızlıca kavrayıp anlamlı fikir yürütebilmesi.
 
 ## Ne yapıyor bu repo
 
 IceCube deneyinin oscNext (düşük enerji nötrino) analizinde **Level 3 → Level
 4** işleme adımını yeniden inşa ediyor. L3 çıktısı `.i3` dosyalarından L4
-ayırt edici değişkenlerini hesaplıyor, HDF5'e "book" ediyor, feature
-engineering yapıyor ve iki LightGBM BDT'si eğitiyor:
+ayırt edici değişkenlerini hesaplıyor, HDF5'e "book" ediyor ve iki LightGBM
+sınıflandırıcısı eğitiyor:
 
-- **Noise BDT**: saf gürültü (vuvuzela) reddi
-- **Muon BDT**: atmosferik muon reddi (arka plan = CORSIKA)
+- **noise**: saf gürültü (vuvuzela) reddi
+- **muon**: atmosferik muon reddi (arka plan = CORSIKA)
 
-Referans: oscNext technical note v00.07 (bölüm 3.4–3.6, Tablo 10–12).
+Referans: oscNext technical note v00.07 (bölüm 3.4–3.6, Tablo 10–13).
+**Yöntem notunkiyle aynı:** LightGBM, Tablo 10 hiperparametreleri.
+
+> Proje bir süre pybdt (IceCube'un AdaBoost tabanlı BDT kütüphanesi)
+> kullandı — bilinçli bir sapmaydı ve bedeli ölçüldü: aynı veri, aynı
+> değişkenler, aynı ayrım üzerinde %99 gürültü reddinde AdaBoost %65.8,
+> LightGBM %95.9 verim verdi (Tablo 13 hedefi ~%96). pybdt yolu bu yüzden
+> kaldırıldı; ölçümün kendisi `claude/lightgbm-compare` branch'inde duruyor.
 
 ## Neden yeniden yazıldı (kritik bağlam)
 
@@ -23,19 +30,18 @@ Kullanılan IceTray meta-projesinde (`py3-v4.4.2`) şu satırlar **yok**:
 - `icecube.oscNext` projesi tamamen yok → `I3Classifier` (model uygulama),
   `oscNext_cut`, `calc_rho_36` kullanılamıyor.
 - `icecube.hdfwriter` **cvmfs metaproject'inde** yoktu → `simple_booker.py`
-  pytables ile fallback booking yapıyor. **Güncelleme:** kullanıcının kendi
-  build'inde (`/data/user/$USER/icetray_build/build`) hdfwriter VAR —
-  gerçek çalışmada `Booking: icecube.hdfwriter` yazıyor. Fallback artık
-  devrede değil ama kod duruyor (cvmfs ortamına dönülürse gerekli).
+  pytables ile fallback booking yapıyor. Kullanıcının kendi build'inde
+  (`/data/user/$USER/icetray_build/build`) hdfwriter VAR — gerçek çalışmada
+  `Booking: icecube.hdfwriter` yazıyor. Fallback devrede değil ama kod
+  duruyor (cvmfs ortamına dönülürse gerekli).
 - Eski proje bağımlılıkları yok: `tau_bdt.I3CutL7Module` (VICH),
   `analysis.event_selection` (Dunkman değişkenleri: accumulated_time,
   separation_in_cogs), `slc-veto` (QR box, opsiyonel).
 
 Bu yüzden `oscNext_L4_variables.py` içinde VICH, accumulated_time,
-separation_in_cogs saf Python'la **teknik nottaki tanımlara göre tahminen**
-yeniden yazıldı ve **henüz orijinal C++ implementasyonuyla doğrulanmadı**.
-Herhangi bir session bu konuda ilerleme kaydedebilir/fikir üretebilirse
-değerli olur — bkz. "Açık riskler" altında.
+separation_in_cogs saf Python'la **teknik nottaki tanımlara göre** yeniden
+yazıldı ve **orijinal C++ implementasyonuyla doğrulanmadı**. Bkz. "Açık
+riskler".
 
 ## Dosya haritası ve veri akışı
 
@@ -44,10 +50,8 @@ değerli olur — bkz. "Açık riskler" altında.
    │
    ▼
 process_L4.py  ──uses──►  oscNext_L4_variables.py (oscNext_L4 traysegment)
-   │                          │
    │                          ├─ common: first_hlc, rho_36, FullTimeLengthRatio
-   │                          ├─ muon vars: ToI, iLineFit, VICH, accumulated_time,
-   │                          │             separation_in_cogs
+   │                          ├─ muon vars: ToI, iLineFit, VICH, accumulated_time
    │                          ├─ noise vars: micro_count, fill_ratio
    │                          └─ hit_statistics: cog_z, z_sigma, z_travel, n_hit_doms
    │
@@ -57,49 +61,28 @@ process_L4.py  ──uses──►  oscNext_L4_variables.py (oscNext_L4 traysegm
 .hdf5  (L4_output/hdf5/<sample>/L4_*.hdf5)
    │
    ▼
-oscNext_L4_pybdt.ipynb   ◄── ANA ARAYÜZ (aktif yol, 11 bölüm)
-   0  Konfigürasyon + ortam kontrolü
-   1  L3 → L4 işleme (process_L4.py'yi çağırır, +smoke test)
-   2  Booking doğrulaması (HDF5'te gerçekte ne var)
-   3  Feature registry (BDT değişkeni → HDF5 tablo/kolon)
-   4  HDF5 → numpy (pytables; pandas YOK)
-   5  Ağırlıklar (w_phys + eğitim ağırlığı)
-   6  pybdt DataSet + train/test → .ds
-   7  Eğitim (pybdt_train.py'yi çağırır)
-   8  Doğrulama (Validator: KS overtraining, dist, rate)
-   9  Kesim seçimi
-  10  Frame'e uygulama + REGISTRY↔FEATURE_MAP tutarlılık kontrolü
+oscNext_L4.ipynb   ◄── ANA ARAYÜZ (11 bölüm, 0–10)
+   │
+   ▼  bölüm 6: L4_output/ds/L4_<tag>_dataset.npz
+   │
+train_L4_classifier.py  →  L4_<tag>_model.txt + .json + grafikler
    │
    ▼
-pybdt_train.py  →  L4_{name}.bdt + .validator + .json + grafikler
-   │
-   ▼
-pybdt_classifier_module.py  (PyBDTClassifier tray modülü)
-   FEATURE_MAP'i l4_classifier_module.py'den alır
+l4_classifier_module.py  (L4Classifier tray modülü, add_L4_classifiers)
 ```
 
-**Referans (LightGBM) yolu** — resmi yöntem, artık aktif kullanılmıyor:
-`oscNext_L4_feature_engineering.ipynb` (eski arayüz, parquet export) →
-`reference/train_L4_classifier.py` → `L4_{tag}_model.txt`/`.json` →
-`l4_classifier_module.py`. Eski notebook'ta yeni notebook'a
-**taşınmamış** bölümler var ve bu yüzden duruyor: §6 yeniden yazılan
-değişkenlerin referansla karşılaştırılması, §8 türetilmiş değişkenler,
-§9 data/MC uyumu, §10 korelasyon + incremental feature scan.
-
-Yardımcı/tanı scriptleri:
+Yardımcı dosyalar:
 - `icetray_env.py` — **tüm `icecube` import'ları buradan geçer**; import
-  başarısız olursa sebebini raporlar. `require_pybdt()` de burada.
+  başarısız olursa sebebini raporlar. `require_lightgbm()` de burada.
 - `setup_env.sh` — ortamı bul / shell aç / tek komut çalıştır / Jupyter kernel.
 - `scan_files.py` — bozuk `.i3.zst` dosyalarını bul, sağlam liste üret.
-- `l4_run.py` — `process_L4.py` sürücüsü + canlı ilerleme çubuğu
-  (`configure_runner`, `run_process`, `run_all`).
+- `l4_run.py` — `process_L4.py` sürücüsü + canlı ilerleme çubuğu.
 - `l4_data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
   `check_feature_map`, `load_sample`, `add_weights`.
-- `AKIS_SEMASI.md` — **hangi dosya ne zaman çalışır**: iki aşamanın tam
-  akışı, tray modül sırası, çalışmayan (referans) dosyalar.
-- `TEKNIK_NOT_KARSILASTIRMA.md` — HDF5'e tam olarak ne yazdığımız +
-  teknik notla satır satır karşılaştırma (Tablo 7/10/11/12/13).
-- `diagnose_env.py` — ortamda ne var/yok (pybdt kontrolü dahil).
+- `diagnose_env.py` — ortamda ne var/yok.
+- `AKIS_SEMASI.md` — hangi dosya ne zaman çalışır.
+- `TEKNIK_NOT_KARSILASTIRMA.md` — HDF5'e ne yazdığımız + teknik notla satır
+  satır karşılaştırma (Tablo 7/10/11/12/13).
 
 HDF5 kolonlarını dökmek için notebook bölüm 2.
 
@@ -109,7 +92,7 @@ HDF5 kolonlarını dökmek için notebook bölüm 2.
 birbiriyle satır satır aynı olmalı. Biri diğerinden farklı bir kolon
 okursa model **sessizce** yanlış tahmin üretir — hata fırlatmaz.
 
-Artık elle değil, kodla kontrol ediliyor: `l4_data.check_feature_map()`
+Elle değil, kodla kontrol ediliyor: `l4_data.check_feature_map()`
 `FEATURE_MAP`'i **AST ile** okuyor (icetray gerekmiyor) ve çakışmaları
 listeliyor. FEATURE_MAP'in fazladan aday değişken içermesi normal;
 tehlikeli olan **aynı isim, farklı kolon**.
@@ -123,26 +106,25 @@ Model formatı bilinçli olarak joblib/pickle değil, LightGBM native metin
 formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
 `lightgbm` + `numpy` var.
 
-## Mevcut durum (README'den)
+## Mevcut durum
 
-- [x] Ortam doğrulandı (`oscNext` projesi yok; `slc-veto` yok;
-      kendi build'de `hdfwriter` VAR)
-- [x] IceTray/pybdt import katmanı (`icetray_env.py` + `setup_env.sh`)
+- [x] Ortam doğrulandı (`oscNext` projesi yok; `slc-veto` yok; kendi
+      build'de `hdfwriter` VAR)
+- [x] IceTray/lightgbm import katmanı (`icetray_env.py` + `setup_env.sh`)
 - [x] Bozuk girdi dosyalarına dayanıklılık (`--scan` + `--retries`)
-- [x] νe işleme çalıştı (100 dosya → 256 799 olay, 1019 s)
-- [x] CORSIKA işleme çalıştı (500 dosya → 6 462 olay, 2578 s)
-- [ ] νμ / noise yeniden çalıştırılmalı — bozuk `.i3.zst` yüzünden yarım kaldı
+- [x] νe işleme (100 dosya → 256 799 olay), CORSIKA (500 dosya → 6 462 olay)
 - [x] Sütun isimleri kesinleştirildi (14/14 BDT girdisi bulundu)
-- [ ] Yeniden yazılan değişkenler (VICH, accumulated_time, separation_in_cogs)
-      referansla doğrulanmadı
-- [ ] Ağırlıklar doğrulanmadı
-- [ ] Model henüz eğitilmedi
+- [x] noise sınıflandırıcısı eğitildi: %99 redde %95.9 verim, train/test
+      açığı +0.1 puan
+- [ ] νμ / noise yeniden işlenmeli — bozuk `.i3.zst` yüzünden yarım kaldı
+- [ ] muon sınıflandırıcısı eğitilmedi
+- [ ] Yeniden yazılan değişkenler (VICH, accumulated_time) doğrulanmadı
+- [ ] Gürültü MC istatistiği yetersiz (~2 000 olay) — %99'un sağı ölçülemiyor
 
 ## Açık riskler / fikir yürütülebilecek noktalar
 
 > Teknik not okundu ve kodla satır satır karşılaştırıldı:
-> **`TEKNIK_NOT_KARSILASTIRMA.md`**. Aşağıdaki 1–3 o karşılaştırmaya göre
-> güncellendi.
+> **`TEKNIK_NOT_KARSILASTIRMA.md`**.
 
 1. **VICH** (`_vich`, `oscNext_L4_variables.py`) — büyük ölçüde **doğrulandı**:
    §3.4 hız penceresini ([0.25, 0.4] m/ns) ve "veto region"un DeepCore
@@ -176,7 +158,7 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    (`IC2018_LE_L3_Vars.FullTimeLengthRatio`); pass3 L3 map'inde oran yok,
    bileşenleri var (`CleanedFullTimeLength`, `UncleanedFullTimeLength`) —
    biz oranı L4'te bölerek üretiyoruz, değer aynı olmalı. **Doğrulandı:**
-   `test_noise_vars.py` bölmeyi L3 bileşenleriyle karşılaştırıyor,
+   bölme L3 bileşenleriyle karşılaştırıldı,
    143 olayda maks sapma 0.
    **Fizik açıklaması DÜZELTİLDİ (ölçümle).** Docstring "gerçek olay ~1,
    gürültü ~0" diyordu; gerçek ölçüm (126 νe + 17 noise):
@@ -252,8 +234,8 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    (`I3StaticTWC(InputResponse=uncleaned_pulses)`), Tablo 11 ise
    *"Start with the cleaned pulse series"* diyor. **Notu izliyoruz**
    (varsayılan, kalıcı karar).
-   **Ölçüldü — fark neredeyse yok:** `test_noise_vars.py` iki zinciri aynı
-   olayda hesaplıyor. νe'de 126 olayın 115'i, noise'da 17 olayın 16'sı
+   **Ölçüldü — fark neredeyse yok:** iki zincir aynı olayda
+   hesaplandı. νe'de 126 olayın 115'i, noise'da 17 olayın 16'sı
    **birebir eşit**; medyanlar aynı (5 ve 3). Sebep: zincirin sonundaki
    200 ns'lik pencere zaten belirleyici — gürültü hitleri ~10 µs'ye yayılmış
    olduğu için en yoğun 200 ns penceresine iki seride de aynı hitler düşüyor.
@@ -271,7 +253,7 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    =[1010, 1011]`, `WindowMinus/Plus = 3500/4000`, `dtw = 200`, alt anahtar
    adı `STW_m%ip%i_DTW%i`, ve sayımın **DOM** sayısı olduğu
    (`len(reco_pulse_series.values())` — bizde `len(pmap)`, aynı şey).
-5c. **YAPILACAK — sinyal train/test ayrımı iki BDT'de farklı.** Notebook
+5c. **ÇÖZÜLDÜ — sinyal train/test ayrımı iki BDT'de farklıydı.** Notebook
    bölüm 6'da `make_datasets` noise ve muon BDT'si için ayrı ayrı
    çağrılıyor ve her çağrıda `istrain = rng.random(...)` **yeniden**
    çekiliyor. İkisi de aynı νe+νμ sinyal olaylarını kullandığı için bir
@@ -280,7 +262,13 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    (orijinal: `noise ≥ 0.7 AND muon ≥ 0.65`) ve birleşik kesimi
    değerlendirecek ortak held-out set yok → nihai verim olduğundan iyi
    görünür. **Çözüm:** sinyal ayrımını bir kez çekip iki BDT'de de aynısını
-   kullanmak (üç satır). Bilinçli olarak ertelendi.
+   kullanmak. **Yapıldı:** `oscNext_L4.ipynb` bölüm 6 sinyali bir kez
+   yığıp `SIG_ISTRAIN`'i bir kez çekiyor, iki `.npz` de aynısını
+   taşıyor. Aynı yerde CORSIKA sızıntısı da kapatıldı: `split_by_shower`
+   arka planı olay değil **duş** (`Run`) bazında ayırıyor — aynı hava
+   duşu `OverSampling` kadar tekrarlandığı için olay bazlı ayrım
+   kopyaları train ve test'e birden dağıtıyor ve muon BDT'sinin test
+   verimini şişiriyordu.
 5d. **`NOISE_NS_SCALE = 1e9` — DOĞRULANDI (ölçümle).** Vuvuzela
    `noise_weight`'inin birimi pass3'te 1/ns varsayılıyordu. İlk gerçek
    koşuda test setinin toplam gürültü oranı **20.5 mHz** çıktı; test seti
@@ -294,161 +282,49 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    **her kesimde birebir aynı**.
 5e. **Noise MC istatistiği — ÖLÇÜLDÜ, YETERSİZ.** 100 L3 dosyasından
    toplam **2 051** olay (train 1 035 / test 1 016); sinyal 329 545.
-   Oran **159:1**. `test_noise_vars.py`'deki %8'lik L3 geçme oranıyla
+   Oran **159:1**. ölçülen %8'lik L3 geçme oranıyla
    (νe'de %84) tutarlı. Referansın istatistiği çok daha büyük olmalı:
    Tablo 10 noise BDT'si için `min data in leaf = 500` veriyor — bizim
    1 035 eğitim olayımızla bu ayar 2 yaprak demek olurdu.
-5f. **İlk eğitilen noise BDT — çalışıyor ama referanstan zayıf.**
-   pybdt/AdaBoost, 300 ağaç, derinlik 3, `p_KS` sinyal 0.207 / arkaplan
-   0.099 (**overtraining YOK** — notun kendi noise BDT'si için
-   *"some overtraining is observed"* dediği düşünülürse iyi).
-   Verim/red eğrisi (test, `w_phys`):
+5f. **LightGBM ölçüldü — darboğaz motordu, arka plan istatistiği değil.**
+   Aynı `.ds`, aynı 5 değişken, aynı train/test ayrımı, aynı ağırlıklar,
+   aynı ölçüm kodu. Test seti, ağırlıksız olay sayısı:
 
-   | kesim | red | sinyal verimi |
+   | red | pybdt/AdaBoost en iyi | LightGBM |
    |---|---|---|
-   | 0.00 | %34 | %99.1 |
-   | 0.50 | %67 | %96.1 |
-   | 0.70 | %81 | %90.5 |
-   | 0.90 | %95 | %78.1 |
-   | **0.945** | **%98.9** | **%52.7** |
+   | %90 | 94.0 | **99.0** |
+   | %95 | 91.7 | **98.5** |
+   | %99 | 65.8 | **95.9** |
 
-   **Hedef (Tablo 13): %99.2 redde ~%96 verim.** Aradaki fark ağırlıktan
-   DEĞİL (yukarıda elendi), iki şeyden: (a) arka plan istatistiği (5e),
-   (b) model kapasitesi — Tablo 10 `max depth = 6`, `num leaves = 25`
-   diyor; bizim `--depth 3` (≤8 yaprak) keyfi bir seçimdi, nottan
-   gelmiyor. `--prune-strength 35` de keyfi ve fazla agresif olabilir.
-   Sıradaki denemeler: daha çok noise dosyası; `--depth 6`,
-   `--num-trees 500`, budamasız.
-5g. **pybdt eğitimi DETERMİNİSTİK — ölçüldü, ve önceki iddiam yanlıştı.**
-   `frac_random_events=0.5` ve pybdt'nin tohum ayarı olmaması yüzünden
-   "eğitim stokastik" diye **varsaymıştım** ve gözlenen ±10–17 puanlık
-   yayılımı ona bağlamıştım. `compare_models.py --only-determinism`
-   ölçtü: aynı konfigürasyon aynı veriyle iki kez eğitilince skorlar
-   **bit-aynı** — 165 837 olayın **0**'ında fark var, `max |Δskor| = 0`,
-   ağaç sayıları eşit. pybdt örneklemesini kendi içinde tohumluyor.
-   **Sonuçları:**
-   - `pybdt_scan.py`'nin `--repeat`'i **kaldırıldı** — süreyi üçe
-     katlayıp üç özdeş sayı üretiyordu.
-   - `compare_models.py`'nin `--repeat`'i ve tekrar bandı kaldırıldı;
-     eğriler kesin. Yerine grafikte **test setindeki arka planın nerede
-     tükendiği** işaretleniyor (100 / 10 / 1 olay kaldığı yerler).
-   - `pybdt_diagnose.py`'nin yayılımı **gerçek ve anlamlı** ama sebebi
-     eğitim değil: her tekrar arka planın (ya da sinyalin) **farklı bir
-     rastgele alt örneğini** çekiyor. 259–1035 olayla hangi olayların
-     düştüğü gerçekten fark ediyor.
-   - Geriye kalan gürültü kaynağı **ölçütün kendisi**: %99 red eşiği
-     ~10 arka plan olayının üstünde duruyor. `--target-rejection 0.90`
-     (~100 olay) çok daha kararlı.
-5h. **Altı modelin olay-sayısı karşılaştırması** (`compare_models.py`,
-   test seti, ağırlıksız):
+   Tablo 13 hedefi (%99.2 redde ~%96) tutturuldu — üstelik
+   `min_data_in_leaf=500` handikabıyla (828 arka plan olayı fit ediliyor)
+   ve 122 ağaçta erken durarak. Overtraining yok: train/test verim açığı
+   **+0.1 puan**. `w_phys` cross-check tutarlı (%95.2 / %98.92).
+   **Güven sınırı:** %99 satırı 10 arka plan olayı üzerinde duruyor, yani
+   ölçülebilirliğin tam kenarında; %95 satırı 50 olayla daha sağlam.
+   Bir dönem "darboğaz arka plan istatistiği, model kapasitesi değil"
+   sonucuna varılmıştı — bu ölçüm onu **geri çekti**. 1 035 arka plan
+   olayı LightGBM için yetiyor. Daha çok vuvuzela MC hâlâ değerli
+   (%99'un sağını ölçmek için) ama **engelleyici değil**.
 
-   | model | %90 red | %95 red | %99 red |
-   |---|---|---|---|
-   | stump (d1, 300) | 91.3 | 76.0 | 76.0* |
-   | **d2t500** | **94.0** | **91.7** | 62.0 |
-   | d3t300 | 88.9 | 75.2 | 43.7 |
-   | **d4t500** | 91.5 | 86.1 | **65.8** |
-   | d6t500 | 13.4 | 10.3 | 5.8 |
-   | d2t500p10 | 94.0 | 91.7 | 62.0 |
-
-   **Düzeltme — önce "en basit model önde, kapasite arttıkça düşüyor"
-   yazmıştım; yanlış.** Eğilim monoton değil: d2 > d1 > d4 > d3 ≫ d6.
-   Tek net olgu d6'nın çöküşü.
-   \* `stump`'ın %99'daki %76'sı yanıltıcı: derinlik-1 ensemble'ı çok az
-   ayrık skor değeri üretiyor, eğrisi kaba bir merdiven. %95 ve %99
-   **aynı noktaya** düşüyor (ikisinde de arka plan 6/1016) ve %99.5'te
-   birden **%0**'a iniyor — o redde kesilecek yer yok.
-   `prune_strength=10` derinlik 2'de **hiçbir şey budamıyor**: d2t500 ile
-   d2t500p10 birebir aynı.
-   **%99'un sağı ölçüm değil:** %99→10, %99.5→5, %99.9→1 arka plan olayı.
-   Güvenilir bölge %90–99.
-   **Hedefle mesafe:** not %99.2 redde %96 istiyor; en iyimiz %99'da
-   %65.8. Ama %90 redde %94.0 — sinyali tutmakta sorun yok, **reddi
-   yükseltemiyoruz**.
-5i. **`p_KS` overtraining ölçütü olarak İŞE YARAMIYOR (ölçüldü).**
-   `d2t500`: `p_KS = 0.002` → "OVERTRAINED" damgası, ama %90 redde
-   %94.0 ile **en iyi model**. `d6t500`: `p_KS = 0.976` → "temiz", ama
-   %90 redde %13.4 ile **felaket**.
-   Sebep: KS train/test **skor dağılımlarını** karşılaştırıyor; 164 821
-   sinyal olayıyla istatistiksel olarak anlamlı ama fiziksel olarak
-   önemsiz farkları yakalıyor. Bir modelin işe yarayıp yaramadığı
-   hakkında hiçbir şey söylemiyor.
-   **Sonuç:** `pybdt_scan.py`'nin `--ks-min 0.01` elemesi iyi modelleri
-   atıyor. `compare_models.py` artık asıl ölçütü basıyor:
-   **train ve test setinde aynı redde verim, ve aradaki fark** (`gap`).
-   Ezberleyen model train'de iyi test'te kötü olur; doğrudan görünür.
-   **Yapıldı:** `pybdt_scan.py` artık `--max-gap` (varsayılan 0.05) ile
-   eliyor; `--ks-min` duruyor ama varsayılanı 0, yani hiçbir şeyi atmıyor
-   (p_KS yalnızca bilgi olarak basılıyor).
-5j. **Hiçbir konfigürasyon overtrain ETMİYOR (ölçüldü).** Altı modelin
-   %90 reddindeki train/test farkı: stump −0.3, d2t500 +0.2, d3t300 −1.2,
-   d4t500 −0.3, d6t500 +1.4, d2t500p10 +0.2 puan. Birkaçı **negatif** —
-   yani test seti train'den iyi. Ezber sorunu yok; kapasiteyi kısmanın
-   gerekçesi de yok. `d6t500`'ün çöküşü (5h) overtraining değil: **kendi
-   eğitim setinde de** %14.9 tutuyor. Muhtemel sebep AdaBoost'un dejenere
-   hâli — derinlik-6 ağacı (≤64 yaprak) 1 035 arka plan olayını tam
-   ayırıyor, eğitim hatası ≈ 0 çıkıyor, boost ağırlıkları patlıyor.
-   Yani darboğaz yine **arka plan istatistiği** (5e), model kapasitesi
-   değil.
-5k. **BDT tek değişkenden İYİ — önceki "kazandırmıyor" değerlendirmesi
-   geri çekildi.** Ölçüm için `compare_models.py --baseline NchCleaned`
-   eklendi (tek değişkene doğrudan kesim). Test seti, ağırlıksız:
-
-   | red | NchCleaned tek | d2t500 | fark |
-   |---|---|---|---|
-   | %90 | 81.3 | **94.0** | +12.7 |
-   | %95 | 74.7 | **91.7** | +17.0 |
-   | %99 | 68.4 | 62.0 | −6.4 |
-   | %99.5 | 62.5 | 57.5 | −5.0 |
-   | %99.9 | 52.1 | 25.0 | −27.1 |
-
-   Ölçülebilir bölgede (%90–95) BDT açık ara önde. %99'un sağında tek
-   değişkenin önde görünmesi **ölçüm değil**: orada 10 / 5 / 1 arka plan
-   olayı kalıyor (5h). Yani "BDT ekmeğini çıkarmıyor" doğru değil;
-   doğrusu **red eşiğini yükseltecek arka plan istatistiğimiz yok**.
-5l. **LightGBM ÖLÇÜLDÜ — darboğaz arka plan istatistiği DEĞİL, motormuş.
-   5e/5j/5k'daki "kapasite değil, veri" çıkarımı GERİ ÇEKİLDİ.**
-   `lightgbm_compare.py` aynı `.ds`, aynı 5 değişken, aynı train/test
-   ayrımı, aynı ağırlıklar, aynı ölçüm koduyla (compare_models'ın
-   `curve`/`eff_on_grid`/`kept_counts`'u) koşturuldu. Test seti,
-   ağırlıksız olay sayısı:
-
-   | red | pybdt en iyi (5h) | LightGBM | fark |
-   |---|---|---|---|
-   | %90 | 94.0 (d2t500) | **99.0** | +5.0 |
-   | %95 | 91.7 (d2t500) | **98.5** | +6.8 |
-   | %99 | 65.8 (d4t500) | **95.9** | **+30.1** |
-
-   **Tablo 13 hedefi (%99.2 redde ~%96) tutturuldu.** Üstelik
-   `min_data_in_leaf=500` handikabıyla — 828 arka plan olayı fit
-   ediliyor, yani Tablo 10 bu ayarı bizimkinden çok daha büyük bir
-   istatistiğe göre veriyor ve LightGBM buna rağmen hedefi buldu.
-   122 ağaçta erken durdu (limit 2000), yani kapasiteyi zorlamadı bile.
-   Overtraining yok: train/test verim açığı **+0.1 puan** (%90 redde
-   train 99.1 / test 99.0). `p_KS` 0.87 / 0.54 (zaten ölçüt değil, 5i).
-   `w_phys` cross-check tutarlı: %95.2 verim / %98.92 red — 5d'nin
-   dediği gibi ağırlıklı ve ağırlıksız neredeyse aynı.
-
-   **Güven notu:** %99 satırı 10 arka plan olayı üzerinde duruyor, yani
-   ölçülebilirliğin tam sınırında. Ama sonuç tek bir kırılgan noktaya
-   asılı değil: %95 satırı 50 olayla 98.5 vs 91.7 diyor.
-
-   **Sonuç:** pybdt/AdaBoost sapmasının bedeli %99 redde ~30 puan.
-   1 035 arka plan olayı LightGBM için **yetiyor**; AdaBoost için
-   yetmiyordu. "Daha çok vuvuzela MC" talebi hâlâ değerli (istatistik
-   her zaman iyidir) ama **engelleyici değil** — Jana'ya yazılan
-   gerekçenin bu ölçümle güncellenmesi gerekir.
-
-5m. **`fill_ratio` baskın çıktı — 5. açık riski büyüttü.** LightGBM gain
+5g. **`fill_ratio` baskın — 5. maddeyi büyütüyor.** LightGBM gain
    dağılımı: `fill_ratio` **%60.9**, `NchCleaned` %26.0,
    `FullTimeLengthRatio` %8.1, `micro_count` %3.9, `iLineFit_speed`
-   **%1.1** (neredeyse ölü). pybdt tarafındaki tek değişkenli baseline
-   (5k) `NchCleaned` üzerine kuruluydu — yanlış değişkenmiş.
-   Modelin en çok yaslandığı değişken, orijinal kodun kendi yorumunda
-   *"Was optimised for GRECO but has not been re-optimised for oscNext"*
-   dediği `SphericalRadiusMean=1.6` parametresine bağlı olan değişken.
-   Yani 5'teki "yeniden optimize edilebilir" notu artık düşük öncelikli
-   bir merak değil, **en yüksek getirili tek ayar**.
+   **%1.1** (neredeyse ölü). Modelin en çok yaslandığı değişken,
+   orijinal kodun kendi yorumunda *"Was optimised for GRECO but has not
+   been re-optimised for oscNext"* dediği `SphericalRadiusMean=1.6`
+   parametresine bağlı olan değişken. Yani 5'teki "yeniden optimize
+   edilebilir" notu artık merak değil, **en yüksek getirili tek ayar**.
+
+5h. **Overtraining ölçütü: verim açığı, KS DEĞİL.** `p_KS` bu veri
+   üzerinde ölçüldü ve işe yaramadığı görüldü: en iyi modeli
+   "overtrained" (p=0.002), en kötüsünü "temiz" (p=0.98) damgaladı.
+   Sebep: KS train/test **skor dağılımlarını** karşılaştırıyor; 165 bin
+   sinyal olayıyla istatistiksel olarak anlamlı ama fiziksel olarak
+   önemsiz farkları yakalıyor. `train_L4_classifier.py` bunun yerine
+   **aynı redde train ve test verimini ve aradaki farkı** basıyor
+   (`--gap-at`, varsayılan %90 red — %99'da eşiğin üstünde ~10 olay
+   kalıyor ve açık gürültüye boğuluyor).
 
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
@@ -528,7 +404,6 @@ işlenmeli (νμ/noise zaten yeniden işlenecekti).
 `n_l3_files_unreliable` yazılıyor, `load_sample` bölen olarak kullanmıyor.
 `PropagateGenieInfo`'daki `DAQ()`/`Simulation()` ölü koddu (`Process()`
 override edilince çağrılmıyorlar) — kaldırıldı.
-
 ## Referans belgeler (`reference/`)
 
 - `reference/OscNext_v00.074_pass2_technical_note.pdf` — pass2 için resmi
@@ -560,7 +435,6 @@ override edilince çağrılmıyorlar) — kaldırıldı.
   **Dikkat:** Bu script `IC2018_LE_L3_Vars`'ı hiç anmıyor (ne yazıyor ne
   okuyor) — `DeepCoreCuts`'ın onu da ürettiği bir *çıkarımdı*. Aşağıdaki
   gerçek dosya dökümüyle doğrulandı.
-
 ## Gerçek L3 dosyasında ne var (doğrulandı)
 
 `genie_NuE_IC86.023800.000000.i3.zst` Physics frame'i dökülerek
@@ -592,177 +466,6 @@ override edilince çağrılmıyorlar) — kaldırıldı.
    şimdilik zararsız, ama `--output-i3` kullanılırsa iş çökebilir.
 2. Frame'de ayrıca `pole_grecofilter_onlineLowEnL3_Vars` var — bu
    *online* filtrenin ayrı map'i, `IC2018_LE_L3_Vars` ile karıştırılmamalı.
-
-## BDT eğitimi: pybdt kullanılacak (bilinçli sapma — dikkat)
-
-`icecube/icetray` (private) içindeki `pybdt` (IceCube'un kendi AdaBoost
-tabanlı BDT kütüphanesi, C++/boost_python; kod repoda `pybdt/` altında)
-bu projede **kasıtlı olarak** kullanılacak.
-
-**Bunun resmi oscNext analiziyle uyuşmadığını bil:** Teknik not (pass2,
-v00.074, bölüm 3.6.1) L4 noise/muon sınıflandırıcılarının LightGBM
-(gradient boosting) ile eğitildiğini açıkça yazıyor, pybdt hiç
-geçmiyor; Tablo 10'daki hiperparametreler de (`max_depth`, `num_leaves`,
-`max_bin`, `lambda_l1`, `lambda_l2`, `min_gain_to_split`) LightGBM'in
-native isimleri. `reference/train_L4_classifier.py` bu resmi yaklaşımı (LightGBM)
-uyguluyor ve referans olarak repoda duruyor — **ama üç kusuru var,
-sayılarına güvenmeyin** (incelendi):
-
-1. **IceTray ortamında import EDİLEMEZ.** Modül seviyesinde
-   `import pandas` ve `from sklearn.metrics import ...` yapıyor —
-   kendi docstring'i *"IceTray ortamında sklearn ve joblib YOK"*
-   dediği hâlde. Tablo 10 değerlerine ihtiyaç duyan kod bu dosyayı
-   import edemez; `lightgbm_compare.py` bu yüzden `PARAMS`'ı **AST ile
-   okuyor** (aynı çözüm `l4_data.check_feature_map()`'te de var).
-2. **Early stopping TEST setiyle yapılıyor** — `valid_sets=[dtrain,
-   dtest]` ve durma kararı `dtest`'ten geliyor, sonra aynı test setinde
-   AUC raporlanıyor. Test sızması; raporlanan sayı iyimser.
-3. **Kesim performansı train+test KARIŞIK hesaplanıyor.** `evaluate()`
-   içinde `wp[(y == 1) & (prob >= c)]` — `& te` maskesi YOK. Yani
-   "sinyal verimi / arka plan reddi" satırı eğitim olaylarını da
-   içeriyor. Tablo 13 ile karşılaştırılacak sayı tam olarak bu
-   olduğu için önemli bir hata.
-
-`lightgbm_compare.py` üçünden de kaçınıyor: import etmiyor (AST),
-early stopping için eğitim setinden ayrılan dilimi kullanıyor, ve
-yalnızca test setinde ölçüyor.
-
-**`lightgbm_compare.py` — `noise-bdt-fix` merge'ünden sonra düzeltilenler.**
-Script `noise-bdt-fix`'ten önce yazılmıştı, yani 5i/5h'te varılan
-sonuçlardan habersizdi. Merge sonrası gözden geçirildi:
-
-1. **Ölçüt uyuşmuyordu (en önemlisi).** Script verimi `w_phys` ile
-   ağırlıklı ölçüyordu; `compare_models.py` ise bilinçli olarak
-   **ağırlıksız olay sayısı** kullanıyor (uydurma E⁻³ akısını
-   karşılaştırmadan çıkarmak için). Yani "kafa kafaya" denilen sayı
-   5h/5k tablolarıyla karşılaştırılamıyordu. Artık ana tablo
-   ağırlıksız; `w_phys`'li sayı ayrı bir "cross-check" bölümünde
-   duruyor.
-2. **Overtraining ölçütü, 5i'de elenen ölçüttü.** `p_KS < 0.01`
-   damgası basıyordu. Artık asıl ölçüt **train/test verim açığı**
-   (`--gap-at`, varsayılan %90 red — `compare_models.py` ile aynı);
-   `p_KS` yalnızca bilgi olarak yazılıyor.
-3. **Ölçüm kodu kopyalanmıştı.** `report_curve` kendi lineer kesim
-   ızgarasını kuruyordu — LightGBM çıktısı 0/1'e yığıldığı için bu
-   ızgara neredeyse boş satır üretir. Artık `curve`/`eff_on_grid`/
-   `kept_counts`/`REJ_LEVELS` doğrudan `compare_models.py`'den
-   **import ediliyor**: iki motoru tek implementasyon puanlıyor.
-4. **Arka plan tükenmesi görünmüyordu.** %99'un sağında ölçüm yok
-   (5h); tablo artık her satırda kalan arka plan olayını basıyor ve
-   10'un altına düşünce `<-- NOT A MEASUREMENT` işaretliyor.
-5. **`min_data_in_leaf=500` uyarısı eklendi.** Tablo 10 bu değeri
-   referansın çok daha büyük istatistiğine göre veriyor; bizim ~1 000
-   arka plan olayımızla (5e) tek başına sonucu belirleyebilir. Script
-   başta uyarıyor — yoksa "LightGBM de kötü" diye yanlış sonuç
-   çıkarılırdı.
-6. **Küçükler:** early stopping sonrası `num_trees()` basılıyordu ama
-   `predict()` `best_iteration` kullanıyor (raporlanan ağaç sayısı
-   değerlendirilen modele ait değildi) — artık `best_iteration`
-   basılıyor, model de onunla kaydediliyor; erken durma hiç
-   tetiklenmediyse söyleniyor; `.ds` içinde olmayan değişken için net
-   hata; bilinmeyen `--params` anahtarı için net hata;
-   `--learning-rate 0` sessizce yok sayılmıyor.
-
-7. **Grafikler eklendi.** AdaBoost tarafıyla birebir aynı set:
-   `<tag>_lightgbm_overtrain.png` / `_dist.png` / `_rate.png`
-   (pybdt_train'in Validator'la çizdiği üçünün karşılığı — Validator
-   yalnızca pybdt BDT nesnesi aldığı için matplotlib'le yeniden
-   çizildi, aynı dört seri / aynı ağırlık / aynı linear+log düzen) ve
-   `<tag>_lightgbm_cuts.png` (compare_models'ın figürünün tek motorluk
-   hâli: solda kesim eğrisi, sağda verim-vs-red, arka plan tükenme
-   çizgileri ve Tablo 13 hedef yıldızı dahil). `--outdir` ile yazılır,
-   `--no-plots` ile kapatılır, `--plot-weight` ağırlığı seçer
-   (varsayılan `weight`, pybdt_train ile yan yana bakılabilsin diye).
-   **`--pybdt-model "d2t500:depth=2,trees=500"`** aynı `.ds` üzerinde
-   bir AdaBoost modeli eğitip verim-vs-red panelinde üstüne çizer —
-   spec sözdizimi ve `build_learner` compare_models'la ortak, yani
-   overlay'deki eğri compare_models'ın çizeceği eğrinin aynısı.
-   Çizim hatası koşuyu götürmüyor (pybdt_train'deki aynı koruma).
-
-**Koşturuldu** — sonuç 5l/5m'de.
-
-pybdt'ye geçiş şu sonuçları doğurur:
-- pybdt AdaBoost yapıyor, LightGBM'in gradient-boosting + leaf/lambda
-  regularizasyon mantığı yok — Tablo 10 parametreleri pybdt'ye
-  **doğrudan taşınamaz**, pybdt'nin kendi API'sine göre (`num_trees`,
-  `beta`, `depth`, `min_split`, `prune_strength`, `use_purity`) ayrıca
-  ayarlanmalı. `pybdt_train.py` bunları CLI bayrağı olarak alır ve
-  verilmeyenleri pybdt'nin kendi varsayılanlarında bırakır — oscNext
-  için optimize edilmiş bir değer kümesi YOK.
-- pybdt derlenmiş bir C++/boost_python eklentisi. **py3-v4.4.2 cvmfs
-  dağıtımında pybdt YOK** (`BUILD_PYBDT` bayrağı kapalı gelmiş,
-  `pybdt/CMakeLists.txt`'te `USE_TOOLS ... gsl` gerektiriyor).
-  **Çözüldü:** `icecube/icetray` kaynağı (v1.17.0, ZIP indirilip) ayrı bir
-  build dizininde (`/data/user/<kullanıcı>/icetray_build/`) `cmake
-  -DBUILD_PYBDT=ON` ile yapılandırılıp `make pybdt` ile derlendi (GSL 2.8
-  cvmfs'te zaten mevcuttu, cmake buldu). Build sadece
-  `serialization`/`icetray`/`dataclasses`/`pybdt` hedeflerini derledi
-  (tüm meta-proje değil), birkaç dakika sürdü. `/cvmfs` salt-okunur
-  olduğu için build cvmfs'e hiç yazmadı, tamamen ayrı bir dizinde.
-- **KRİTİK — import yolu diğer IceTray projelerinden FARKLI:** pybdt,
-  `icecube` isim alanına dahil DEĞİL — `from icecube import pybdt`
-  ÇALIŞMAZ (bu yüzden başta "pybdt derlenmemiş" sanılıp gereksiz yere
-  şüpheye düşüldü). Doğrusu: `import pybdt` / `from pybdt import ml,
-  util` (pybdt'nin kendi kaynak kodu da bunu kullanıyor, bkz.
-  `pybdt/python/pybdtmodule.py`). `l4_classifier_module.py` ve
-  `reference/train_L4_classifier.py`'nin aksine pybdt `icecube.*` namespace
-  paketi değil, bağımsız üst düzey bir pip-tarzı pakettir.
-- Bu özel build'in ortamı: `eval $(/cvmfs/.../py3-v4.4.2/setup.sh)` →
-  `cd <build_dizini> && ./env-shell.sh`. Jupyter de bu ortamdan
-  başlatılmalı (Jupyter içindeki terminaller/kernel'ler ortamı miras
-  alır, tekrar env-shell gerekmez; sadece Jupyter sunucusu yeniden
-  başladığında bu iki adım tekrarlanır).
-### pybdt yolu (yeni, LightGBM yolundan bağımsız)
-
-pybdt'nin kendi önerdiği iş akışını izler (bkz. `pybdt/resources/docs/`
-`man_training.rst`, `man_validator_setup.rst`):
-
-```
-.ds DataSet dosyaları  --BDTLearner-->  .bdt  --Validator-->  grafikler
-```
-
-- `pybdt_train.py` — eğitim + doğrulama, **tamamen standalone**:
-  sklearn / lightgbm / pandas kullanmaz, `reference/train_L4_classifier.py`'den
-  hiçbir şey import etmez. Girdi olarak pybdt native `.ds` dosyaları
-  alır. Değerlendirme için pybdt'nin kendi `validate.Validator`'ını
-  kullanır — KS testli overtraining kontrolü (`p_KS < 0.01` uyarısı,
-  pybdt dokümantasyonunun eşiği), skor dağılımı ve rate-vs-cut
-  grafikleri hazır gelir. Hiperparametreler yalnızca komut satırında
-  açıkça verilirse set edilir, gerisi pybdt'nin kendi varsayılanlarında
-  kalır; fiilen kullanılan değerler `.json` meta dosyasına yazılır.
-- `pybdt_classifier_module.py` — `PyBDTClassifier` tray modülü,
-  `.bdt` + `.json`'ı okuyup frame'e `I3Double` yazar. Frame'den değişken
-  okuma için `l4_classifier_module.py`'deki `FEATURE_MAP`/`read_feature`
-  import edilir (mapping tek yerde kalsın diye; o modül lightgbm'i
-  sadece kendi `load_model()`'ı içinde import ettiği için bu bağımlılık
-  lightgbm gerektirmez).
-
-- `oscNext_L4_pybdt.ipynb` — **ana arayüz**. Uçtan uca tüm süreç: L3→L4
-  işleme, booking doğrulaması, feature registry, HDF5→numpy, ağırlıklar,
-  `.ds` üretimi, eğitim (`pybdt_train.py`'yi subprocess olarak çağırır),
-  doğrulama, kesim seçimi. Yalnızca numpy + pytables + pybdt kullanır —
-  **pandas kullanmaz** (IceTray ortamında bulunmayabilir). Ağırlık
-  mantığı eski notebook'un 7. bölümünden taşındı.
-
-Eğitim mantığı notebook'ta **tekrarlanmıyor**, `pybdt_train.py` subprocess
-olarak çağrılıyor — tek implementasyon kalsın diye (eski notebook da
-`process_L4.py`'yi böyle çağırıyordu).
-
-**Notebook ince bir arayüz.** Ağır mantık `l4_run.py` + `l4_data.py`
-içinde; notebook onları import ediyor. Notebook versiyonlanıyor (tracked)
-ama çalıştırınca çıktı hücreleri `git pull`u bloklayabilir — bunu önlemek
-için bir kez `pip install --user nbstripout && nbstripout --install`.
-
-**Dikkat — `.ds` dosyalarında BDT girdisi olmayan kolonlar var** (`w_phys`,
-fiziksel ağırlık). Notebook eğitime `--features`'ı **açıkça** geçer;
-`pybdt_train.py` de `--features` verilmezse `RESERVED_COLS`'u dışarıda
-bırakır. Bu koruma olmazsa model fiziksel ağırlığı bir değişken sanıp
-öğrenir — sessiz ve ciddi bir hata.
-
-**Henüz test edilmedi:** notebook uçtan uca hiç çalıştırılmadı; HDF5 sütun
-isimleri doğrulanmadığı için 3. bölümdeki `REGISTRY` büyük olasılıkla
-düzeltme gerektirecek (2. bölüm zaten bunu tespit etmek için var).
-
 ## Ortam kurulumu — bilinen tuzaklar
 
 **1. `env-shell.sh` yeni bir shell açar.** Script içinde ard arda
@@ -827,7 +530,6 @@ edilemiyordu. Artık `optional_project()` ile; eksik proje, o değişkeni
 Build arama sırası (`setup_env.sh` ve `icetray_env.find_env_shells()`):
 `$OSCNEXT_I3_BUILD` → `$I3_BUILD` → `/data/user/$USER/icetray_build/build`
 → `/data/user/$USER/*/build` → `~/*/build` → cvmfs metaproject'leri.
-
 ## Bozuk girdi dosyaları (çözüldü)
 
 pass3 üretiminde yarım yazılmış `.i3.zst` dosyaları var:
@@ -854,7 +556,6 @@ düzgün kapanmadı demek. O yarım HDF5'ler açılamaz, silinmeli.
 Elenen dosyalar `<çıktı>.hdf5.badfiles.txt`'ye yazılır. Set başına bir kez
 `scan_files.py --good-list` ile tarayıp `--input-list ... --scan off`
 kullanmak en verimlisi.
-
 ## HDF5 üretimini hızlandırma
 
 Ölçülen: νe 100 dosya / 1019 s (~10 s/dosya), CORSIKA 500 dosya / 2578 s.
@@ -891,7 +592,6 @@ zaten `--scan off` kullanıyor.
 **4. Az anahtar book et.** 33 anahtar yazılıyor; `I3GenieSystWeightDict`
 gibi büyük map'ler gerekmiyorsa `process_L4.build_key_list`'ten çıkarmak
 hem yazmayı hızlandırır hem dosyayı küçültür.
-
 ## `--n` frame sayar, olay saymaz
 
 `process_L4.py --n N` → `tray.Execute(N)` → **N frame** işlenir. Frame ≠ olay:
@@ -917,62 +617,19 @@ Kayıp nerede olursa olsun burada görünür: `InIceSplit` satırı 0 ise
 Bu yüzden `--n` modunda "işlenen dosya" sayısı basılmıyor (yanıltıcı olurdu:
 listede 100 dosya olsa da tray ilk dosyada durmuş olabilir). Smoke test'te
 tek dosya verin ya da `--scan off` kullanın — 100 dosyayı taramak boşuna.
-
-## Sıradaki iş (session devri)
-
-Son durum: noise BDT eğitiliyor, ölçüldü, darboğaz **arka plan
-istatistiği** (5e/5j/5k). Jana'ya daha fazla vuvuzela MC talebi
-yazıldı; gerekçe 5k'daki tablo.
-
-Aktif branch'ler:
-- `claude/noise-bdt-fix` — noise değişkenleri + model karşılaştırma
-  araçları (`compare_models.py`, `pybdt_scan.py`, `pybdt_diagnose.py`,
-  `plot_noise_inputs.py`, `test_noise_vars.py`). **Ana branch'e
-  (`claude/oscnext-l4-scripts-35min0`) merge edilmeyi bekliyor** — noise
-  değişkenleri tarafında açık iş kalmadı.
-- `claude/lightgbm-compare` — **aktif branch.** `noise-bdt-fix` bunun
-  içine merge edildi (7 commit'lik açık kapandı), `lightgbm_compare.py`
-  gözden geçirilip düzeltildi, grafikler eklendi, **koşturuldu**.
-  Sonuç 5l: LightGBM Tablo 13 hedefini tutturuyor, pybdt tutturmuyor.
-
-Yapılacaklar:
-1. **Daha fazla noise MC gelince**: aynı modeli arka planın artan
-   fraksiyonlarıyla eğitip sabit reddeki verim eğilimine bak
-   (`pybdt_diagnose.py` bunu yapıyor). Eğilim hâlâ yükseliyorsa ne kadar
-   veri gerektiği oradan çıkar. Referansın kaç noise dosyası kullandığı
-   **hâlâ bilinmiyor** — sorulacak.
-2. **CORSIKA OverSampling → train/test sızıntısı (KAYDEDİLDİ, İŞLENMEDİ).**
-   Muon BDT'sinin arka planı CORSIKA ve aynı hava duşu `OverSampling`
-   kadar tekrar kullanılıyor. Olay bazlı train/test ayrımı aynı duşun
-   kopyalarını iki tarafa birden dağıtıyor → muon BDT'sinin test verimi
-   olduğundan **iyi** görünür. Noise BDT'sini etkilemiyor (vuvuzela'da
-   oversampling yok). Çözüm: ayrımı olay değil **duş** (`Run`, ya da
-   CORSIKA primary id) bazında çekmek. 5c ile aynı yerde, `make_datasets`
-   içinde.
-3. `pybdt_scan`'i yeni `--max-gap` elemesiyle bir kez koştur — eski
-   `--ks-min` taramasının sonuçları geçersiz (5i).
-4. İngilizceye çevirme sırası: `pybdt_train.py`, `test_noise_vars.py`,
-   sonra Konvansiyonlar'daki liste.
-
 ## Konvansiyonlar
 
 - **Kod, yorumlar, docstring'ler, `print` çıktıları ve grafik etiketleri
-  İNGİLİZCE.** (Değişti — repo Türkçe başlamıştı.) Bu dosya
-  (`CLAUDE.md`) ve diğer `.md` belgeleri Türkçe kalıyor; onlar proje
-  anlatısı, kod değil.
-  Devam eden geçiş — İngilizceye çevrilenler:
-  `plot_noise_inputs.py`, `pybdt_diagnose.py`, `pybdt_scan.py`,
-  `compare_models.py`, `lightgbm_compare.py`.
-  Sırada: `pybdt_train.py`, `test_noise_vars.py`,
-  `pybdt_classifier_module.py`, `scan_files.py`, `diagnose_env.py`,
-  `simple_booker.py`, `l4_classifier_module.py`, `l4_run.py`,
-  `icetray_env.py`, `process_L4.py`, `l4_data.py`,
-  `oscNext_L4_variables.py`.
-  `reference/` altındaki dosyalar **olduğu gibi kalır** — başkasının
-  kodu ya da tarihsel kayıt, çevrilmez.
+  İNGİLİZCE.** Bu dosya ve diğer `.md` belgeleri **Türkçe** kalıyor;
+  onlar proje anlatısı, kod değil. Notebook markdown'ı da Türkçe.
+  Devam eden geçiş — İngilizce olanlar: `train_L4_classifier.py`.
+  Sırada: `l4_classifier_module.py`, `scan_files.py`, `diagnose_env.py`,
+  `simple_booker.py`, `l4_run.py`, `icetray_env.py`, `process_L4.py`,
+  `l4_data.py`, `oscNext_L4_variables.py`.
+  `reference/` altındaki dosyalar **olduğu gibi kalır** — başkasının kodu
+  ya da tarihsel kayıt, çevrilmez.
 - Veri repoya girmez (`.gitignore`: `L4_output/`, model/veri uzantıları).
-- Notebook commit'lenmeden önce `nbstripout` ile temizlenmeli (çıktı hücreleri
-  MB'larca yer kaplar ve anlamsız diff üretir).
+- Notebook commit'lenmeden önce `nbstripout` ile temizlenmeli.
 - `oscNext_L4_variables.py` içindeki her yeniden yazılmış fonksiyonun
   docstring'inde orijinalin nereden geldiği ve neden değiştiği yazılı —
   değişiklik yapmadan önce bu docstring'leri okuyun.

@@ -326,90 +326,34 @@ def deepcore_fiducial_domset(detector="IC86"):
 
 
 # ---------------------------------------------------------------------------
-# pybdt
+# lightgbm
 # ---------------------------------------------------------------------------
-#
-# DIKKAT: pybdt diger IceTray projelerinin AKSINE `icecube` isim alaninda
-# DEGIL.  Dogru import:
-#
-#     import pybdt                 /  from pybdt import ml, util
-#
-# YANLIS (ve bu proje gecmisinde bir kez "pybdt derlenmemis" sanilmasina
-# yol acmis olan):
-#
-#     from icecube import pybdt    <-- HER ZAMAN ImportError verir
-#
-# pybdt bagimsiz, ust duzey bir pakettir; kendi kaynagi da boyle import
-# ediyor (bkz. pybdt/python/pybdtmodule.py).
+# Egitim ve uygulama tarafinin tek ML bagimliligi.  `icecube` isim alaninda
+# DEGIL, siradan bir pip paketi -- IceTray ortaminda kurulu gelir.
 
 
-def have_pybdt():
-    """pybdt import edilebiliyor mu?  (icecube'dan BAGIMSIZ)"""
+def have_lightgbm():
+    """lightgbm import edilebiliyor mu?"""
     try:
-        importlib.import_module("pybdt")
+        importlib.import_module("lightgbm")
         return True
     except ImportError:
         return False
 
 
-def require_pybdt():
-    """pybdt'yi import et; yoksa ne yapilmasi gerektigini soyle."""
+def require_lightgbm():
+    """lightgbm'i import et; yoksa ne yapilmasi gerektigini soyle."""
     try:
-        import pybdt
-        return pybdt
+        import lightgbm
+        return lightgbm
     except ImportError as exc:
-        # Sik yapilan hatayi tespit et: icecube var ama pybdt yok
-        extra = ""
-        if have_icetray():
-            try:
-                importlib.import_module("icecube.pybdt")
-                extra = ("\n  NOT: 'icecube.pybdt' bulundu -- ama dogru import\n"
-                         "  yine de 'import pybdt'.\n")
-            except ImportError:
-                pass
-        raise IceTrayNotAvailable(
-            "pybdt import edilemedi.\n"
-            "\n"
-            "  DOGRU import :  import pybdt        (ya da from pybdt import ml, util)\n"
-            "  YANLIS import:  from icecube import pybdt   <-- her zaman patlar\n"
-            "%s"
-            "\n"
-            "  pybdt cvmfs py3-v4.4.2 dagitiminda DERLENMIS GELMIYOR\n"
-            "  (BUILD_PYBDT bayragi kapali).  Kendi build'inizi yapmaniz gerekir:\n"
-            "  README > 'pybdt'yi derle (bir kez)'.\n"
-            "\n"
-            "  Build zaten varsa ortama girmemis olabilirsiniz:\n"
-            "      ./setup_env.sh shell\n"
-            "\n"
-            "  Orijinal hata: %s" % (extra, exc)) from exc
+        raise ImportError(
+            "lightgbm import edilemedi (%s).\n"
+            "  L4 siniflandiricilari onunla egitiliyor ve uygulaniyor.\n"
+            "  IceTray ortamindan kontrol:\n"
+            "    ./setup_env.sh run python -c 'import lightgbm'\n"
+            "  Yoksa:  pip install --user lightgbm\n" % exc)
 
-
-# ---------------------------------------------------------------------------
-# Deserialization icin gereken kutuphaneler
-# ---------------------------------------------------------------------------
-
-# Kodda dogrudan kullanilmasalar da import edilmeleri SART; yoksa
-# "Deserialization failed for object at frame key 'X'" alinir.
-_DESERIALIZE_LIBS = ("simclasses", "recclasses", "genie_icetray",
-                     "genie_reader", "sim_services", "phys_services")
-
-
-def load_deserialization_libs():
-    '''Frame nesnelerinin acilabilmesi icin gereken projeleri import et.'''
-    require_icetray()
-    loaded = []
-    for lib in _DESERIALIZE_LIBS:
-        try:
-            importlib.import_module("icecube." + lib)
-            loaded.append(lib)
-        except ImportError:
-            pass
-    return loaded
-
-
-# ---------------------------------------------------------------------------
-# Ortam bulma (setup_env.sh ve diagnose_env.py icin)
-# ---------------------------------------------------------------------------
 
 def find_env_shells():
     '''
@@ -428,7 +372,7 @@ def find_env_shells():
     home = os.path.expanduser("~")
     user = os.environ.get("USER") or os.path.basename(home)
     # /data/user/$USER en olasi yer: cobalt'ta home kotali oldugu icin
-    # build oraya yapiliyor (bkz. README "pybdt'yi derle").
+    # build oraya yapiliyor (bkz. README).
     for pat in ("/data/user/%s/icetray_build/build/env-shell.sh" % user,
                 "/data/user/%s/*/build/env-shell.sh" % user,
                 "/data/user/%s/build/env-shell.sh" % user,
@@ -457,13 +401,11 @@ if __name__ == "__main__":
             print("  I3Tray  :", get_I3Tray())
         except Exception as e:
             print("  I3Tray  : BULUNAMADI --", e)
-        if have_pybdt():
-            import pybdt
-            print("  pybdt   :", getattr(pybdt, "__file__", "<?>"))
+        if have_lightgbm():
+            import lightgbm
+            print("  lightgbm:", lightgbm.__version__)
         else:
-            print("  pybdt   : YOK  (import pybdt basarisiz)")
-            print("            'from icecube import pybdt' DEGIL, 'import pybdt'")
-            print("            Derlenmemisse: README > pybdt'yi derle")
+            print("  lightgbm: YOK  -- egitim/uygulama calismaz")
     else:
         print(_env_report())
         print()

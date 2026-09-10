@@ -110,15 +110,12 @@ except Exception as e:
 print("\n" + "=" * 70)
 print("PYBDT  (BDT egitimi icin -- derlenmis mi diye kontrol)")
 print("=" * 70)
-pybdt = try_import("icecube.pybdt")
-if pybdt:
-    try_import("icecube.pybdt.ml", "BDTLearner, DecisionTreeLearner, ...")
-    print("\n  -> pybdt zaten derlenmis geliyor, dogrudan kullanilabilir.")
+lgbm = try_import("lightgbm")
+if lgbm:
+    print("\n  -> lightgbm var; egitim ve uygulama calisir.")
 else:
-    print("\n  -> pybdt derlenmis degil. pybdt/ klasorundeki kaynak kod")
-    print("     (C++/boost_python) IceTray meta-project build sistemi")
-    print("     icinde cmake ile derlenmeden calismaz -- sadece dosyalarin")
-    print("     var olmasi yetmez.")
+    print("\n  -> lightgbm YOK.  L4 siniflandiricilari onsuz egitilemez:")
+    print("     pip install --user lightgbm")
 
 print("\n" + "=" * 70)
 print("oscNext PROJESI  (adim 1'de eksik cikan kisim)")
