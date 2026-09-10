@@ -26,8 +26,13 @@ NEYIN AYNI OLDUGU (karsilastirmanin adil olmasi bunlara bagli):
 NEYIN ZORUNLU OLARAK FARKLI OLDUGU:
   * motor: AdaBoost vs gradient boosting
   * hiperparametreler: her motorun kendi API'si.  LightGBM tarafi
-    reference/train_L4_classifier.py'deki PARAMS'tan IMPORT ediliyor --
-    o degerler dogrudan Tablo 10.
+    reference/train_L4_classifier.py'deki PARAMS'tan AST ile OKUNUYOR
+    (import degil -- o dosya pandas/sklearn import ediyor, IceTray
+    ortaminda import edilemez).  Degerler dogrudan Tablo 10.
+  * NaN: LightGBM eksik degeri kendisi yonlendirir; pybdt yolunda ise
+    notebook NaN'li olaylari DUSURUYOR (make_datasets.drop_nan).  Ayni
+    .ds dosyalarini okudugumuz icin burada da NaN'li olay yok -- yani
+    fark olusmuyor, ama bilinsin.
   * early stopping: LightGBM'de var, pybdt'de yok.  Referans script
     early stopping icin TEST setini kullaniyor; burada bunu YAPMIYORUZ
     (test sizmasi olurdu).  Egitim setinden ayrilan bir dogrulama
@@ -42,11 +47,10 @@ Kullanim:
 
 import os
 import sys
+import ast
 import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "reference"))
 
 import numpy as np
 
@@ -61,8 +65,51 @@ except ImportError:
     sys.exit("lightgbm yok -- bu karsilastirma yapilamaz.\n"
              "IceTray ortaminda: python -c 'import lightgbm'")
 
-# Tablo 10 degerleri TEK YERDE: referans script'ten aliniyor.
-from train_L4_classifier import PARAMS, EARLY_STOPPING
+REFERENCE_TRAIN = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "reference", "train_L4_classifier.py")
+
+
+def read_reference_params(path=REFERENCE_TRAIN):
+    """
+    Tablo 10 degerlerini reference/train_L4_classifier.py'den AST ile oku.
+
+    NEDEN IMPORT DEGIL: o dosya modul seviyesinde `import pandas` ve
+    `from sklearn.metrics import ...` yapiyor -- kendi docstring'i
+    "IceTray ortaminda sklearn ve joblib YOK" dedigi halde.  Yani IceTray
+    ortaminda import EDILEMEZ.  Degerleri kaynaktan okumak, onlari buraya
+    kopyalayip iki yerde tutmaktan iyi (l4_data.check_feature_map de
+    FEATURE_MAP'i ayni sebeple AST ile okuyor).
+
+    Dosya yoksa/degistiyse net hata verilir -- sessizce baska bir degere
+    dusmek Tablo 10 ile karsilastirmayi anlamsiz kilardi.
+    """
+    if not os.path.exists(path):
+        sys.exit("referans bulunamadi: %s" % path)
+    tree = ast.parse(open(path, encoding="utf-8").read())
+
+    def as_dict(node):
+        # dict(a=1, b=2) -> {"a": 1, "b": 2}
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "dict":
+            return {kw.arg: ast.literal_eval(kw.value) for kw in node.keywords}
+        return ast.literal_eval(node)
+
+    params, early = None, None
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        for t in stmt.targets:
+            name = getattr(t, "id", None)
+            if name == "PARAMS" and isinstance(stmt.value, ast.Dict):
+                params = {ast.literal_eval(k): as_dict(v)
+                          for k, v in zip(stmt.value.keys, stmt.value.values)}
+            elif name == "EARLY_STOPPING":
+                early = ast.literal_eval(stmt.value)
+    if params is None:
+        sys.exit("%s icinde PARAMS bulunamadi (dosya degismis olabilir)" % path)
+    return params, (early if early is not None else 100)
+
+
+PARAMS, EARLY_STOPPING = read_reference_params()
 
 
 def load_side(ds_dir, tag, part, features):

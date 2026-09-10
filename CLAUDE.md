@@ -473,8 +473,28 @@ v00.074, bölüm 3.6.1) L4 noise/muon sınıflandırıcılarının LightGBM
 (gradient boosting) ile eğitildiğini açıkça yazıyor, pybdt hiç
 geçmiyor; Tablo 10'daki hiperparametreler de (`max_depth`, `num_leaves`,
 `max_bin`, `lambda_l1`, `lambda_l2`, `min_gain_to_split`) LightGBM'in
-native isimleri. `reference/train_L4_classifier.py` şu an bu resmi yaklaşımı
-(LightGBM) doğru şekilde uyguluyor ve referans olarak repoda duruyor.
+native isimleri. `reference/train_L4_classifier.py` bu resmi yaklaşımı (LightGBM)
+uyguluyor ve referans olarak repoda duruyor — **ama üç kusuru var,
+sayılarına güvenmeyin** (incelendi):
+
+1. **IceTray ortamında import EDİLEMEZ.** Modül seviyesinde
+   `import pandas` ve `from sklearn.metrics import ...` yapıyor —
+   kendi docstring'i *"IceTray ortamında sklearn ve joblib YOK"*
+   dediği hâlde. Tablo 10 değerlerine ihtiyaç duyan kod bu dosyayı
+   import edemez; `lightgbm_compare.py` bu yüzden `PARAMS`'ı **AST ile
+   okuyor** (aynı çözüm `l4_data.check_feature_map()`'te de var).
+2. **Early stopping TEST setiyle yapılıyor** — `valid_sets=[dtrain,
+   dtest]` ve durma kararı `dtest`'ten geliyor, sonra aynı test setinde
+   AUC raporlanıyor. Test sızması; raporlanan sayı iyimser.
+3. **Kesim performansı train+test KARIŞIK hesaplanıyor.** `evaluate()`
+   içinde `wp[(y == 1) & (prob >= c)]` — `& te` maskesi YOK. Yani
+   "sinyal verimi / arka plan reddi" satırı eğitim olaylarını da
+   içeriyor. Tablo 13 ile karşılaştırılacak sayı tam olarak bu
+   olduğu için önemli bir hata.
+
+`lightgbm_compare.py` üçünden de kaçınıyor: import etmiyor (AST),
+early stopping için eğitim setinden ayrılan dilimi kullanıyor, ve
+yalnızca test setinde ölçüyor.
 
 pybdt'ye geçiş şu sonuçları doğurur:
 - pybdt AdaBoost yapıyor, LightGBM'in gradient-boosting + leaf/lambda
