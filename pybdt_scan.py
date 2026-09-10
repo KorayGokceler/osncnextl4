@@ -56,10 +56,11 @@ import numpy as np
 from pybdt import ml, util
 from pybdt_train import build_learner, effective_params, score_expr, RESERVED_COLS
 
-try:
-    from scipy.stats import ks_2samp
-except ImportError:
-    ks_2samp = None
+# pybdt_train.py ile AYNI istatistigi kullanmak sart: pybdt'nin KS'i
+# AGIRLIKLI ve binlenmis; scipy'nin ks_2samp'i agirliksiz ve binsiz.  Ikisi
+# ayni sayiyi vermez -- tarama scipy kullandigi surece "gecti" dedigi
+# konfigurasyon pybdt_train.py'de OVERTRAIN cikabiliyordu (yasandi).
+from pybdt.validate import kolmogorov_smirnov_probability
 
 
 def parse_list(text, cast):
@@ -112,7 +113,14 @@ def main():
     ap.add_argument("--ks-min", type=float, default=0.01,
                     help="p_KS bunun altindaysa konfigurasyon elenir")
     ap.add_argument("--max-sig", type=int, default=20000,
-                    help="metrik hesabinda kullanilacak sinyal olayi (0=hepsi)")
+                    help="metrik hesabinda kullanilacak sinyal olayi (0=hepsi). "
+                         "DIKKAT: az olay KS'in gucunu dusurur, yani "
+                         "overtraining'i GOZDEN KACIRABILIR.  Son elemede 0 verin.")
+    ap.add_argument("--repeat", type=int, default=3,
+                    help="her konfigurasyon kac kez egitilsin.  pybdt'nin "
+                         "egitimi RASTGELE (frac_random_events) ve tohum "
+                         "disaridan verilemiyor -- tek kosu tekrarlanmaz. "
+                         "Eleme en KOTU p_KS'e, siralama ORTALAMA verime gore.")
     ap.add_argument("--seed", type=int, default=12345)
 
     # izgara
@@ -126,9 +134,6 @@ def main():
     ap.add_argument("--no-purity", action="store_true",
                     help="use_purity'yi KAPAT (varsayilan acik)")
     args = ap.parse_args()
-
-    if ks_2samp is None:
-        sys.exit("scipy yok -- overtraining elemesi yapilamaz.")
 
     rng = np.random.default_rng(args.seed)
 
@@ -179,11 +184,12 @@ def main():
         parse_list(args.beta, float),
         parse_list(args.frac_random_events, float),
         parse_list(args.num_cuts, int)))
-    print("  %d konfigurasyon\n" % len(grid))
+    print("  %d konfigurasyon x %d tekrar = %d egitim\n"
+          % (len(grid), args.repeat, len(grid) * args.repeat))
 
     hdr = ("%-6s %-7s %-6s %-7s %-5s | %-8s %-8s | %-9s %-9s"
            % ("depth", "trees", "split", "prune", "beta",
-              "p_KS sig", "p_KS bg", "kesim", "VERIM"))
+              "p_KS sig", "p_KS bg", "kesim", "VERIM +-yariyayilim"))
     print(hdr)
     print("-" * len(hdr))
 
@@ -196,27 +202,38 @@ def main():
             num_random_variables=None, nonlinear_cuts=False,
             num_trees=trees, beta=beta, frac_random_events=frac,
             prune_strength=prune, use_purity=not args.no_purity)
-        learner = build_learner(features, args.weight_col, a)
-        bdt = learner.train(ds["sig_train"], ds["bg_train"])
 
-        sc = {k: np.asarray(bdt.score(m[k], use_purity=not args.no_purity,
-                                      quiet=True)) for k in m}
+        ps, pb, es, cs = [], [], [], []
+        for _ in range(max(1, args.repeat)):
+            learner = build_learner(features, args.weight_col, a)
+            bdt = learner.train(ds["sig_train"], ds["bg_train"])
+            sc = {k: np.asarray(bdt.score(m[k], use_purity=not args.no_purity,
+                                          quiet=True)) for k in m}
+            # pybdt'nin kendi AGIRLIKLI KS'i -- pybdt_train.py ile ayni olcut
+            ps.append(float(kolmogorov_smirnov_probability(
+                sc["sig_train"], w["sig_train"], sc["sig_test"], w["sig_test"])))
+            pb.append(float(kolmogorov_smirnov_probability(
+                sc["bg_train"], w["bg_train"], sc["bg_test"], w["bg_test"])))
+            cut, eff, rej = eff_at_rejection(sc["sig_test"], w["sig_test"],
+                                             sc["bg_test"], w["bg_test"],
+                                             args.target_rejection)
+            es.append(eff)
+            cs.append(cut)
 
-        p_sig = float(ks_2samp(sc["sig_train"], sc["sig_test"]).pvalue)
-        p_bg = float(ks_2samp(sc["bg_train"], sc["bg_test"]).pvalue)
-        cut, eff, rej = eff_at_rejection(sc["sig_test"], w["sig_test"],
-                                         sc["bg_test"], w["bg_test"],
-                                         args.target_rejection)
+        # Eleme EN KOTU kosuya gore: tek sansli kosu konfigurasyonu gecirmesin.
+        p_sig, p_bg = min(ps), min(pb)
+        eff, cut = float(np.mean(es)), float(np.mean(cs))
+        spread = (max(es) - min(es)) if len(es) > 1 else 0.0
 
         ok = min(p_sig, p_bg) >= args.ks_min
         rows.append(dict(depth=depth, trees=trees, split=split, prune=prune,
                          beta=beta, frac=frac, ncuts=ncuts,
-                         p_sig=p_sig, p_bg=p_bg, cut=cut, eff=eff, rej=rej,
-                         ok=ok, n_trees=len(bdt)))
-        print("%-6s %-7s %-6s %-7s %-5s | %-8.4f %-8.4f | %-9.3f %6.1f%% %s"
+                         p_sig=p_sig, p_bg=p_bg, cut=cut, eff=eff,
+                         spread=spread, ok=ok))
+        print("%-6s %-7s %-6s %-7s %-5s | %-8.4f %-8.4f | %-9.3f %6.1f%% +-%4.1f%% %s"
               % (depth, trees, split,
                  "-" if prune is None else ("%g" % prune), beta,
-                 p_sig, p_bg, cut, 100 * eff,
+                 p_sig, p_bg, cut, 100 * eff, 100 * spread / 2,
                  "" if ok else "  <-- OVERTRAIN, elendi"))
 
     print("\n%d konfigurasyon, %.0f s" % (len(grid), time.time() - t0))
@@ -245,8 +262,15 @@ def main():
     if not args.no_purity:
         hyper.append('"--use-purity"')
     print("HYPER = [" + ", ".join(hyper) + "]")
+    if b["spread"] > 0.05:
+        print("\n  [!] Bu konfigurasyonun tekrarlar arasi verim yayilimi %.1f puan"
+              % (100 * b["spread"]))
+        print("      -- yani secim buyuk olcude RASTGELELIGI olcuyor, "
+              "hiperparametreyi degil.")
+        print("      Asil kisit arkaplan istatistigi; daha cok noise dosyasi isleyin.")
     print("\nSecim TEST seti uzerinden yapildi -> bu verim iyimser bir tahmin.")
-    print("Secilen konfigurasyonu pybdt_train.py ile yeniden egitin.")
+    print("Secilen konfigurasyonu pybdt_train.py ile yeniden egitin; egitim")
+    print("rastgele oldugu icin p_KS orada bir miktar farkli cikacaktir.")
 
 
 if __name__ == "__main__":
