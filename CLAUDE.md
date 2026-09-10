@@ -319,6 +319,34 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    gelmiyor. `--prune-strength 35` de keyfi ve fazla agresif olabilir.
    Sıradaki denemeler: daha çok noise dosyası; `--depth 6`,
    `--num-trees 500`, budamasız.
+5g. **pybdt eğitimi DETERMİNİSTİK — ölçüldü, ve önceki iddiam yanlıştı.**
+   `frac_random_events=0.5` ve pybdt'nin tohum ayarı olmaması yüzünden
+   "eğitim stokastik" diye **varsaymıştım** ve gözlenen ±10–17 puanlık
+   yayılımı ona bağlamıştım. `compare_models.py --only-determinism`
+   ölçtü: aynı konfigürasyon aynı veriyle iki kez eğitilince skorlar
+   **bit-aynı** — 165 837 olayın **0**'ında fark var, `max |Δskor| = 0`,
+   ağaç sayıları eşit. pybdt örneklemesini kendi içinde tohumluyor.
+   **Sonuçları:**
+   - `pybdt_scan.py`'nin `--repeat`'i **kaldırıldı** — süreyi üçe
+     katlayıp üç özdeş sayı üretiyordu.
+   - `compare_models.py`'nin `--repeat`'i ve tekrar bandı kaldırıldı;
+     eğriler kesin. Yerine grafikte **test setindeki arka planın nerede
+     tükendiği** işaretleniyor (100 / 10 / 1 olay kaldığı yerler).
+   - `pybdt_diagnose.py`'nin yayılımı **gerçek ve anlamlı** ama sebebi
+     eğitim değil: her tekrar arka planın (ya da sinyalin) **farklı bir
+     rastgele alt örneğini** çekiyor. 259–1035 olayla hangi olayların
+     düştüğü gerçekten fark ediyor.
+   - Geriye kalan gürültü kaynağı **ölçütün kendisi**: %99 red eşiği
+     ~10 arka plan olayının üstünde duruyor. `--target-rejection 0.90`
+     (~100 olay) çok daha kararlı.
+5h. **İlk olay-sayısı ölçümü: en BASİT model önde.** `compare_models.py`
+   determinism kontrolünde `stump` (derinlik 1, 300 ağaç) %99 redde
+   **%76.0** verdi (sinyal 125 254/164 821, arka plan 6/1016).
+   Karşılaştırma: `NchCleaned` tek başına ~%72, derinlik-2/500 ağaç
+   %64.9, ilk model (derinlik 3/300) %52.7. Yani kapasite arttıkça
+   performans **düşüyor** — 1 035 arka plan olayının işaret ettiği yön.
+   (Bu sayı ağırlıksız, diğerleri ağırlıklıydı; gürültüde ikisi
+   birbirine yakın, bkz. 5d.)
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince

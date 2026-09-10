@@ -27,11 +27,13 @@ THE METRIC:
   scan then came out OVERTRAINED in pybdt_train.  Different statistic,
   different answer.)
 
-  Training is STOCHASTIC (frac_random_events, and pybdt exposes no seed), so
-  a single run does not reproduce.  --repeat trains each configuration
-  several times: rejection uses the WORST p_KS, ranking uses the MEAN
-  efficiency, and the spread between repeats is printed.  If that spread is
-  large, the scan is measuring randomness rather than hyperparameters.
+  TRAINING IS DETERMINISTIC.  This was measured, not assumed
+  (compare_models.py --only-determinism): training the same configuration
+  on the same data twice gives BIT-IDENTICAL scores -- 0 of 165837 events
+  differed.  Despite frac_random_events, pybdt seeds its sampling
+  internally.  An earlier version of this script had a --repeat option
+  built on the opposite assumption; it tripled the runtime and produced
+  three identical numbers, so it was removed.
 
 SELECTION BIAS -- IMPORTANT:
   Configurations are selected on the test set, so the efficiency the scan
@@ -122,11 +124,6 @@ def main():
                     help="signal events used for the metrics (0=all).  CAREFUL: "
                          "fewer events weaken the KS test, so overtraining can "
                          "go UNDETECTED.  Use 0 for the final pass.")
-    ap.add_argument("--repeat", type=int, default=3,
-                    help="how many times to train each configuration.  pybdt's "
-                         "training is random (frac_random_events) and takes no "
-                         "seed, so a single run does not reproduce.  Rejection "
-                         "uses the WORST p_KS, ranking the MEAN efficiency.")
     ap.add_argument("--seed", type=int, default=12345)
 
     # grid
@@ -190,12 +187,12 @@ def main():
         parse_list(args.beta, float),
         parse_list(args.frac_random_events, float),
         parse_list(args.num_cuts, int)))
-    print("  %d configurations x %d repeats = %d trainings\n"
-          % (len(grid), args.repeat, len(grid) * args.repeat))
+    print("  %d configurations (training is deterministic, one run each)\n"
+          % len(grid))
 
     hdr = ("%-6s %-7s %-6s %-7s %-5s | %-8s %-8s | %-9s %-9s"
            % ("depth", "trees", "split", "prune", "beta",
-              "p_KS sig", "p_KS bg", "cut", "EFF +-half-spread"))
+              "p_KS sig", "p_KS bg", "cut", "EFF"))
     print(hdr)
     print("-" * len(hdr))
 
@@ -208,36 +205,28 @@ def main():
             num_trees=trees, beta=beta, frac_random_events=frac,
             prune_strength=prune, use_purity=not args.no_purity)
 
-        ps, pb, es, cs = [], [], [], []
-        for _ in range(max(1, args.repeat)):
-            learner = build_learner(features, args.weight_col, a)
-            bdt = learner.train(ds["sig_train"], ds["bg_train"])
-            sc = {k: np.asarray(bdt.score(m[k], use_purity=not args.no_purity,
-                                          quiet=True)) for k in m}
-            ps.append(float(kolmogorov_smirnov_probability(
-                sc["sig_train"], w["sig_train"], sc["sig_test"], w["sig_test"])))
-            pb.append(float(kolmogorov_smirnov_probability(
-                sc["bg_train"], w["bg_train"], sc["bg_test"], w["bg_test"])))
-            cut, eff, rej = eff_at_rejection(sc["sig_test"], w["sig_test"],
-                                             sc["bg_test"], w["bg_test"],
-                                             args.target_rejection)
-            es.append(eff)
-            cs.append(cut)
-
-        # Reject on the WORST run so one lucky run cannot carry a configuration.
-        p_sig, p_bg = min(ps), min(pb)
-        eff, cut = float(np.mean(es)), float(np.mean(cs))
-        spread = (max(es) - min(es)) if len(es) > 1 else 0.0
+        learner = build_learner(features, args.weight_col, a)
+        bdt = learner.train(ds["sig_train"], ds["bg_train"])
+        sc = {k: np.asarray(bdt.score(m[k], use_purity=not args.no_purity,
+                                      quiet=True)) for k in m}
+        p_sig = float(kolmogorov_smirnov_probability(
+            sc["sig_train"], w["sig_train"], sc["sig_test"], w["sig_test"]))
+        p_bg = float(kolmogorov_smirnov_probability(
+            sc["bg_train"], w["bg_train"], sc["bg_test"], w["bg_test"]))
+        cut, eff, rej = eff_at_rejection(sc["sig_test"], w["sig_test"],
+                                         sc["bg_test"], w["bg_test"],
+                                         args.target_rejection)
+        spread = 0.0
 
         ok = min(p_sig, p_bg) >= args.ks_min
         rows.append(dict(depth=depth, trees=trees, split=split, prune=prune,
                          beta=beta, frac=frac, ncuts=ncuts,
                          p_sig=p_sig, p_bg=p_bg, cut=cut, eff=eff,
                          spread=spread, ok=ok))
-        print("%-6s %-7s %-6s %-7s %-5s | %-8.4f %-8.4f | %-9.3f %6.1f%% +-%4.1f%% %s"
+        print("%-6s %-7s %-6s %-7s %-5s | %-8.4f %-8.4f | %-9.3f %6.1f%% %s"
               % (depth, trees, split,
                  "-" if prune is None else ("%g" % prune), beta,
-                 p_sig, p_bg, cut, 100 * eff, 100 * spread / 2,
+                 p_sig, p_bg, cut, 100 * eff,
                  "" if ok else "  <-- OVERTRAINED, rejected"))
 
     print("\n%d configurations, %.0f s" % (len(grid), time.time() - t0))
@@ -267,15 +256,9 @@ def main():
         hyper.append('"--use-purity"')
     print("HYPER = [" + ", ".join(hyper) + "]")
 
-    if b["spread"] > 0.05:
-        print("\n  [!] Repeats of this configuration spread by %.1f points."
-              % (100 * b["spread"]))
-        print("      The selection is largely measuring RANDOMNESS, not the")
-        print("      hyperparameters.  The real constraint is background")
-        print("      statistics; process more noise files.")
     print("\nSelection was done on the TEST set -> this efficiency is optimistic.")
-    print("Retrain the chosen configuration with pybdt_train.py; because")
-    print("training is random, its p_KS will differ somewhat.")
+    print("Training is deterministic, so pybdt_train.py will reproduce these")
+    print("numbers exactly for the same .ds files and configuration.")
 
 
 if __name__ == "__main__":

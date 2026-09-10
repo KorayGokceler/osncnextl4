@@ -25,9 +25,18 @@ This script measures two hypotheses:
   (B) ENGINE -- AdaBoost vs LightGBM -- is NOT in this script; that is a
      separate chain, via reference/train_L4_classifier.py.
 
+WHERE THE SPREAD COMES FROM: pybdt's training is DETERMINISTIC -- measured,
+not assumed (compare_models.py --only-determinism gives bit-identical scores
+across two runs).  So the spread printed by --repeat here is NOT training
+randomness: each repeat draws a DIFFERENT random subsample of the background
+(or signal), and that is what moves the answer.  That is the honest thing to
+measure, because with 259..1035 background events it genuinely matters WHICH
+events you got.
+
 CAVEAT: the efficiency-at-99%-rejection metric places its threshold using
-roughly the top 10 background events, so the metric itself is noisy.  Read
-the spread column before believing any trend.
+roughly the top 10 background events, so the metric itself is noisy on top of
+that.  --target-rejection 0.90 puts ~100 events behind the threshold and is
+far more stable.  Read the spread column before believing any trend.
 
 Usage:
 
@@ -131,6 +140,8 @@ def learning_curve(ds, features, args, fracs=(0.25, 0.5, 0.75, 1.0)):
     print("=" * 78)
     print("  model: depth %d, %d trees, beta %g;  %d repeats per point"
           % (args.depth, args.num_trees, args.beta, args.repeat))
+    print("  (spread between repeats = which events the subsample picked;")
+    print("   training itself is deterministic)")
     print("\n%-12s %-10s | %-26s" % ("background", "events",
                                      "EFFICIENCY (mean +- half-spread)"))
     print("-" * 54)
@@ -230,7 +241,11 @@ def main():
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--num-trees", type=int, default=500)
     ap.add_argument("--beta", type=float, default=0.5)
-    ap.add_argument("--repeat", type=int, default=3)
+    ap.add_argument("--repeat", type=int, default=3,
+                    help="repeats per point.  Training itself is deterministic; "
+                         "what varies between repeats is WHICH events the "
+                         "subsample picked, and that is the uncertainty we "
+                         "want to see.")
     ap.add_argument("--seed", type=int, default=12345)
     ap.add_argument("--skip-balance", action="store_true")
     args = ap.parse_args()

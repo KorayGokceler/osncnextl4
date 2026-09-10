@@ -28,9 +28,13 @@ OVERTRAINING is still reported with pybdt's own weighted KS, the same
 statistic pybdt_train.py prints, so the numbers stay comparable to earlier
 runs.  Efficiency is unweighted; the KS test is not.
 
-Training is stochastic (frac_random_events, no seed in pybdt) -- use
---repeat to train each configuration several times.  Curves are averaged
-over repeats and the spread is printed.
+TRAINING IS DETERMINISTIC.  --only-determinism measured it: the same
+configuration trained twice gives BIT-IDENTICAL scores.  So there is nothing
+to average over -- each curve below is exact for the given .ds files.  What
+IS uncertain is the finite test set: at high rejection only a handful of
+background events sit above the cut, so the vertical marker lines show where
+100, 10 and 1 background events remain.  Anything to the right of the "10
+events" line is not a measurement.
 
 MODEL SPEC
     --model "label:key=value,key=value"
@@ -43,7 +47,7 @@ Usage:
 
     python compare_models.py --ds-dir L4_output/ds --tag L4_noise \
         --features NchCleaned,micro_count,iLineFit_speed,fill_ratio,FullTimeLengthRatio \
-        --outdir L4_output/plots --repeat 3
+        --outdir L4_output/plots
 '''
 
 import os
@@ -226,7 +230,6 @@ def main():
     ap.add_argument("--weight-col", default="weight")
     ap.add_argument("--model", action="append", default=None,
                     help='"label:depth=2,trees=500"; repeatable')
-    ap.add_argument("--repeat", type=int, default=3)
     ap.add_argument("--outdir", default=".")
     ap.add_argument("--check-determinism", action="store_true",
                     help="train the first configuration twice and report "
@@ -259,7 +262,7 @@ def main():
     print("  test   signal %8d   background %6d" % (n_sig_te, n_bg_te))
     print("  %d variables: %s" % (len(features), ", ".join(features)))
     print("  efficiency and rejection are EVENT COUNTS (w_phys not used)")
-    print("  %d models x %d repeats\n" % (len(models), args.repeat))
+    print("  %d models (training is deterministic, one run each)\n" % len(models))
 
     if args.check_determinism or args.only_determinism:
         determinism_check(ds, features, args.weight_col, specs[0])
@@ -272,34 +275,24 @@ def main():
 
     results = []
     for label, a in models:
-        eff_runs, scores = [], None
-        ks_sig, ks_bg = [], []
-        for r in range(max(1, args.repeat)):
-            learner = build_learner(features, args.weight_col, a)
-            bdt = learner.train(ds["sig_train"], ds["bg_train"])
-            sc = {k: np.asarray(bdt.score(ds[k], use_purity=a.use_purity,
-                                          quiet=True))
-                  for k in ("sig_train", "sig_test", "bg_train", "bg_test")}
-            ks_sig.append(float(kolmogorov_smirnov_probability(
-                sc["sig_train"], w["sig_train"], sc["sig_test"], w["sig_test"])))
-            ks_bg.append(float(kolmogorov_smirnov_probability(
-                sc["bg_train"], w["bg_train"], sc["bg_test"], w["bg_test"])))
-            cuts, eff, rej = curve(sc["sig_test"], sc["bg_test"])
-            eff_runs.append(eff_on_grid(eff, rej, REJ_GRID))
-            if r == 0:
-                scores = sc          # keep run 0 for the per-model cut panel
-        E = np.vstack(eff_runs)
-        results.append(dict(label=label, cfg=a, scores=scores,
-                            eff_mean=np.nanmean(E, axis=0),
-                            eff_lo=np.nanmin(E, axis=0),
-                            eff_hi=np.nanmax(E, axis=0),
-                            ks_sig=min(ks_sig), ks_bg=min(ks_bg)))
+        learner = build_learner(features, args.weight_col, a)
+        bdt = learner.train(ds["sig_train"], ds["bg_train"])
+        sc = {k: np.asarray(bdt.score(ds[k], use_purity=a.use_purity, quiet=True))
+              for k in ("sig_train", "sig_test", "bg_train", "bg_test")}
+        ks_sig = float(kolmogorov_smirnov_probability(
+            sc["sig_train"], w["sig_train"], sc["sig_test"], w["sig_test"]))
+        ks_bg = float(kolmogorov_smirnov_probability(
+            sc["bg_train"], w["bg_train"], sc["bg_test"], w["bg_test"]))
+        cuts, eff, rej = curve(sc["sig_test"], sc["bg_test"])
+        results.append(dict(label=label, cfg=a, scores=sc,
+                            eff_grid=eff_on_grid(eff, rej, REJ_GRID),
+                            ks_sig=ks_sig, ks_bg=ks_bg))
         print("  trained %-12s  depth=%-4s trees=%-5s prune=%-5s  "
               "p_KS sig=%.3f bg=%.3f%s"
               % (label, a.depth, a.num_trees,
                  "-" if a.prune_strength is None else a.prune_strength,
-                 min(ks_sig), min(ks_bg),
-                 "  <-- OVERTRAINED" if min(min(ks_sig), min(ks_bg)) < 0.01 else ""))
+                 ks_sig, ks_bg,
+                 "  <-- OVERTRAINED" if min(ks_sig, ks_bg) < 0.01 else ""))
 
     # ---- table -------------------------------------------------------------
     print("\n" + "=" * 92)
@@ -332,13 +325,6 @@ def main():
     print("\n  Note how few background events define the right-hand columns:")
     print("  at 99.9%% rejection of %d test events, that is ~%d event(s)."
           % (n_bg_te, max(1, int(round(0.001 * n_bg_te)))))
-    if args.repeat > 1:
-        print("\nspread across %d repeats (efficiency at 99%% rejection):" % args.repeat)
-        i99 = int(np.argmin(np.abs(REJ_GRID - 0.99)))
-        for res in results:
-            print("  %-12s  mean %5.1f%%   min %5.1f%%   max %5.1f%%"
-                  % (res["label"], 100 * res["eff_mean"][i99],
-                     100 * res["eff_lo"][i99], 100 * res["eff_hi"][i99]))
 
     # ---- figure ------------------------------------------------------------
     n = len(results)
@@ -365,19 +351,30 @@ def main():
 
     ax = fig.add_subplot(nrow, 1, nrow)
     for res in results:
-        ax.plot(100 * REJ_GRID, 100 * res["eff_mean"], lw=1.6, label=res["label"])
-        if args.repeat > 1:
-            ax.fill_between(100 * REJ_GRID, 100 * res["eff_lo"],
-                            100 * res["eff_hi"], alpha=0.15, linewidth=0)
+        ax.plot(100 * REJ_GRID, 100 * res["eff_grid"], lw=1.6, label=res["label"])
+
+    # Where the test-set statistics runs out: how many background events are
+    # still above the cut.  Right of the "10 events" line this is not a
+    # measurement any more, whatever the curve suggests.
+    for n_left, style in ((100, "-."), (10, "--"), (1, ":")):
+        r = 100 * (1.0 - n_left / float(n_bg_te))
+        ax.axvline(r, color="0.4", ls=style, lw=1)
+        ax.text(r, 4, " %d bg events left" % n_left, rotation=90,
+                fontsize=7, color="0.3", va="bottom")
+
+    # Table 13 target of the technical note.
+    ax.plot([99.2], [96.0], marker="*", ms=14, color="k", zorder=5)
+    ax.text(99.2, 96.0, "  note target", fontsize=8, va="center")
+
     ax.set_xlabel("background rejection [%]")
     ax.set_ylabel("signal efficiency [%]")
     ax.set_xlim(80, 100)
     ax.set_ylim(0, 102)
     ax.grid(alpha=.3)
-    ax.legend(fontsize=8, ncol=3)
-    ax.set_title("All models on one axis (band = spread over %d repeats).  "
-                 "Technical note Table 13 target: 96%% efficiency at 99.2%% "
-                 "rejection." % args.repeat, fontsize=9)
+    ax.legend(fontsize=8, ncol=3, loc="lower left")
+    ax.set_title("All models on one axis.  Curves are exact (training is "
+                 "deterministic); the grey lines mark where the test-set "
+                 "background runs out.", fontsize=9)
 
     os.makedirs(args.outdir, exist_ok=True)
     out = os.path.join(args.outdir, "%s_model_comparison.png" % args.tag)
@@ -394,8 +391,8 @@ def main():
     print("  The score scale differs between models, so these panels are NOT")
     print("  comparable to each other -- use the bottom overlay for that.")
     print("* The overlay is the comparison: higher curve = better model.")
-    print("* If the bands overlap, the models are indistinguishable and the")
-    print("  differences you see are training randomness, not capacity.")
+    print("* Right of the '10 bg events left' line the curve is defined by a")
+    print("  handful of events -- differences there are not measurements.")
     print("* Compare against the single best variable: a plain cut on")
     print("  NchCleaned alone reached ~72% at 99% rejection.  A model that")
     print("  does not clearly beat that is not earning its keep.")
