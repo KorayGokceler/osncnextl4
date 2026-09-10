@@ -507,15 +507,14 @@ Notebook'ta kontrol: `import os; os.getcwd()`.
 > Dosyalar orada durur ve home kotasindan yer yer — kurtarilacak bir sey
 > varsa oradan alin, sonra `rm -rf` ile gercekten silin.
 
-**2. Jupyter kernel'i.** Notebook'un IceTray/pybdt'yi görmesinin tek yolu
+**2. Jupyter kernel'i.** Notebook'un IceTray'i görmesinin tek yolu
 kernel'in env-shell içindeki python olması. Jupyter'i ortam içinden
 başlatmak en temizi (README adım 4); başlatılmadıysa `./setup_env.sh kernel`
 ile kernel kaydedilip notebook'ta seçilir.
 
-**3. `import pybdt`, `from icecube import pybdt` DEĞİL.** pybdt `icecube`
-isim alanında değil, bağımsız üst düzey bir paket. Bu proje geçmişinde bir
-kez "pybdt derlenmemiş" sanılmasına yol açtı. `icetray_env.require_pybdt()`
-bu hatayı yakalayıp doğru kullanımı söylüyor.
+**3. `lightgbm` kernel'de yok görünüyor.** `icecube` isim alanında değil,
+sıradan bir pip paketi — env-shell içindeki python'da kurulu olması gerekir.
+`icetray_env.require_lightgbm()` eksikse ne yapılacağını söylüyor.
 
 **4. `I3Tray`'in yeri sürüme göre değişiyor** — `icecube.icetray.I3Tray`
 (v1.5+) vs top-level `I3Tray` (combo). `icetray_env.get_I3Tray()` ikisini

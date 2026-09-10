@@ -252,7 +252,7 @@ sınırlaması notta **açıkça yazan** bir şey ve şu an kodda yok.
 | **`FullTimeLengthRatio`** | Tablo 11'de `IC2018_LE_L3_Vars.FullTimeLengthRatio` — yani **L3 değişkeni** | L4'te kendimiz hesaplıyoruz (pass3 L3 map'inde oran yok) | Bileşenler L3'te var (`CleanedFullTimeLength`, `UncleanedFullTimeLength` — Tablo 8). **Yön ÇÖZÜLDÜ:** Şekil 13'te bu değişkenin x ekseni 0.0–1.0 → oran `cleaned/uncleaned`, kodumuzun aldığı yön. |
 | **HitStatistics anahtarı** | `SRTTWOfflinePulsesDCHitStatistics` (pass2) | `SRTTWSplitInIcePulsesDCHitStatistics` (pass3) | Bilinen pass2→pass3 yeniden adlandırma; `reference/pass3_L3_process.py` ile doğrulanmış. |
 | **ντ** | Tablo 13'te ντ CC var (0.129 mHz) | set yok | Sinyalin ~%3'ü. |
-| **BDT motoru** | LightGBM (§3.6.1) | pybdt (bilinçli sapma) | Tablo 10 parametreleri taşınamaz; `CLAUDE.md`. |
+| **BDT motoru** | LightGBM (§3.6.1) | LightGBM | Aynı; Tablo 10 parametreleri doğrudan kullanılıyor. |
 
 ---
 
