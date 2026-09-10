@@ -800,6 +800,40 @@ Bu yüzden `--n` modunda "işlenen dosya" sayısı basılmıyor (yanıltıcı ol
 listede 100 dosya olsa da tray ilk dosyada durmuş olabilir). Smoke test'te
 tek dosya verin ya da `--scan off` kullanın — 100 dosyayı taramak boşuna.
 
+## Sıradaki iş (session devri)
+
+Son durum: noise BDT eğitiliyor, ölçüldü, darboğaz **arka plan
+istatistiği** (5e/5j/5k). Jana'ya daha fazla vuvuzela MC talebi
+yazıldı; gerekçe 5k'daki tablo.
+
+Aktif branch'ler:
+- `claude/noise-bdt-fix` — noise değişkenleri + model karşılaştırma
+  araçları (`compare_models.py`, `pybdt_scan.py`, `pybdt_diagnose.py`,
+  `plot_noise_inputs.py`, `test_noise_vars.py`). **Ana branch'e
+  (`claude/oscnext-l4-scripts-35min0`) merge edilmeyi bekliyor** — noise
+  değişkenleri tarafında açık iş kalmadı.
+- `claude/lightgbm-compare` — `lightgbm_compare.py` hazır, cobalt'ta
+  **henüz koşturulmadı**.
+
+Yapılacaklar:
+1. **Daha fazla noise MC gelince**: aynı modeli arka planın artan
+   fraksiyonlarıyla eğitip sabit reddeki verim eğilimine bak
+   (`pybdt_diagnose.py` bunu yapıyor). Eğilim hâlâ yükseliyorsa ne kadar
+   veri gerektiği oradan çıkar. Referansın kaç noise dosyası kullandığı
+   **hâlâ bilinmiyor** — sorulacak.
+2. **CORSIKA OverSampling → train/test sızıntısı (KAYDEDİLDİ, İŞLENMEDİ).**
+   Muon BDT'sinin arka planı CORSIKA ve aynı hava duşu `OverSampling`
+   kadar tekrar kullanılıyor. Olay bazlı train/test ayrımı aynı duşun
+   kopyalarını iki tarafa birden dağıtıyor → muon BDT'sinin test verimi
+   olduğundan **iyi** görünür. Noise BDT'sini etkilemiyor (vuvuzela'da
+   oversampling yok). Çözüm: ayrımı olay değil **duş** (`Run`, ya da
+   CORSIKA primary id) bazında çekmek. 5c ile aynı yerde, `make_datasets`
+   içinde.
+3. `pybdt_scan`'i yeni `--max-gap` elemesiyle bir kez koştur — eski
+   `--ks-min` taramasının sonuçları geçersiz (5i).
+4. İngilizceye çevirme sırası: `pybdt_train.py`, `test_noise_vars.py`,
+   sonra Konvansiyonlar'daki liste.
+
 ## Konvansiyonlar
 
 - **Kod, yorumlar, docstring'ler, `print` çıktıları ve grafik etiketleri
