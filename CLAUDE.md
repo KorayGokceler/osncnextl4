@@ -377,7 +377,35 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    atıyor. `compare_models.py` artık asıl ölçütü basıyor:
    **train ve test setinde aynı redde verim, ve aradaki fark** (`gap`).
    Ezberleyen model train'de iyi test'te kötü olur; doğrudan görünür.
-   `pybdt_scan`'in eleme kuralı da buna göre gözden geçirilmeli.
+   **Yapıldı:** `pybdt_scan.py` artık `--max-gap` (varsayılan 0.05) ile
+   eliyor; `--ks-min` duruyor ama varsayılanı 0, yani hiçbir şeyi atmıyor
+   (p_KS yalnızca bilgi olarak basılıyor).
+5j. **Hiçbir konfigürasyon overtrain ETMİYOR (ölçüldü).** Altı modelin
+   %90 reddindeki train/test farkı: stump −0.3, d2t500 +0.2, d3t300 −1.2,
+   d4t500 −0.3, d6t500 +1.4, d2t500p10 +0.2 puan. Birkaçı **negatif** —
+   yani test seti train'den iyi. Ezber sorunu yok; kapasiteyi kısmanın
+   gerekçesi de yok. `d6t500`'ün çöküşü (5h) overtraining değil: **kendi
+   eğitim setinde de** %14.9 tutuyor. Muhtemel sebep AdaBoost'un dejenere
+   hâli — derinlik-6 ağacı (≤64 yaprak) 1 035 arka plan olayını tam
+   ayırıyor, eğitim hatası ≈ 0 çıkıyor, boost ağırlıkları patlıyor.
+   Yani darboğaz yine **arka plan istatistiği** (5e), model kapasitesi
+   değil.
+5k. **BDT tek değişkenden İYİ — önceki "kazandırmıyor" değerlendirmesi
+   geri çekildi.** Ölçüm için `compare_models.py --baseline NchCleaned`
+   eklendi (tek değişkene doğrudan kesim). Test seti, ağırlıksız:
+
+   | red | NchCleaned tek | d2t500 | fark |
+   |---|---|---|---|
+   | %90 | 81.3 | **94.0** | +12.7 |
+   | %95 | 74.7 | **91.7** | +17.0 |
+   | %99 | 68.4 | 62.0 | −6.4 |
+   | %99.5 | 62.5 | 57.5 | −5.0 |
+   | %99.9 | 52.1 | 25.0 | −27.1 |
+
+   Ölçülebilir bölgede (%90–95) BDT açık ara önde. %99'un sağında tek
+   değişkenin önde görünmesi **ölçüm değil**: orada 10 / 5 / 1 arka plan
+   olayı kalıyor (5h). Yani "BDT ekmeğini çıkarmıyor" doğru değil;
+   doğrusu **red eşiğini yükseltecek arka plan istatistiğimiz yok**.
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
