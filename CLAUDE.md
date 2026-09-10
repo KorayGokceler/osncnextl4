@@ -319,6 +319,93 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    gelmiyor. `--prune-strength 35` de keyfi ve fazla agresif olabilir.
    Sıradaki denemeler: daha çok noise dosyası; `--depth 6`,
    `--num-trees 500`, budamasız.
+5g. **pybdt eğitimi DETERMİNİSTİK — ölçüldü, ve önceki iddiam yanlıştı.**
+   `frac_random_events=0.5` ve pybdt'nin tohum ayarı olmaması yüzünden
+   "eğitim stokastik" diye **varsaymıştım** ve gözlenen ±10–17 puanlık
+   yayılımı ona bağlamıştım. `compare_models.py --only-determinism`
+   ölçtü: aynı konfigürasyon aynı veriyle iki kez eğitilince skorlar
+   **bit-aynı** — 165 837 olayın **0**'ında fark var, `max |Δskor| = 0`,
+   ağaç sayıları eşit. pybdt örneklemesini kendi içinde tohumluyor.
+   **Sonuçları:**
+   - `pybdt_scan.py`'nin `--repeat`'i **kaldırıldı** — süreyi üçe
+     katlayıp üç özdeş sayı üretiyordu.
+   - `compare_models.py`'nin `--repeat`'i ve tekrar bandı kaldırıldı;
+     eğriler kesin. Yerine grafikte **test setindeki arka planın nerede
+     tükendiği** işaretleniyor (100 / 10 / 1 olay kaldığı yerler).
+   - `pybdt_diagnose.py`'nin yayılımı **gerçek ve anlamlı** ama sebebi
+     eğitim değil: her tekrar arka planın (ya da sinyalin) **farklı bir
+     rastgele alt örneğini** çekiyor. 259–1035 olayla hangi olayların
+     düştüğü gerçekten fark ediyor.
+   - Geriye kalan gürültü kaynağı **ölçütün kendisi**: %99 red eşiği
+     ~10 arka plan olayının üstünde duruyor. `--target-rejection 0.90`
+     (~100 olay) çok daha kararlı.
+5h. **Altı modelin olay-sayısı karşılaştırması** (`compare_models.py`,
+   test seti, ağırlıksız):
+
+   | model | %90 red | %95 red | %99 red |
+   |---|---|---|---|
+   | stump (d1, 300) | 91.3 | 76.0 | 76.0* |
+   | **d2t500** | **94.0** | **91.7** | 62.0 |
+   | d3t300 | 88.9 | 75.2 | 43.7 |
+   | **d4t500** | 91.5 | 86.1 | **65.8** |
+   | d6t500 | 13.4 | 10.3 | 5.8 |
+   | d2t500p10 | 94.0 | 91.7 | 62.0 |
+
+   **Düzeltme — önce "en basit model önde, kapasite arttıkça düşüyor"
+   yazmıştım; yanlış.** Eğilim monoton değil: d2 > d1 > d4 > d3 ≫ d6.
+   Tek net olgu d6'nın çöküşü.
+   \* `stump`'ın %99'daki %76'sı yanıltıcı: derinlik-1 ensemble'ı çok az
+   ayrık skor değeri üretiyor, eğrisi kaba bir merdiven. %95 ve %99
+   **aynı noktaya** düşüyor (ikisinde de arka plan 6/1016) ve %99.5'te
+   birden **%0**'a iniyor — o redde kesilecek yer yok.
+   `prune_strength=10` derinlik 2'de **hiçbir şey budamıyor**: d2t500 ile
+   d2t500p10 birebir aynı.
+   **%99'un sağı ölçüm değil:** %99→10, %99.5→5, %99.9→1 arka plan olayı.
+   Güvenilir bölge %90–99.
+   **Hedefle mesafe:** not %99.2 redde %96 istiyor; en iyimiz %99'da
+   %65.8. Ama %90 redde %94.0 — sinyali tutmakta sorun yok, **reddi
+   yükseltemiyoruz**.
+5i. **`p_KS` overtraining ölçütü olarak İŞE YARAMIYOR (ölçüldü).**
+   `d2t500`: `p_KS = 0.002` → "OVERTRAINED" damgası, ama %90 redde
+   %94.0 ile **en iyi model**. `d6t500`: `p_KS = 0.976` → "temiz", ama
+   %90 redde %13.4 ile **felaket**.
+   Sebep: KS train/test **skor dağılımlarını** karşılaştırıyor; 164 821
+   sinyal olayıyla istatistiksel olarak anlamlı ama fiziksel olarak
+   önemsiz farkları yakalıyor. Bir modelin işe yarayıp yaramadığı
+   hakkında hiçbir şey söylemiyor.
+   **Sonuç:** `pybdt_scan.py`'nin `--ks-min 0.01` elemesi iyi modelleri
+   atıyor. `compare_models.py` artık asıl ölçütü basıyor:
+   **train ve test setinde aynı redde verim, ve aradaki fark** (`gap`).
+   Ezberleyen model train'de iyi test'te kötü olur; doğrudan görünür.
+   **Yapıldı:** `pybdt_scan.py` artık `--max-gap` (varsayılan 0.05) ile
+   eliyor; `--ks-min` duruyor ama varsayılanı 0, yani hiçbir şeyi atmıyor
+   (p_KS yalnızca bilgi olarak basılıyor).
+5j. **Hiçbir konfigürasyon overtrain ETMİYOR (ölçüldü).** Altı modelin
+   %90 reddindeki train/test farkı: stump −0.3, d2t500 +0.2, d3t300 −1.2,
+   d4t500 −0.3, d6t500 +1.4, d2t500p10 +0.2 puan. Birkaçı **negatif** —
+   yani test seti train'den iyi. Ezber sorunu yok; kapasiteyi kısmanın
+   gerekçesi de yok. `d6t500`'ün çöküşü (5h) overtraining değil: **kendi
+   eğitim setinde de** %14.9 tutuyor. Muhtemel sebep AdaBoost'un dejenere
+   hâli — derinlik-6 ağacı (≤64 yaprak) 1 035 arka plan olayını tam
+   ayırıyor, eğitim hatası ≈ 0 çıkıyor, boost ağırlıkları patlıyor.
+   Yani darboğaz yine **arka plan istatistiği** (5e), model kapasitesi
+   değil.
+5k. **BDT tek değişkenden İYİ — önceki "kazandırmıyor" değerlendirmesi
+   geri çekildi.** Ölçüm için `compare_models.py --baseline NchCleaned`
+   eklendi (tek değişkene doğrudan kesim). Test seti, ağırlıksız:
+
+   | red | NchCleaned tek | d2t500 | fark |
+   |---|---|---|---|
+   | %90 | 81.3 | **94.0** | +12.7 |
+   | %95 | 74.7 | **91.7** | +17.0 |
+   | %99 | 68.4 | 62.0 | −6.4 |
+   | %99.5 | 62.5 | 57.5 | −5.0 |
+   | %99.9 | 52.1 | 25.0 | −27.1 |
+
+   Ölçülebilir bölgede (%90–95) BDT açık ara önde. %99'un sağında tek
+   değişkenin önde görünmesi **ölçüm değil**: orada 10 / 5 / 1 arka plan
+   olayı kalıyor (5h). Yani "BDT ekmeğini çıkarmıyor" doğru değil;
+   doğrusu **red eşiğini yükseltecek arka plan istatistiğimiz yok**.
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
@@ -733,9 +820,55 @@ Bu yüzden `--n` modunda "işlenen dosya" sayısı basılmıyor (yanıltıcı ol
 listede 100 dosya olsa da tray ilk dosyada durmuş olabilir). Smoke test'te
 tek dosya verin ya da `--scan off` kullanın — 100 dosyayı taramak boşuna.
 
+## Sıradaki iş (session devri)
+
+Son durum: noise BDT eğitiliyor, ölçüldü, darboğaz **arka plan
+istatistiği** (5e/5j/5k). Jana'ya daha fazla vuvuzela MC talebi
+yazıldı; gerekçe 5k'daki tablo.
+
+Aktif branch'ler:
+- `claude/noise-bdt-fix` — noise değişkenleri + model karşılaştırma
+  araçları (`compare_models.py`, `pybdt_scan.py`, `pybdt_diagnose.py`,
+  `plot_noise_inputs.py`, `test_noise_vars.py`). **Ana branch'e
+  (`claude/oscnext-l4-scripts-35min0`) merge edilmeyi bekliyor** — noise
+  değişkenleri tarafında açık iş kalmadı.
+- `claude/lightgbm-compare` — `lightgbm_compare.py` hazır, cobalt'ta
+  **henüz koşturulmadı**.
+
+Yapılacaklar:
+1. **Daha fazla noise MC gelince**: aynı modeli arka planın artan
+   fraksiyonlarıyla eğitip sabit reddeki verim eğilimine bak
+   (`pybdt_diagnose.py` bunu yapıyor). Eğilim hâlâ yükseliyorsa ne kadar
+   veri gerektiği oradan çıkar. Referansın kaç noise dosyası kullandığı
+   **hâlâ bilinmiyor** — sorulacak.
+2. **CORSIKA OverSampling → train/test sızıntısı (KAYDEDİLDİ, İŞLENMEDİ).**
+   Muon BDT'sinin arka planı CORSIKA ve aynı hava duşu `OverSampling`
+   kadar tekrar kullanılıyor. Olay bazlı train/test ayrımı aynı duşun
+   kopyalarını iki tarafa birden dağıtıyor → muon BDT'sinin test verimi
+   olduğundan **iyi** görünür. Noise BDT'sini etkilemiyor (vuvuzela'da
+   oversampling yok). Çözüm: ayrımı olay değil **duş** (`Run`, ya da
+   CORSIKA primary id) bazında çekmek. 5c ile aynı yerde, `make_datasets`
+   içinde.
+3. `pybdt_scan`'i yeni `--max-gap` elemesiyle bir kez koştur — eski
+   `--ks-min` taramasının sonuçları geçersiz (5i).
+4. İngilizceye çevirme sırası: `pybdt_train.py`, `test_noise_vars.py`,
+   sonra Konvansiyonlar'daki liste.
+
 ## Konvansiyonlar
 
-- Kod ve yorumlar Türkçe.
+- **Kod, yorumlar, docstring'ler, `print` çıktıları ve grafik etiketleri
+  İNGİLİZCE.** (Değişti — repo Türkçe başlamıştı.) Bu dosya
+  (`CLAUDE.md`) ve diğer `.md` belgeleri Türkçe kalıyor; onlar proje
+  anlatısı, kod değil.
+  Devam eden geçiş — İngilizceye çevrilenler:
+  `plot_noise_inputs.py`, `pybdt_diagnose.py`, `pybdt_scan.py`.
+  Sırada: `pybdt_train.py`, `test_noise_vars.py`,
+  `pybdt_classifier_module.py`, `scan_files.py`, `diagnose_env.py`,
+  `simple_booker.py`, `l4_classifier_module.py`, `l4_run.py`,
+  `icetray_env.py`, `process_L4.py`, `l4_data.py`,
+  `oscNext_L4_variables.py`.
+  `reference/` altındaki dosyalar **olduğu gibi kalır** — başkasının
+  kodu ya da tarihsel kayıt, çevrilmez.
 - Veri repoya girmez (`.gitignore`: `L4_output/`, model/veri uzantıları).
 - Notebook commit'lenmeden önce `nbstripout` ile temizlenmeli (çıktı hücreleri
   MB'larca yer kaplar ve anlamsız diff üretir).
