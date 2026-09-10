@@ -24,9 +24,23 @@ WHAT IT PRODUCES
      - one overlay panel: efficiency vs rejection for every model, which is
        the only fair way to compare models whose score scales differ.
 
-OVERTRAINING is still reported with pybdt's own weighted KS, the same
-statistic pybdt_train.py prints, so the numbers stay comparable to earlier
-runs.  Efficiency is unweighted; the KS test is not.
+OVERTRAINING is reported two ways, because the first one turned out not to
+measure what we need:
+
+  * p_KS -- pybdt's own weighted KS on the train/test SCORE DISTRIBUTIONS,
+    the same statistic pybdt_train.py prints.  With 164k signal events it
+    flags differences that are statistically significant but physically
+    irrelevant.  Measured here: d2t500 got p_KS=0.002 ("overtrained") while
+    being the best model at 90-95% rejection, and d6t500 got p_KS=0.98
+    ("clean") while keeping only 13% of the signal at 90% rejection.  So a
+    p_KS cut rejects good models and passes useless ones.
+
+  * eff gap -- signal efficiency at the target rejection, measured on the
+    TRAIN set and on the TEST set.  A model that memorised its training data
+    scores well on train and badly on test, and this shows it directly.
+    This is the number to trust.
+
+Efficiency is unweighted; the KS test is not.
 
 TRAINING IS DETERMINISTIC.  --only-determinism measured it: the same
 configuration trained twice gives BIT-IDENTICAL scores.  So there is nothing
@@ -231,6 +245,15 @@ def main():
     ap.add_argument("--model", action="append", default=None,
                     help='"label:depth=2,trees=500"; repeatable')
     ap.add_argument("--outdir", default=".")
+    ap.add_argument("--baseline", default="NchCleaned",
+                    help="single variable to show as a reference row: a plain "
+                         "threshold on it, both directions tried.  A model "
+                         "that does not beat this is not earning its keep.")
+    ap.add_argument("--gap-at", type=float, default=0.90,
+                    help="rejection level at which the train/test efficiency "
+                         "gap is measured.  0.90 by default because ~100 "
+                         "background events sit behind that threshold; at "
+                         "0.99 it is ~10 and the gap is mostly noise.")
     ap.add_argument("--check-determinism", action="store_true",
                     help="train the first configuration twice and report "
                          "whether the two models are identical, then continue")
@@ -284,15 +307,25 @@ def main():
         ks_bg = float(kolmogorov_smirnov_probability(
             sc["bg_train"], w["bg_train"], sc["bg_test"], w["bg_test"]))
         cuts, eff, rej = curve(sc["sig_test"], sc["bg_test"])
+        # Same measurement on the training set: the gap is the honest
+        # overtraining number (see the module docstring on why p_KS is not).
+        k_te = kept_counts(sc["sig_test"], sc["bg_test"], args.gap_at)
+        k_tr = kept_counts(sc["sig_train"], sc["bg_train"], args.gap_at)
+        gap = (k_tr["eff"] - k_te["eff"]) if (k_tr and k_te) else float("nan")
         results.append(dict(label=label, cfg=a, scores=sc,
                             eff_grid=eff_on_grid(eff, rej, REJ_GRID),
-                            ks_sig=ks_sig, ks_bg=ks_bg))
+                            ks_sig=ks_sig, ks_bg=ks_bg, gap=gap,
+                            eff_tr=k_tr["eff"] if k_tr else float("nan"),
+                            eff_te=k_te["eff"] if k_te else float("nan")))
         print("  trained %-12s  depth=%-4s trees=%-5s prune=%-5s  "
-              "p_KS sig=%.3f bg=%.3f%s"
+              "p_KS %.3f/%.3f   eff@%.0f%% train %.1f%% test %.1f%%  gap %+.1f%s"
               % (label, a.depth, a.num_trees,
                  "-" if a.prune_strength is None else a.prune_strength,
-                 ks_sig, ks_bg,
-                 "  <-- OVERTRAINED" if min(ks_sig, ks_bg) < 0.01 else ""))
+                 ks_sig, ks_bg, 100 * args.gap_at,
+                 100 * (k_tr["eff"] if k_tr else float("nan")),
+                 100 * (k_te["eff"] if k_te else float("nan")),
+                 100 * gap,
+                 "  <-- MEMORISING" if gap > 0.05 else ""))
 
     # ---- table -------------------------------------------------------------
     print("\n" + "=" * 92)
@@ -322,6 +355,23 @@ def main():
                                                   k["bg_kept"], k["bg_total"]),
                       end="")
         print()
+    # A plain threshold on the strongest single variable, at the same levels.
+    # If a model cannot beat this, it is not earning its keep.
+    if args.baseline and args.baseline in features:
+        j = features.index(args.baseline)
+        bs = np.asarray(ds["sig_test"][args.baseline], dtype=float)
+        bb = np.asarray(ds["bg_test"][args.baseline], dtype=float)
+        print("\nbaseline -- plain cut on %s alone:" % args.baseline)
+        row = "  %-12s" % args.baseline
+        for t in REJ_LEVELS:
+            best = None
+            for sign in (+1.0, -1.0):
+                k = kept_counts(sign * bs, sign * bb, t)
+                if k and (best is None or k["eff"] > best["eff"]):
+                    best = k
+            row += "%14s " % ("-" if best is None else "%.1f%%" % (100 * best["eff"]))
+        print(row)
+
     print("\n  Note how few background events define the right-hand columns:")
     print("  at 99.9%% rejection of %d test events, that is ~%d event(s)."
           % (n_bg_te, max(1, int(round(0.001 * n_bg_te)))))
@@ -393,9 +443,15 @@ def main():
     print("* The overlay is the comparison: higher curve = better model.")
     print("* Right of the '10 bg events left' line the curve is defined by a")
     print("  handful of events -- differences there are not measurements.")
-    print("* Compare against the single best variable: a plain cut on")
-    print("  NchCleaned alone reached ~72% at 99% rejection.  A model that")
-    print("  does not clearly beat that is not earning its keep.")
+    print("* The baseline row is a plain threshold on one variable.  A model")
+    print("  that does not clearly beat it is not earning its keep.")
+    print("* Trust the 'gap' column, not p_KS, for overtraining: p_KS compares")
+    print("  score DISTRIBUTIONS and flags irrelevant differences at 164k")
+    print("  events, while the gap compares what we actually care about.")
+    print("* A very shallow ensemble produces few distinct score values, so")
+    print("  its curve is a coarse staircase: it may be unable to deliver a")
+    print("  given rejection at any useful efficiency (stump gives 0% beyond")
+    print("  99% for exactly this reason).")
 
 
 if __name__ == "__main__":

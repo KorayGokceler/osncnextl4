@@ -339,14 +339,45 @@ formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
    - Geriye kalan gürültü kaynağı **ölçütün kendisi**: %99 red eşiği
      ~10 arka plan olayının üstünde duruyor. `--target-rejection 0.90`
      (~100 olay) çok daha kararlı.
-5h. **İlk olay-sayısı ölçümü: en BASİT model önde.** `compare_models.py`
-   determinism kontrolünde `stump` (derinlik 1, 300 ağaç) %99 redde
-   **%76.0** verdi (sinyal 125 254/164 821, arka plan 6/1016).
-   Karşılaştırma: `NchCleaned` tek başına ~%72, derinlik-2/500 ağaç
-   %64.9, ilk model (derinlik 3/300) %52.7. Yani kapasite arttıkça
-   performans **düşüyor** — 1 035 arka plan olayının işaret ettiği yön.
-   (Bu sayı ağırlıksız, diğerleri ağırlıklıydı; gürültüde ikisi
-   birbirine yakın, bkz. 5d.)
+5h. **Altı modelin olay-sayısı karşılaştırması** (`compare_models.py`,
+   test seti, ağırlıksız):
+
+   | model | %90 red | %95 red | %99 red |
+   |---|---|---|---|
+   | stump (d1, 300) | 91.3 | 76.0 | 76.0* |
+   | **d2t500** | **94.0** | **91.7** | 62.0 |
+   | d3t300 | 88.9 | 75.2 | 43.7 |
+   | **d4t500** | 91.5 | 86.1 | **65.8** |
+   | d6t500 | 13.4 | 10.3 | 5.8 |
+   | d2t500p10 | 94.0 | 91.7 | 62.0 |
+
+   **Düzeltme — önce "en basit model önde, kapasite arttıkça düşüyor"
+   yazmıştım; yanlış.** Eğilim monoton değil: d2 > d1 > d4 > d3 ≫ d6.
+   Tek net olgu d6'nın çöküşü.
+   \* `stump`'ın %99'daki %76'sı yanıltıcı: derinlik-1 ensemble'ı çok az
+   ayrık skor değeri üretiyor, eğrisi kaba bir merdiven. %95 ve %99
+   **aynı noktaya** düşüyor (ikisinde de arka plan 6/1016) ve %99.5'te
+   birden **%0**'a iniyor — o redde kesilecek yer yok.
+   `prune_strength=10` derinlik 2'de **hiçbir şey budamıyor**: d2t500 ile
+   d2t500p10 birebir aynı.
+   **%99'un sağı ölçüm değil:** %99→10, %99.5→5, %99.9→1 arka plan olayı.
+   Güvenilir bölge %90–99.
+   **Hedefle mesafe:** not %99.2 redde %96 istiyor; en iyimiz %99'da
+   %65.8. Ama %90 redde %94.0 — sinyali tutmakta sorun yok, **reddi
+   yükseltemiyoruz**.
+5i. **`p_KS` overtraining ölçütü olarak İŞE YARAMIYOR (ölçüldü).**
+   `d2t500`: `p_KS = 0.002` → "OVERTRAINED" damgası, ama %90 redde
+   %94.0 ile **en iyi model**. `d6t500`: `p_KS = 0.976` → "temiz", ama
+   %90 redde %13.4 ile **felaket**.
+   Sebep: KS train/test **skor dağılımlarını** karşılaştırıyor; 164 821
+   sinyal olayıyla istatistiksel olarak anlamlı ama fiziksel olarak
+   önemsiz farkları yakalıyor. Bir modelin işe yarayıp yaramadığı
+   hakkında hiçbir şey söylemiyor.
+   **Sonuç:** `pybdt_scan.py`'nin `--ks-min 0.01` elemesi iyi modelleri
+   atıyor. `compare_models.py` artık asıl ölçütü basıyor:
+   **train ve test setinde aynı redde verim, ve aradaki fark** (`gap`).
+   Ezberleyen model train'de iyi test'te kötü olur; doğrudan görünür.
+   `pybdt_scan`'in eleme kuralı da buna göre gözden geçirilmeli.
 6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
    muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
    sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
