@@ -715,7 +715,19 @@ tek dosya verin ya da `--scan off` kullanın — 100 dosyayı taramak boşuna.
 
 ## Konvansiyonlar
 
-- Kod ve yorumlar Türkçe.
+- **Kod, yorumlar, docstring'ler, `print` çıktıları ve grafik etiketleri
+  İNGİLİZCE.** (Değişti — repo Türkçe başlamıştı.) Bu dosya
+  (`CLAUDE.md`) ve diğer `.md` belgeleri Türkçe kalıyor; onlar proje
+  anlatısı, kod değil.
+  Devam eden geçiş — İngilizceye çevrilenler:
+  `plot_noise_inputs.py`, `pybdt_diagnose.py`, `pybdt_scan.py`.
+  Sırada: `pybdt_train.py`, `test_noise_vars.py`,
+  `pybdt_classifier_module.py`, `scan_files.py`, `diagnose_env.py`,
+  `simple_booker.py`, `l4_classifier_module.py`, `l4_run.py`,
+  `icetray_env.py`, `process_L4.py`, `l4_data.py`,
+  `oscNext_L4_variables.py`.
+  `reference/` altındaki dosyalar **olduğu gibi kalır** — başkasının
+  kodu ya da tarihsel kayıt, çevrilmez.
 - Veri repoya girmez (`.gitignore`: `L4_output/`, model/veri uzantıları).
 - Notebook commit'lenmeden önce `nbstripout` ile temizlenmeli (çıktı hücreleri
   MB'larca yer kaplar ve anlamsız diff üretir).

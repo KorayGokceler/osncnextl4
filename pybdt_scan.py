@@ -1,43 +1,50 @@
 #!/usr/bin/env python
 '''
-Hiperparametre taramasi -- pybdt/AdaBoost, oscNext L4 siniflandiricilari.
+Hyperparameter scan for the pybdt/AdaBoost oscNext L4 classifiers.
 
-NEDEN AYRI BIR SCRIPT:
-  pybdt_train.py tek bir modeli egitir, dogrular, grafik cizer ve kaydeder.
-  Tarama farkli bir is: onlarca modeli egitip aralarindan secmek.  Ogrenici
-  kurulumu TEKRARLANMIYOR -- build_learner/score_expr dogrudan
-  pybdt_train'den import ediliyor, tek implementasyon kaliyor.
+WHY A SEPARATE SCRIPT:
+  pybdt_train.py trains ONE model, validates it, plots it and saves it.
+  Scanning is a different job: train many models and pick among them.  The
+  learner setup is NOT duplicated -- build_learner / score_expr come
+  straight from pybdt_train, so there is still a single implementation.
 
-NASIL HIZLI:
-  .ds dosyalari BIR KEZ okunuyor.  Egitim tam veri uzerinde yapiliyor ama
-  metrikler icin sinyal ORNEKLENIYOR (--max-sig, varsayilan 20 000):
-  165 000 olayi her konfigurasyon icin skorlamak taramanin suresini
-  belirleyen adimdi ve 20 000 olay verimi ~%0.3 hassasiyetle olcmeye zaten
-  yetiyor.
+WHAT MAKES IT FAST:
+  The .ds files are read ONCE.  Training uses the full data, but the metrics
+  are computed on a SUBSAMPLE of the signal (--max-sig, default 20000):
+  scoring 165k events for every configuration was what set the wall time,
+  and 20k events measure the efficiency to ~0.3%.
 
-OLCUT:
-  Tek sayi: HEDEF ARKAPLAN REDDINDE SINYAL VERIMI (--target-rejection,
-  varsayilan 0.99 -- teknik not Tablo 13'te gurultu icin %99.24).
-  Overtraining elemesi: train/test skor dagilimlarinin iki-ornekli KS testi
-  (scipy).  p_KS < --ks-min olan konfigurasyonlar ELENIR.
+THE METRIC:
+  A single number: SIGNAL EFFICIENCY AT A TARGET BACKGROUND REJECTION
+  (--target-rejection, default 0.99 -- Table 13 of the note quotes 99.24%
+  for noise).
+  Overtraining filter: two-sample KS test on the train/test score
+  distributions.  Configurations with p_KS < --ks-min are REJECTED.
 
-  NOT: buradaki KS scipy'nin agirliksiz testi; pybdt'nin kendi
-  get_kolmogorov_smirnov_probability'si ile birebir ayni sayiyi vermez.
-  Tarama bir ON ELEME -- secilen konfigurasyon yine pybdt_train.py ile
-  egitilmeli, asil KS oradan okunmali.
+  The KS test used here is pybdt's OWN WEIGHTED, binned test, imported from
+  pybdt.validate -- the same statistic pybdt_train.py reports.  (An earlier
+  version used scipy's unweighted ks_2samp; a configuration that passed the
+  scan then came out OVERTRAINED in pybdt_train.  Different statistic,
+  different answer.)
 
-DIKKAT -- SECIM YANLILIGI:
-  Konfigurasyon test seti uzerinden seciliyor, o yuzden taramanin bastigi
-  verim iyimser bir tahmindir.  Ucuncu bir ayrim yapacak kadar arkaplan
-  olayimiz yok (bkz. CLAUDE.md 5e).  Secilen degeri "ust sinir" olarak
-  okuyun; asil sayi daha cok arkaplan islendikten sonra netlesir.
+  Training is STOCHASTIC (frac_random_events, and pybdt exposes no seed), so
+  a single run does not reproduce.  --repeat trains each configuration
+  several times: rejection uses the WORST p_KS, ranking uses the MEAN
+  efficiency, and the spread between repeats is printed.  If that spread is
+  large, the scan is measuring randomness rather than hyperparameters.
 
-Kullanim:
+SELECTION BIAS -- IMPORTANT:
+  Configurations are selected on the test set, so the efficiency the scan
+  prints is an optimistic estimate.  We do not have enough background events
+  to afford a third split (see CLAUDE.md 5e).  Treat the number as an upper
+  bound; the real one settles once more background has been processed.
+
+Usage:
 
     python pybdt_scan.py --ds-dir L4_output/ds --tag L4_noise \
         --features NchCleaned,micro_count,iLineFit_speed,fill_ratio,FullTimeLengthRatio
 
-    # kendi izgaran
+    # custom grid
     python pybdt_scan.py ... --depth 2,3,4 --num-trees 200,500 \
         --min-split 20,100 --prune-strength none,10 --beta 0.5
 '''
@@ -54,13 +61,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 
 from pybdt import ml, util
-from pybdt_train import build_learner, effective_params, score_expr, RESERVED_COLS
-
-# pybdt_train.py ile AYNI istatistigi kullanmak sart: pybdt'nin KS'i
-# AGIRLIKLI ve binlenmis; scipy'nin ks_2samp'i agirliksiz ve binsiz.  Ikisi
-# ayni sayiyi vermez -- tarama scipy kullandigi surece "gecti" dedigi
-# konfigurasyon pybdt_train.py'de OVERTRAIN cikabiliyordu (yasandi).
+# Use the SAME statistic as pybdt_train.py: pybdt's KS is weighted and
+# binned, scipy's ks_2samp is neither.  They do not agree.
 from pybdt.validate import kolmogorov_smirnov_probability
+from pybdt_train import build_learner, effective_params, score_expr, RESERVED_COLS
 
 
 def parse_list(text, cast):
@@ -73,7 +77,7 @@ def parse_list(text, cast):
 
 
 def subsample(ds, n, rng):
-    '''DataSet'ten en fazla n olay sec (metrik hesabi icin).'''
+    '''Take at most n events from a DataSet (for metric computation only).'''
     names = list(ds.names)
     total = len(ds[names[0]])
     if n <= 0 or total <= n:
@@ -84,9 +88,11 @@ def subsample(ds, n, rng):
 
 def eff_at_rejection(s, ws, b, wb, target):
     '''
-    Arkaplanin `target` kadarini reddeden kesimi bul, oradaki sinyal verimini
-    dondur.  Kesim arkaplan AGIRLIGININ kuantilinden geliyor -- olay sayisi
-    degil, cunku oran karsilastirmasi agirlikli yapiliyor.
+    Find the threshold that rejects `target` of the background and return the
+    signal efficiency there.
+
+    The threshold comes from a quantile of the background WEIGHT, not of the
+    event count, because the rate comparison is weighted.
     '''
     if wb.sum() <= 0 or ws.sum() <= 0:
         return float("nan"), float("nan"), float("nan")
@@ -101,29 +107,29 @@ def eff_at_rejection(s, ws, b, wb, target):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="pybdt hiperparametre taramasi")
-    ap.add_argument("--ds-dir", required=True, help=".ds dosyalarinin dizini")
+    ap = argparse.ArgumentParser(description="pybdt hyperparameter scan")
+    ap.add_argument("--ds-dir", required=True, help="directory holding the .ds files")
     ap.add_argument("--tag", default="L4_noise",
-                    help="<tag>_{sig,bg}_{train,test}.ds on eki")
+                    help="prefix of <tag>_{sig,bg}_{train,test}.ds")
     ap.add_argument("--features", default=None,
-                    help="virgulle ayrilmis; verilmezse RESERVED_COLS disi hepsi")
+                    help="comma separated; defaults to everything but RESERVED_COLS")
     ap.add_argument("--weight-col", default="weight")
 
     ap.add_argument("--target-rejection", type=float, default=0.99)
     ap.add_argument("--ks-min", type=float, default=0.01,
-                    help="p_KS bunun altindaysa konfigurasyon elenir")
+                    help="configurations with p_KS below this are rejected")
     ap.add_argument("--max-sig", type=int, default=20000,
-                    help="metrik hesabinda kullanilacak sinyal olayi (0=hepsi). "
-                         "DIKKAT: az olay KS'in gucunu dusurur, yani "
-                         "overtraining'i GOZDEN KACIRABILIR.  Son elemede 0 verin.")
+                    help="signal events used for the metrics (0=all).  CAREFUL: "
+                         "fewer events weaken the KS test, so overtraining can "
+                         "go UNDETECTED.  Use 0 for the final pass.")
     ap.add_argument("--repeat", type=int, default=3,
-                    help="her konfigurasyon kac kez egitilsin.  pybdt'nin "
-                         "egitimi RASTGELE (frac_random_events) ve tohum "
-                         "disaridan verilemiyor -- tek kosu tekrarlanmaz. "
-                         "Eleme en KOTU p_KS'e, siralama ORTALAMA verime gore.")
+                    help="how many times to train each configuration.  pybdt's "
+                         "training is random (frac_random_events) and takes no "
+                         "seed, so a single run does not reproduce.  Rejection "
+                         "uses the WORST p_KS, ranking the MEAN efficiency.")
     ap.add_argument("--seed", type=int, default=12345)
 
-    # izgara
+    # grid
     ap.add_argument("--depth", default="2,3,4")
     ap.add_argument("--num-trees", default="200,500")
     ap.add_argument("--min-split", default="20,100")
@@ -132,17 +138,17 @@ def main():
     ap.add_argument("--frac-random-events", default="0.5")
     ap.add_argument("--num-cuts", default="none")
     ap.add_argument("--no-purity", action="store_true",
-                    help="use_purity'yi KAPAT (varsayilan acik)")
+                    help="turn use_purity OFF (it is on by default)")
     args = ap.parse_args()
 
     rng = np.random.default_rng(args.seed)
 
-    # --- veri: BIR KEZ oku --------------------------------------------------
+    # --- data: read ONCE ----------------------------------------------------
     ds = {}
     for part in ("sig_train", "bg_train", "sig_test", "bg_test"):
         p = os.path.join(args.ds_dir, "%s_%s.ds" % (args.tag, part))
         if not os.path.exists(p):
-            sys.exit("bulunamadi: %s" % p)
+            sys.exit("not found: %s" % p)
         ds[part] = util.load(p)
 
     if args.features:
@@ -153,21 +159,21 @@ def main():
 
     n_sig = len(ds["sig_train"][features[0]])
     n_bg = len(ds["bg_train"][features[0]])
-    print("=== %s hiperparametre taramasi ===" % args.tag)
-    print("  train  sinyal %8d   arkaplan %6d" % (n_sig, n_bg))
-    print("  test   sinyal %8d   arkaplan %6d"
+    print("=== %s hyperparameter scan ===" % args.tag)
+    print("  train  signal %8d   background %6d" % (n_sig, n_bg))
+    print("  test   signal %8d   background %6d"
           % (len(ds["sig_test"][features[0]]), len(ds["bg_test"][features[0]])))
-    print("  degisken %d: %s" % (len(features), ", ".join(features)))
-    print("  olcut: %%%.1f arkaplan reddinde sinyal verimi;  p_KS >= %.3f"
+    print("  %d variables: %s" % (len(features), ", ".join(features)))
+    print("  metric: signal efficiency at %.1f%% background rejection;  p_KS >= %.3f"
           % (100 * args.target_rejection, args.ks_min))
 
-    # metrik icin ornekleme (arkaplan zaten kucuk, dokunmuyoruz)
+    # Subsample for the metrics; the background is small already, leave it be.
     m = {"sig_train": subsample(ds["sig_train"], args.max_sig, rng),
          "sig_test":  subsample(ds["sig_test"],  args.max_sig, rng),
          "bg_train":  ds["bg_train"],
          "bg_test":   ds["bg_test"]}
     if args.max_sig and n_sig > args.max_sig:
-        print("  (metrikler %d sinyal olayi uzerinden -- egitim tam veriyle)"
+        print("  (metrics from %d signal events -- training uses all of them)"
               % args.max_sig)
 
     w = {k: np.asarray(m[k]["w_phys"]) if "w_phys" in m[k].names
@@ -175,7 +181,7 @@ def main():
     for k in w:
         w[k] = np.nan_to_num(w[k])
 
-    # --- izgara -------------------------------------------------------------
+    # --- grid ---------------------------------------------------------------
     grid = list(itertools.product(
         parse_list(args.depth, int),
         parse_list(args.num_trees, int),
@@ -184,16 +190,15 @@ def main():
         parse_list(args.beta, float),
         parse_list(args.frac_random_events, float),
         parse_list(args.num_cuts, int)))
-    print("  %d konfigurasyon x %d tekrar = %d egitim\n"
+    print("  %d configurations x %d repeats = %d trainings\n"
           % (len(grid), args.repeat, len(grid) * args.repeat))
 
     hdr = ("%-6s %-7s %-6s %-7s %-5s | %-8s %-8s | %-9s %-9s"
            % ("depth", "trees", "split", "prune", "beta",
-              "p_KS sig", "p_KS bg", "kesim", "VERIM +-yariyayilim"))
+              "p_KS sig", "p_KS bg", "cut", "EFF +-half-spread"))
     print(hdr)
     print("-" * len(hdr))
 
-    expr = score_expr(not args.no_purity)
     rows, t0 = [], time.time()
 
     for depth, trees, split, prune, beta, frac, ncuts in grid:
@@ -209,7 +214,6 @@ def main():
             bdt = learner.train(ds["sig_train"], ds["bg_train"])
             sc = {k: np.asarray(bdt.score(m[k], use_purity=not args.no_purity,
                                           quiet=True)) for k in m}
-            # pybdt'nin kendi AGIRLIKLI KS'i -- pybdt_train.py ile ayni olcut
             ps.append(float(kolmogorov_smirnov_probability(
                 sc["sig_train"], w["sig_train"], sc["sig_test"], w["sig_test"])))
             pb.append(float(kolmogorov_smirnov_probability(
@@ -220,7 +224,7 @@ def main():
             es.append(eff)
             cs.append(cut)
 
-        # Eleme EN KOTU kosuya gore: tek sansli kosu konfigurasyonu gecirmesin.
+        # Reject on the WORST run so one lucky run cannot carry a configuration.
         p_sig, p_bg = min(ps), min(pb)
         eff, cut = float(np.mean(es)), float(np.mean(cs))
         spread = (max(es) - min(es)) if len(es) > 1 else 0.0
@@ -234,24 +238,24 @@ def main():
               % (depth, trees, split,
                  "-" if prune is None else ("%g" % prune), beta,
                  p_sig, p_bg, cut, 100 * eff, 100 * spread / 2,
-                 "" if ok else "  <-- OVERTRAIN, elendi"))
+                 "" if ok else "  <-- OVERTRAINED, rejected"))
 
-    print("\n%d konfigurasyon, %.0f s" % (len(grid), time.time() - t0))
+    print("\n%d configurations, %.0f s" % (len(grid), time.time() - t0))
 
     good = [r for r in rows if r["ok"] and np.isfinite(r["eff"])]
     if not good:
-        print("\nHicbir konfigurasyon p_KS >= %.3f esigini gecmedi." % args.ks_min)
-        print("Kapasiteyi dusurun (--depth 1,2  --num-trees 50,100) ya da")
-        print("daha cok ARKAPLAN olayi isleyin -- asil kisit orasi.")
+        print("\nNo configuration reached p_KS >= %.3f." % args.ks_min)
+        print("Lower the capacity (--depth 1,2  --num-trees 50,100), or process")
+        print("more BACKGROUND events -- that is the real constraint.")
         return
 
     good.sort(key=lambda r: -r["eff"])
     b = good[0]
-    print("\n=== En iyi (overtraining elemesini gecenler arasinda) ===")
-    print("  verim %.1f%%  (red %.2f%%, kesim %.3f)"
-          % (100 * b["eff"], 100 * b["rej"], b["cut"]))
-    print("  p_KS  sinyal %.4f  arkaplan %.4f" % (b["p_sig"], b["p_bg"]))
-    print("\nNotebook'a yapistir:\n")
+    print("\n=== Best (among those that survived the overtraining filter) ===")
+    print("  efficiency %.1f%%  (rejection %.2f%%, cut %.3f)"
+          % (100 * b["eff"], 100 * args.target_rejection, b["cut"]))
+    print("  p_KS  signal %.4f  background %.4f" % (b["p_sig"], b["p_bg"]))
+    print("\nPaste into the notebook:\n")
     hyper = ['"--num-trees", "%d"' % b["trees"],
              '"--depth", "%d"' % b["depth"],
              '"--beta", "%g"' % b["beta"],
@@ -262,15 +266,16 @@ def main():
     if not args.no_purity:
         hyper.append('"--use-purity"')
     print("HYPER = [" + ", ".join(hyper) + "]")
+
     if b["spread"] > 0.05:
-        print("\n  [!] Bu konfigurasyonun tekrarlar arasi verim yayilimi %.1f puan"
+        print("\n  [!] Repeats of this configuration spread by %.1f points."
               % (100 * b["spread"]))
-        print("      -- yani secim buyuk olcude RASTGELELIGI olcuyor, "
-              "hiperparametreyi degil.")
-        print("      Asil kisit arkaplan istatistigi; daha cok noise dosyasi isleyin.")
-    print("\nSecim TEST seti uzerinden yapildi -> bu verim iyimser bir tahmin.")
-    print("Secilen konfigurasyonu pybdt_train.py ile yeniden egitin; egitim")
-    print("rastgele oldugu icin p_KS orada bir miktar farkli cikacaktir.")
+        print("      The selection is largely measuring RANDOMNESS, not the")
+        print("      hyperparameters.  The real constraint is background")
+        print("      statistics; process more noise files.")
+    print("\nSelection was done on the TEST set -> this efficiency is optimistic.")
+    print("Retrain the chosen configuration with pybdt_train.py; because")
+    print("training is random, its p_KS will differ somewhat.")
 
 
 if __name__ == "__main__":

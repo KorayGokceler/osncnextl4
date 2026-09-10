@@ -1,28 +1,28 @@
 #!/usr/bin/env python
 '''
-Noise BDT girdilerinin dagilimlari -- teknik not Sekil 12/13 ile
-karsilastirmak icin.
+Distributions of the noise BDT inputs -- for comparison against Figures
+12/13 of the technical note.
 
-Her degisken icin: x ekseni degiskenin degeri, y ekseni ORAN [Hz/bin]
-(w_phys ile agirlikli), iki egri -- notrino (nue+numu) ve gurultu.
-Notun Sekil 12/13'undeki bicimin aynisi.
+For each variable: x axis is the variable's value, y axis is the RATE
+[Hz/bin] (weighted by w_phys), with two curves -- neutrino (nue+numu) and
+noise.  Same layout as Figures 12/13 in the note.
 
-NEDEN: 5 girdinin kod yolunu dogruladik (nottaki tanim + orijinal pass2
-kodu) ama URETTIKLERI DEGERLERI referansla hic karsilastirmadik.  "Dogru
-modulu dogru parametrelerle cagiriyoruz" ile "referansla ayni sayiyi
-uretiyoruz" farkli seyler.
+WHY: we verified the code path of all 5 inputs (the note's definition plus
+the original pass2 code) but never compared the VALUES THEY PRODUCE against
+the reference.  "We call the right module with the right parameters" and
+"we produce the same numbers as the reference" are different claims.
 
-Ozellikle iLineFit_speed suphede: teshis kosusunda tek basina ayirt etme
-gucu %0.1 cikti (rastgele kesim %1 verir) ve sinyal/gurultu medyanlari
-neredeyse ayni (0.137 / 0.144).  Sekil 13'te bu degiskenin x ekseni
-log olcekte 10^-3 .. 10^3, yani ALTI KADEME.  Bizimki tek kademeye
-sikismissa hesap farkli demektir.
+iLineFit_speed is the prime suspect: in the diagnostic run its standalone
+separation power came out at 0.1% (a random cut gives 1%) and the signal /
+noise medians are nearly identical (0.137 / 0.144).  In Figure 13 this
+variable spans a log x axis from 10^-3 to 10^3 -- SIX DECADES.  If ours is
+squeezed into one decade, we compute it differently.
 
-Girdi olarak .ds dosyalarini okur -- yani BDT'nin gordugu tam veriyi;
-train ve test birlestirilir (dagilim icin ayirmanin anlami yok).
-Sinyal nue+numu birlesik (.ds ornek etiketi tasimiyor).
+Reads the .ds files, i.e. exactly the data the BDT saw; train and test are
+merged (splitting them is meaningless for a distribution).  Signal is
+nue+numu combined (.ds carries no sample label).
 
-Kullanim:
+Usage:
 
     python plot_noise_inputs.py --ds-dir L4_output/ds --tag L4_noise \
         --features NchCleaned,micro_count,iLineFit_speed,fill_ratio,FullTimeLengthRatio \
@@ -44,35 +44,35 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-# Notun verdigi eksen araliklari.  lo/hi None ise veriden turetilir.
-#   Sekil 13: L4_iLineFit.speed  -> log, 10^-3 .. 10^3
-#             L4_fill_ratio.fillratio_from_mean -> 0.0 .. 1.0
-#             IC2018_LE_L3_Vars.FullTimeLengthRatio -> 0.0 .. 1.0
-#   Sekil 12: NchCleaned, micro_count -> eksen araligi PDF metninden
-#             guvenilir okunamadi, veriden turetiliyor.
+# Axis ranges as given by the note.  lo/hi None -> derived from the data.
+#   Figure 13: L4_iLineFit.speed  -> log, 10^-3 .. 10^3
+#              L4_fill_ratio.fillratio_from_mean -> 0.0 .. 1.0
+#              IC2018_LE_L3_Vars.FullTimeLengthRatio -> 0.0 .. 1.0
+#   Figure 12: NchCleaned, micro_count -> the axis range could not be read
+#              reliably from the PDF text, so it is derived from the data.
 AXES = {
     "iLineFit_speed":      dict(log=True,  lo=1e-3, hi=1e3,
-                                note="Sekil 13: log, 10^-3 .. 10^3 m/ns"),
+                                note="Fig 13: log, 10^-3 .. 10^3 m/ns"),
     "fill_ratio":          dict(log=False, lo=0.0, hi=1.0,
-                                note="Sekil 13: 0.0 .. 1.0"),
+                                note="Fig 13: 0.0 .. 1.0"),
     "FullTimeLengthRatio": dict(log=False, lo=0.0, hi=1.0,
-                                note="Sekil 13: 0.0 .. 1.0"),
+                                note="Fig 13: 0.0 .. 1.0"),
     "NchCleaned":          dict(log=False, lo=None, hi=None,
-                                note="Sekil 12 (aralik nottan okunamadi)"),
+                                note="Fig 12 (range not readable from the note)"),
     "micro_count":         dict(log=False, lo=None, hi=None,
-                                note="Sekil 12 (aralik nottan okunamadi)"),
+                                note="Fig 12 (range not readable from the note)"),
 }
 
 PCTS = [0.1, 1, 5, 25, 50, 75, 95, 99, 99.9]
 
 
 def load_side(ds_dir, tag, side, features):
-    '''train + test birlestir -- dagilim icin ayirmanin anlami yok.'''
+    '''Merge train + test -- splitting them is meaningless for a distribution.'''
     xs, ws = [], []
     for split in ("train", "test"):
         p = os.path.join(ds_dir, "%s_%s_%s.ds" % (tag, side, split))
         if not os.path.exists(p):
-            sys.exit("bulunamadi: %s" % p)
+            sys.exit("not found: %s" % p)
         ds = util.load(p)
         names = list(ds.names)
         xs.append(np.column_stack([np.asarray(ds[f], dtype=float)
@@ -83,33 +83,34 @@ def load_side(ds_dir, tag, side, features):
 
 
 def describe(name, s, ws, b, wb, cfg):
-    '''Yuzdelikler + notun araligina uyum -- grafigin sayisal karsiligi.'''
+    '''Percentiles plus range checks -- the numbers behind the plot.'''
     print("\n" + "-" * 78)
     print("%s   (%s)" % (name, cfg["note"]))
     print("-" * 78)
-    print("%-10s %s" % ("yuzdelik", "".join("%10s" % ("%g%%" % p) for p in PCTS)))
-    for tag, v in (("notrino", s), ("gurultu", b)):
+    print("%-10s %s" % ("percentile",
+                        "".join("%10s" % ("%g%%" % p) for p in PCTS)))
+    for tag, v in (("neutrino", s), ("noise", b)):
         q = np.nanpercentile(v[np.isfinite(v)], PCTS)
         print("%-10s %s" % (tag, "".join("%10.4g" % x for x in q)))
 
-    for tag, v in (("notrino", s), ("gurultu", b)):
+    for tag, v in (("neutrino", s), ("noise", b)):
         fin = np.isfinite(v)
         n_bad = int((~fin).sum())
         n_zero = int((v[fin] == 0).sum())
         n_neg = int((v[fin] < 0).sum())
-        span = (np.log10(np.nanmax(v[fin & (v > 0)]) /
-                         np.nanmin(v[fin & (v > 0)]))
-                if (fin & (v > 0)).sum() > 1 else float("nan"))
-        print("  %-8s NaN/inf=%-6d  tam sifir=%-6d  negatif=%-6d  "
-              "pozitif deger araligi=%.1f kademe"
+        pos = fin & (v > 0)
+        span = (np.log10(np.nanmax(v[pos]) / np.nanmin(v[pos]))
+                if pos.sum() > 1 else float("nan"))
+        print("  %-9s NaN/inf=%-6d  exactly zero=%-6d  negative=%-6d  "
+              "positive values span %.1f decades"
               % (tag, n_bad, n_zero, n_neg, span))
 
     if cfg["lo"] is not None:
-        for tag, v in (("notrino", s), ("gurultu", b)):
+        for tag, v in (("neutrino", s), ("noise", b)):
             fin = np.isfinite(v)
             out = int(((v[fin] < cfg["lo"]) | (v[fin] > cfg["hi"])).sum())
-            flag = "" if out == 0 else "   <-- notun ekseni disinda"
-            print("  %-8s notun araligi [%g, %g] disinda: %d / %d%s"
+            flag = "" if out == 0 else "   <-- outside the note's axis"
+            print("  %-9s outside the note's range [%g, %g]: %d / %d%s"
                   % (tag, cfg["lo"], cfg["hi"], out, int(fin.sum()), flag))
 
 
@@ -128,25 +129,25 @@ def panel(ax, name, s, ws, b, wb, cfg, bins):
     else:
         edges = np.linspace(lo, hi, bins + 1)
 
-    for v, w, lab, color in ((b, wb, "gurultu", "tab:red"),
-                             (s, ws, "notrino", "tab:blue")):
+    for v, w, lab, color in ((b, wb, "noise", "tab:red"),
+                             (s, ws, "neutrino", "tab:blue")):
         m = np.isfinite(v)
         ax.hist(v[m], bins=edges, weights=w[m], histtype="step",
                 lw=1.5, color=color, label=lab)
 
     ax.set_yscale("log")
     ax.set_xlabel(name)
-    ax.set_ylabel("oran [Hz / bin]")
+    ax.set_ylabel("rate [Hz / bin]")
     ax.grid(alpha=.3)
     ax.set_title(cfg["note"], fontsize=8)
 
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Noise BDT girdilerinin oran histogramlari (Sekil 12/13 bicimi)")
+        description="Rate histograms of the noise BDT inputs (Fig 12/13 style)")
     ap.add_argument("--ds-dir", required=True)
     ap.add_argument("--tag", default="L4_noise")
-    ap.add_argument("--features", required=True, help="virgulle ayrilmis")
+    ap.add_argument("--features", required=True, help="comma separated")
     ap.add_argument("--outdir", default=".")
     ap.add_argument("--bins", type=int, default=60)
     args = ap.parse_args()
@@ -155,12 +156,12 @@ def main():
     Xs, ws = load_side(args.ds_dir, args.tag, "sig", features)
     Xb, wb = load_side(args.ds_dir, args.tag, "bg", features)
 
-    print("=== %s girdi dagilimlari ===" % args.tag)
-    print("  notrino %d olay,  toplam oran %.4e Hz (%.1f mHz)"
+    print("=== %s input distributions ===" % args.tag)
+    print("  neutrino %d events,  total rate %.4e Hz (%.1f mHz)"
           % (len(Xs), ws.sum(), 1e3 * ws.sum()))
-    print("  gurultu %d olay,  toplam oran %.4e Hz (%.1f mHz)"
+    print("  noise    %d events,  total rate %.4e Hz (%.1f mHz)"
           % (len(Xb), wb.sum(), 1e3 * wb.sum()))
-    print("  (train + test birlesik; agirlik w_phys)")
+    print("  (train + test merged; weighted by w_phys)")
 
     ncol = 3
     nrow = int(np.ceil(len(features) / ncol))
@@ -178,22 +179,23 @@ def main():
         axes[j].axis("off")
 
     os.makedirs(args.outdir, exist_ok=True)
-    out = os.path.join(args.outdir, "%s_girdi_dagilimlari.png" % args.tag)
-    fig.suptitle("%s girdileri — oran vs degisken (teknik not Sekil 12/13 bicimi)"
+    out = os.path.join(args.outdir, "%s_input_distributions.png" % args.tag)
+    fig.suptitle("%s inputs - rate vs variable (technical note Fig 12/13 style)"
                  % args.tag, fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(out, dpi=130)
     print("\n  -> %s" % out)
 
     print("\n" + "=" * 78)
-    print("NASIL OKUNACAK")
+    print("HOW TO READ THIS")
     print("=" * 78)
-    print("* 'pozitif deger araligi ... kademe' satiri: Sekil 13 iLineFit_speed")
-    print("  icin ALTI kademe gosteriyor.  Bizimki 1-2 kademedeyse hesap farkli.")
-    print("* 'tam sifir' sayisi: basarisiz fitler sifir olarak geliyorsa")
-    print("  degiskenin ayirt etme gucu boyle kaybolur.")
-    print("* 'notun araligi disinda' satiri: sistematik bir kayma varsa gorunur.")
-    print("* Iki egri her yerde ust uste biniyorsa o degisken ayirmiyor demektir.")
+    print("* 'positive values span N decades': Figure 13 shows SIX decades for")
+    print("  iLineFit_speed.  If ours spans 1-2, we compute it differently.")
+    print("* 'exactly zero' count: if failed fits arrive as zero, that is")
+    print("  precisely how a variable loses its separation power.")
+    print("* 'outside the note's range': a systematic shift shows up here.")
+    print("* If the two curves overlap everywhere, that variable separates")
+    print("  nothing.")
 
 
 if __name__ == "__main__":

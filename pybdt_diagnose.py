@@ -1,30 +1,35 @@
 #!/usr/bin/env python
 '''
-Verim acigi nereden geliyor?  Uc hipotezi ayirt eden olcumler.
+Where does the efficiency gap come from?  Measurements that separate three
+hypotheses.
 
-Baglam: ilk noise BDT'si %99 arkaplan reddinde %53 sinyal verimi veriyor;
-teknik not Tablo 13'te hedef %99.2 redde ~%96.  Aynı VERIMDE bizim
-reddimiz %67, onlarinki %99.2 -- yani sorun kesimin yerini kacirmak degil,
-AYIRT ETME GUCU.
+Context: the first noise BDT keeps 53% of the signal at 99% background
+rejection; the target from Table 13 of the technical note is ~96% at 99.2%.
+At EQUAL SIGNAL EFFICIENCY our rejection is 67% against their 99.2% -- so the
+problem is not a misplaced cut, it is SEPARATION POWER.
 
-Bu script iki hipotezi olcer:
+This script measures two hypotheses:
 
-  A) VERI  -- arkaplan istatistigi yetersiz mi?
-     Ogrenme egrisi: arkaplanin %25/%50/%75/%100'uyle egit, HEP AYNI tam
-     test setinde olc.  Egri %100'de hala tirmaniyorsa veri eklemek
-     kazandirir ve ne kadar kazandiracagi kabaca okunur.  Duzlestiyse
-     kisit veri degildir.
+  A) DATA -- is the background statistics insufficient?
+     Learning curve: train on 25/50/75/100% of the background, always
+     evaluating on the SAME full test set.  If the curve is still climbing at
+     100%, more data helps and the slope tells you roughly how much.  If it
+     has flattened, data is not the constraint.
 
-  C) DEGISKENLER -- birini yanlis mi hesapliyoruz?
-     Her degiskenin TEK BASINA ayirt etme gucu (iki yonde de denenir).
-     Bir degisken hic ayirmiyorsa ya da BEKLENENIN TERSI yonde ayiriyorsa
-     burada gorunur.  Ayrica her degiskenin sinyal/arkaplan medyanlari
-     basilir -- Sekil 12-13 ile goz karsilastirmasi icin.
+  C) VARIABLES -- is one of them computed wrong?
+     Standalone separation power of each variable (both directions tried).
+     A variable that separates nothing, or separates in the OPPOSITE
+     direction from what is expected, shows up here.  Signal/background
+     medians are printed too, for eyeball comparison against Fig 12/13.
 
-  (B) MOTOR hipotezi -- AdaBoost yerine LightGBM -- bu scriptte YOK;
-     ayri bir zincir, reference/train_L4_classifier.py uzerinden.
+  (B) ENGINE -- AdaBoost vs LightGBM -- is NOT in this script; that is a
+     separate chain, via reference/train_L4_classifier.py.
 
-Kullanim:
+CAVEAT: the efficiency-at-99%-rejection metric places its threshold using
+roughly the top 10 background events, so the metric itself is noisy.  Read
+the spread column before believing any trend.
+
+Usage:
 
     python pybdt_diagnose.py --ds-dir L4_output/ds --tag L4_noise \
         --features NchCleaned,micro_count,iLineFit_speed,fill_ratio,FullTimeLengthRatio
@@ -49,13 +54,9 @@ def load_ds(ds_dir, tag):
     for part in ("sig_train", "bg_train", "sig_test", "bg_test"):
         p = os.path.join(ds_dir, "%s_%s.ds" % (tag, part))
         if not os.path.exists(p):
-            sys.exit("bulunamadi: %s" % p)
+            sys.exit("not found: %s" % p)
         out[part] = util.load(p)
     return out
-
-
-def cols(ds, names):
-    return {k: np.asarray(ds[k]) for k in names}
 
 
 def wcol(ds):
@@ -66,21 +67,21 @@ def wcol(ds):
 
 def single_variable_power(ds, features, target):
     '''
-    Her degiskenin tek basina gucu.
+    Standalone power of each variable.
 
-    Karar agaci "deger >= kesim" seklinde ayirir, ama hangi TARAFIN sinyal
-    oldugu degiskene gore degisir.  Iki yonu de deneyip iyisini aliyoruz;
-    hangi yonun kazandigi da basiliyor -- beklenenin tersi cikarsa
-    degiskeni yanlis hesapliyoruz demektir.
+    A decision tree splits on "value >= threshold", but which SIDE is signal
+    depends on the variable.  We try both directions and keep the better one;
+    the winning direction is printed, because a direction that contradicts
+    physical expectation means we compute the variable wrong.
     '''
     ws = wcol(ds["sig_test"])
     wb = wcol(ds["bg_test"])
     print("\n" + "=" * 78)
-    print("C) DEGISKENLERIN TEK BASINA GUCU  (%%%.0f arkaplan reddinde verim)"
+    print("C) STANDALONE POWER OF EACH VARIABLE  (efficiency at %.0f%% rejection)"
           % (100 * target))
     print("=" * 78)
     print("%-22s %8s %8s | %10s %10s | %s"
-          % ("degisken", "verim", "yon", "sig medyan", "bg medyan", "NaN"))
+          % ("variable", "eff", "direction", "sig median", "bg median", "NaN"))
     print("-" * 78)
     rows = []
     for f in features:
@@ -88,7 +89,7 @@ def single_variable_power(ds, features, target):
         b = np.asarray(ds["bg_test"][f], dtype=float)
         nan = int((~np.isfinite(s)).sum() + (~np.isfinite(b)).sum())
         best, best_dir = -1.0, "?"
-        for sign, label in ((+1.0, "buyuk=sinyal"), (-1.0, "kucuk=sinyal")):
+        for sign, label in ((+1.0, "large=signal"), (-1.0, "small=signal")):
             _, eff, _ = eff_at_rejection(sign * s, ws, sign * b, wb, target)
             if np.isfinite(eff) and eff > best:
                 best, best_dir = eff, label
@@ -96,19 +97,22 @@ def single_variable_power(ds, features, target):
         print("%-22s %7.1f%% %8s | %10.4g %10.4g | %d"
               % (f, 100 * best, best_dir,
                  np.nanmedian(s), np.nanmedian(b), nan))
-    print("\n  Yorum: %5.1f%% civari = o degisken TEK BASINA hicbir sey"
+    print("\n  Reading: around %.1f%% means the variable separates NOTHING on"
           % (100 * (1 - target)))
-    print("         ayirmiyor demektir (rastgele kesimin verecegi deger).")
-    print("         'yon' sutunu beklentine uymuyorsa degiskeni yanlis")
-    print("         hesapliyor olabiliriz -- Sekil 12-13 ile karsilastir.")
+    print("  its own (that is what a random threshold would give).")
+    print("  If the 'direction' column contradicts your expectation, we may be")
+    print("  computing the variable wrong -- compare against Fig 12/13.")
+    print("  CAVEAT: this is a ONE-SIDED threshold.  A variable whose noise")
+    print("  sits in BOTH tails cannot be captured this way and will look")
+    print("  dead here even when a tree could use it.")
     return rows
 
 
 def learning_curve(ds, features, args, fracs=(0.25, 0.5, 0.75, 1.0)):
     '''
-    Arkaplani seyrelt, sinyali ve TEST setini sabit tut.
+    Thin out the background; keep the signal and the TEST set fixed.
 
-    Test seti degismiyor -- yoksa noktalar karsilastirilamaz.
+    The test set must not change, otherwise the points are not comparable.
     '''
     rng = np.random.default_rng(args.seed)
     names = list(ds["bg_train"].names)
@@ -123,12 +127,13 @@ def learning_curve(ds, features, args, fracs=(0.25, 0.5, 0.75, 1.0)):
         frac_random_events=0.5, prune_strength=None, use_purity=True)
 
     print("\n" + "=" * 78)
-    print("A) OGRENME EGRISI  (arkaplan seyreltiliyor, test seti sabit)")
+    print("A) LEARNING CURVE  (background thinned, test set fixed)")
     print("=" * 78)
-    print("  model: derinlik %d, %d agac, beta %g;  her nokta %d tekrar"
+    print("  model: depth %d, %d trees, beta %g;  %d repeats per point"
           % (args.depth, args.num_trees, args.beta, args.repeat))
-    print("\n%-12s %-10s | %-22s" % ("arkaplan", "olay", "VERIM (ort +- yariyayilim)"))
-    print("-" * 52)
+    print("\n%-12s %-10s | %-26s" % ("background", "events",
+                                     "EFFICIENCY (mean +- half-spread)"))
+    print("-" * 54)
 
     out = []
     for frac in fracs:
@@ -146,27 +151,31 @@ def learning_curve(ds, features, args, fracs=(0.25, 0.5, 0.75, 1.0)):
         m, half = float(np.mean(effs)), (max(effs) - min(effs)) / 2
         out.append((frac, k, m, half))
         print("%-12s %-10d | %6.1f%%  +-%.1f"
-              % ("%%%d" % (100 * frac), k, 100 * m, 100 * half))
+              % ("%d%%" % (100 * frac), k, 100 * m, 100 * half))
 
-    # egrinin sonundaki egim: son iki nokta
+    # Slope at the end of the curve -- only meaningful if it beats the spread.
     if len(out) >= 2:
-        (f0, k0, e0, _), (f1, k1, e1, _) = out[-2], out[-1]
+        (f0, k0, e0, h0), (f1, k1, e1, h1) = out[-2], out[-1]
         d = 100 * (e1 - e0)
-        print("\n  Son adimda (%d -> %d olay) kazanc: %+.1f puan" % (k0, k1, d))
-        if d > 2:
-            print("  -> Egri HALA TIRMANIYOR: arkaplan istatistigi bagliyici.")
-            print("     Kabaca ayni egimle devam ederse arkaplani iki katina")
-            print("     cikarmak %+.0f puan daha getirir." % d)
-        elif d > 0.5:
-            print("  -> Egri yavasliyor: veri eklemek az miktarda kazandirir.")
+        noise = 100 * (h0 + h1)
+        print("\n  Last step (%d -> %d events): %+.1f points, "
+              "combined spread +-%.1f points" % (k0, k1, d, noise))
+        if abs(d) < noise:
+            print("  -> The step is SMALLER THAN THE SPREAD: this curve does not")
+            print("     establish anything.  Raise --repeat, or use a more stable")
+            print("     metric (--target-rejection 0.90 puts ~100 background")
+            print("     events behind the threshold instead of ~10).")
+        elif d > 0:
+            print("  -> The curve is still climbing beyond the noise: background")
+            print("     statistics is the binding constraint.")
         else:
-            print("  -> Egri DUZLESMIS: daha cok arkaplan verisi bu modelle")
-            print("     kazandirmaz.  Kisit baska yerde (degiskenler ya da motor).")
+            print("  -> The curve is flat or falling: more background data will")
+            print("     not help this model.  The constraint is elsewhere.")
     return out
 
 
 def signal_balance(ds, features, args):
-    '''Sinyali arkaplan mertebesine indirip dengesizligin etkisini olc.'''
+    '''Thin the signal down toward the background size to probe the imbalance.'''
     rng = np.random.default_rng(args.seed + 1)
     names = list(ds["sig_train"].names)
     n_sig = len(ds["sig_train"][names[0]])
@@ -181,10 +190,11 @@ def signal_balance(ds, features, args):
         frac_random_events=0.5, prune_strength=None, use_purity=True)
 
     print("\n" + "=" * 78)
-    print("EK) SINIF DENGESIZLIGI  (sinyal seyreltiliyor, test seti sabit)")
+    print("EXTRA) CLASS IMBALANCE  (signal thinned, test set fixed)")
     print("=" * 78)
-    print("%-16s %-10s | %-22s" % ("sinyal/arkaplan", "sinyal olayi", "VERIM"))
-    print("-" * 52)
+    print("%-16s %-12s | %-26s" % ("signal:background", "signal events",
+                                   "EFFICIENCY (mean +- half-spread)"))
+    print("-" * 58)
     for ratio in (1, 5, 20, None):
         k = n_sig if ratio is None else min(n_sig, ratio * n_bg)
         effs = []
@@ -197,20 +207,26 @@ def signal_balance(ds, features, args):
             b = np.asarray(bdt.score(ds["bg_test"], use_purity=True, quiet=True))
             _, eff, _ = eff_at_rejection(s, ws, b, wb, args.target_rejection)
             effs.append(eff)
-        print("%-16s %-10d | %6.1f%%  +-%.1f"
-              % ("tam (%d:1)" % (n_sig // n_bg) if ratio is None else "%d:1" % ratio,
-                 k, 100 * np.mean(effs), 100 * (max(effs) - min(effs)) / 2))
-    print("\n  Denge duzelince verim BELIRGIN artiyorsa 159:1 dengesizligi")
-    print("  AdaBoost'u zorluyor demektir; degismiyorsa dengesizlik sorun degil.")
+        label = ("full (%d:1)" % (n_sig // max(n_bg, 1))) if ratio is None \
+            else ("%d:1" % ratio)
+        print("%-16s %-12d | %6.1f%%  +-%.1f"
+              % (label, k, 100 * np.mean(effs), 100 * (max(effs) - min(effs)) / 2))
+    print("\n  If efficiency rises CLEARLY (beyond the spread) as the classes")
+    print("  balance, the extreme imbalance is hurting AdaBoost.  If it does")
+    print("  not move, the imbalance is not the problem.")
 
 
 def main():
-    ap = argparse.ArgumentParser(description="noise BDT verim acigi teshisi")
+    ap = argparse.ArgumentParser(
+        description="Diagnose the noise BDT efficiency gap")
     ap.add_argument("--ds-dir", required=True)
     ap.add_argument("--tag", default="L4_noise")
     ap.add_argument("--features", default=None)
     ap.add_argument("--weight-col", default="weight")
-    ap.add_argument("--target-rejection", type=float, default=0.99)
+    ap.add_argument("--target-rejection", type=float, default=0.99,
+                    help="0.90 gives a far more stable metric than 0.99: the "
+                         "threshold then sits behind ~100 background events "
+                         "instead of ~10")
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--num-trees", type=int, default=500)
     ap.add_argument("--beta", type=float, default=0.5)
@@ -228,12 +244,12 @@ def main():
 
     n_sig = len(ds["sig_train"][features[0]])
     n_bg = len(ds["bg_train"][features[0]])
-    print("=== %s teshis ===" % args.tag)
-    print("  train  sinyal %8d   arkaplan %6d   (oran %d:1)"
+    print("=== %s diagnosis ===" % args.tag)
+    print("  train  signal %8d   background %6d   (ratio %d:1)"
           % (n_sig, n_bg, n_sig // max(n_bg, 1)))
-    print("  test   sinyal %8d   arkaplan %6d"
+    print("  test   signal %8d   background %6d"
           % (len(ds["sig_test"][features[0]]), len(ds["bg_test"][features[0]])))
-    print("  hedef  %%%.1f arkaplan reddinde sinyal verimi"
+    print("  target: signal efficiency at %.1f%% background rejection"
           % (100 * args.target_rejection))
 
     single_variable_power(ds, features, args.target_rejection)
@@ -242,8 +258,9 @@ def main():
         signal_balance(ds, features, args)
 
     print("\n" + "=" * 78)
-    print("Motor hipotezi (AdaBoost vs LightGBM) bu scriptte YOK --")
-    print("ayni 5 degiskenle reference/train_L4_classifier.py ile karsilastirin.")
+    print("The engine hypothesis (AdaBoost vs LightGBM) is NOT covered here --")
+    print("compare against reference/train_L4_classifier.py with the same 5")
+    print("variables.")
     print("=" * 78)
 
 
