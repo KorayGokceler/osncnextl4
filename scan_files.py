@@ -1,26 +1,26 @@
 #!/usr/bin/env python
 '''
-Girdi .i3 dosyalarini tarayip bozuk olanlari bul.
+Scan input .i3 files and find the corrupt ones.
 
-process_L4.py zaten --scan ile bunu kendisi yapiyor; bu script ayni taramayi
-tek basina, isleme baslamadan calistirmak icin.  Uretimden ONCE bir kez
-calistirip kara listeyi olusturmak en verimlisi: her job kendi taramasini
-tekrar etmez.
+process_L4.py already does this itself via --scan; this script runs the same
+scan standalone, before any processing starts.  Running it ONCE per set before
+production and keeping the blacklist is the efficient route: individual jobs
+then do not repeat the scan.
 
-Kullanim:
+Usage:
 
-  # Hizli tarama (dosya basina ilk 25 frame) -- kesik dosyalari yakalar
+  # Quick scan (first 25 frames per file) -- catches truncated files
   python scan_files.py '/data/ana/LE/oscNext/pass3/genie/level3/23799/*.i3.zst'
 
-  # Tam tarama (her frame okunur, yavas ama kesin)
+  # Full scan (every frame read; slow but certain)
   python scan_files.py --full '/data/.../*.i3.zst'
 
-  # Saglam dosyalarin listesini yaz -> process_L4.py --input-list ile kullan
+  # Write the list of healthy files -> feed it to process_L4.py --input-list
   python scan_files.py --good-list good_23799.txt '/data/.../*.i3.zst'
 
-Cikti:
-  <goodlist>          saglam dosyalar, satir basina bir yol
-  scan_bad.txt        bozuk dosyalar + sebep  (--bad-list ile degistirilir)
+Output:
+  <goodlist>          healthy files, one path per line
+  scan_bad.txt        corrupt files + reason  (override with --bad-list)
 '''
 
 import os
@@ -42,13 +42,13 @@ from process_L4 import validate_files
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("input", nargs="+", help="Dosya yollari ya da glob desenleri")
+    p.add_argument("input", nargs="+", help="file paths or glob patterns")
     p.add_argument("--full", action="store_true",
-                   help="Her frame'i oku (yavas ama kesin).  Varsayilan: ilk N frame.")
+                   help="read every frame (slow but certain).  Default: first N frames.")
     p.add_argument("--frames", type=int, default=25,
-                   help="Hizli modda dosya basina okunacak frame (varsayilan 25)")
-    p.add_argument("--good-list", default=None, help="Saglam dosyalari buraya yaz")
-    p.add_argument("--bad-list", default="scan_bad.txt", help="Bozuk dosyalari buraya yaz")
+                   help="frames read per file in quick mode (default 25)")
+    p.add_argument("--good-list", default=None, help="write the healthy files here")
+    p.add_argument("--bad-list", default="scan_bad.txt", help="write the corrupt files here")
     args = p.parse_args()
 
     files = []
@@ -56,17 +56,17 @@ def main():
         m = sorted(glob.glob(pattern))
         files.extend(m if m else [pattern])
     if not files:
-        sys.exit("Dosya bulunamadi.")
+        sys.exit("No files found.")
 
-    print("Taranacak dosya: %d  (%s mod)"
-          % (len(files), "tam" if args.full else "hizli/%d frame" % args.frames))
+    print("Files to scan: %d  (%s mode)"
+          % (len(files), "full" if args.full else "quick/%d frames" % args.frames))
 
     good, bad = validate_files(files, n_frames=0 if args.full else args.frames)
 
     print()
     print("=" * 62)
-    print("Saglam : %d" % len(good))
-    print("Bozuk  : %d" % len(bad))
+    print("Healthy : %d" % len(good))
+    print("Corrupt : %d" % len(bad))
     print("=" * 62)
 
     if bad:
@@ -82,11 +82,11 @@ def main():
     if args.good_list:
         with open(args.good_list, "w") as fh:
             fh.write("\n".join(good) + "\n")
-        print("-> %s  (%d dosya)" % (args.good_list, len(good)))
-        print("\nKullanim:")
+        print("-> %s  (%d files)" % (args.good_list, len(good)))
+        print("\nUsage:")
         print("  python process_L4.py --input-list %s --scan off ..." % args.good_list)
 
-    # Bozuk dosya varsa cikis kodu 1 -- script'ten kontrol edilebilsin
+    # Exit code 1 when anything was corrupt, so a wrapper script can check it.
     return 1 if bad else 0
 
 

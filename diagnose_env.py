@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 '''
-IceTray ortaminda neyin mevcut oldugunu tespit et.
+Report what is actually available in the IceTray environment.
 
-Bu scripti IceTray ortaminda calistirin ve ciktinin tamamini paylasin.
-Sonuca gore hangi fallback'lerin gerektigine karar verilir.
+Run this inside the IceTray environment and share the whole output.  Which
+fallbacks are needed is decided from the result.
 '''
 
 import os
@@ -18,8 +18,8 @@ print("=" * 70)
 print(sys.version)
 print(sys.executable)
 
-# icecube hic import edilemiyorsa detayli teshis basar ve cikar --
-# asagidaki tum kontroller anlamsiz olur.
+# When icecube cannot be imported at all, print the detailed diagnosis and
+# leave -- every check below would be meaningless.
 try:
     import icetray_env as _ienv
 except ImportError:
@@ -29,10 +29,10 @@ if _ienv is not None and not _ienv.have_icetray():
     print()
     print(_ienv._env_report())
     print()
-    print("Bulunan env-shell.sh adaylari:")
+    print("env-shell.sh candidates found:")
     _c = _ienv.find_env_shells()
     if not _c:
-        print("  (yok)  -> export OSCNEXT_I3_BUILD=/tam/yol/build")
+        print("  (none)  -> export OSCNEXT_I3_BUILD=/full/path/build")
     for _kind, _path in _c:
         print("  [%-12s] %s" % (_kind, _path))
     sys.exit(1)
@@ -40,14 +40,14 @@ if _ienv is not None and not _ienv.have_icetray():
 if _ienv is not None:
     print()
     print("=" * 70)
-    print("ORTAM")
+    print("ENVIRONMENT")
     print("=" * 70)
     for _v in ("I3_BUILD", "I3_SRC", "SROOT"):
-        print("  %-10s %s" % (_v, os.environ.get(_v, "<bos>")))
+        print("  %-10s %s" % (_v, os.environ.get(_v, "<unset>")))
     try:
         print("  %-10s %s" % ("I3Tray", _ienv.get_I3Tray()))
     except Exception as _e:
-        print("  %-10s BULUNAMADI -- %s" % ("I3Tray", _e))
+        print("  %-10s NOT FOUND -- %s" % ("I3Tray", _e))
 
 
 def try_import(name, note=""):
@@ -57,45 +57,45 @@ def try_import(name, note=""):
         print(f"  [OK]      {name:42s} {note}")
         return m
     except Exception as e:
-        print(f"  [YOK]     {name:42s} {type(e).__name__}: {e}")
+        print(f"  [MISSING] {name:42s} {type(e).__name__}: {e}")
         return None
 
 
 print("\n" + "=" * 70)
-print("TEMEL ICETRAY")
+print("CORE ICETRAY")
 print("=" * 70)
 for n in ["icecube", "icecube.icetray", "icecube.dataclasses",
           "icecube.dataio", "icecube.phys_services"]:
     try_import(n)
 
 print("\n" + "=" * 70)
-print("BOOKING / TABLO YAZMA  (adim 0'da eksik cikan kisim)")
+print("BOOKING / TABLE WRITING")
 print("=" * 70)
-tableio  = try_import("icecube.tableio",  "genel tablo altyapisi")
-hdfw     = try_import("icecube.hdfwriter", "HDF5 yazici")
-try_import("icecube.rootwriter", "ROOT yazici (alternatif)")
-try_import("tables", "pytables -- fallback booker icin GEREKLI")
-try_import("h5py", "h5py -- alternatif fallback")
+tableio  = try_import("icecube.tableio",  "generic table infrastructure")
+hdfw     = try_import("icecube.hdfwriter", "HDF5 writer")
+try_import("icecube.rootwriter", "ROOT writer (alternative)")
+try_import("tables", "pytables -- REQUIRED by the fallback booker")
+try_import("h5py", "h5py -- alternative fallback")
 
 if tableio and not hdfw:
-    print("\n  -> tableio VAR ama hdfwriter YOK.")
-    print("     Meta-proje HDF5 gelistirme kutuphaneleri olmadan derlenmis.")
-    print("     Cozum: fallback booker (pytables ile dogrudan yazma).")
+    print("\n  -> tableio is present but hdfwriter is NOT.")
+    print("     The meta-project was built without the HDF5 development libraries.")
+    print("     Remedy: the fallback booker (writes through pytables directly).")
 elif not tableio and not hdfw:
-    print("\n  -> Tablo altyapisi hic yok. Fallback booker sart.")
+    print("\n  -> No table infrastructure at all.  The fallback booker is mandatory.")
 
 print("\n" + "=" * 70)
-print("L4 DEGISKENLERI ICIN GEREKEN PROJELER")
+print("PROJECTS REQUIRED BY THE L4 VARIABLES")
 print("=" * 70)
 try_import("icecube.DomTools",          "I3OMSelection, I3TimeWindowCleaning")
-try_import("icecube.STTools",           "SeededRT temizleme")
+try_import("icecube.STTools",           "SeededRT cleaning")
 try_import("icecube.linefit",           "improved LineFit")
 try_import("icecube.tensor_of_inertia", "I3TensorOfInertia")
 try_import("icecube.fill_ratio",        "I3FillRatioModule")
 try_import("icecube.common_variables",  "HitStatistics / HitMultiplicity")
-try_import("icecube.DeepCore_Filter",   "DOMS -- fiducial/veto listeleri")
+try_import("icecube.DeepCore_Filter",   "DOMS -- fiducial/veto lists")
 
-print("\n  C++ modul kutuphaneleri:")
+print("\n  C++ module libraries:")
 try:
     from icecube import icetray
     for lib in ["static-twc", "slc-veto", "DomTools", "fill-ratio"]:
@@ -103,22 +103,22 @@ try:
             icetray.load(lib, False)
             print(f"  [OK]      {lib}")
         except Exception as e:
-            print(f"  [YOK]     {lib:20s} {e}")
+            print(f"  [MISSING] {lib:20s} {e}")
 except Exception as e:
-    print("  icetray yuklenemedi:", e)
+    print("  icetray could not be loaded:", e)
 
 print("\n" + "=" * 70)
-print("PYBDT  (BDT egitimi icin -- derlenmis mi diye kontrol)")
+print("LIGHTGBM  (classifier training and application)")
 print("=" * 70)
 lgbm = try_import("lightgbm")
 if lgbm:
-    print("\n  -> lightgbm var; egitim ve uygulama calisir.")
+    print("\n  -> lightgbm is present; training and application will work.")
 else:
-    print("\n  -> lightgbm YOK.  L4 siniflandiricilari onsuz egitilemez:")
+    print("\n  -> lightgbm is MISSING.  The L4 classifiers cannot be trained without it:")
     print("     pip install --user lightgbm")
 
 print("\n" + "=" * 70)
-print("oscNext PROJESI  (adim 1'de eksik cikan kisim)")
+print("oscNext PROJECT")
 print("=" * 70)
 osc = try_import("icecube.oscNext")
 for sub in ["icecube.oscNext.tools.classifier",
@@ -127,19 +127,19 @@ for sub in ["icecube.oscNext.tools.classifier",
     try_import(sub)
 
 if not osc:
-    print("\n  -> oscNext projesi YOK.  Sonuclari:")
-    print("     * I3Classifier kullanilamaz -> kendi uygulama modulumuzu yazacagiz")
-    print("     * oscNext_cut kullanilamaz  -> fallback zaten var (L3 bools okur)")
-    print("     * calc_rho_36 kullanilamaz  -> fallback zaten var")
+    print("\n  -> The oscNext project is MISSING.  Consequences:")
+    print("     * I3Classifier unavailable -> we ship our own application module")
+    print("     * oscNext_cut unavailable  -> fallback exists (reads the L3 bools)")
+    print("     * calc_rho_36 unavailable  -> fallback exists")
 
 print("\n" + "=" * 70)
-print("L3 CIKTISI  (girdi dosyalarinizda ne var?)")
+print("L3 OUTPUT  (what is in your input files?)")
 print("=" * 70)
-print("Bir L3 dosyasinin ilk Physics frame'ini dokmek icin:")
+print("To dump the first Physics frame of an L3 file:")
 print()
 print("  python -c \"")
 print("from icecube import dataio, dataclasses, icetray")
-print("f = dataio.I3File('<L3_DOSYANIZ>.i3.zst')")
+print("f = dataio.I3File('<YOUR_L3_FILE>.i3.zst')")
 print("while f.more():")
 print("    fr = f.pop_frame()")
 print("    if fr.Stop == icetray.I3Frame.Physics:")
@@ -148,17 +148,17 @@ print("            print(f'{k:50s} {type(fr[k]).__name__}')")
 print("        break")
 print("\"")
 print()
-print("Ozellikle sunlarin varligini kontrol edin:")
+print("Check in particular that these exist:")
 for k in ["IC2018_LE_L3_Vars", "IC2018_LE_L3_bools",
           "SRTTWOfflinePulsesDC", "SplitInIcePulses",
           "SRTTWOfflinePulsesDCHitStatistics", "I3MCWeightDict"]:
     print(f"    {k}")
 
 print("\n" + "=" * 70)
-print("SKLEARN / LIGHTGBM  (siniflandirici uygulamasi icin)")
+print("PYTHON ML PACKAGES")
 print("=" * 70)
-print("Bunlar IceTray ortaminda da gerekli -- model orada yuklenecek:")
+print("numpy and lightgbm are needed in the IceTray environment too -- the\nmodel is loaded there.  sklearn / joblib / pandas are listed for information\nonly; nothing in this repo imports them:")
 for n in ["numpy", "sklearn", "lightgbm", "joblib", "pandas"]:
     m = try_import(n)
     if m and hasattr(m, "__version__"):
-        print(f"            surum: {m.__version__}")
+        print(f"            version: {m.__version__}")

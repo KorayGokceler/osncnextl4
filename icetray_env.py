@@ -218,11 +218,6 @@ def optional_project(name, required_for=None):
         return None
 
 
-def missing_projects():
-    '''optional_project() ile bulunamayanlarin listesi.'''
-    return list(_missing)
-
-
 def report_missing(stream=sys.stderr):
     '''Eksik projeleri ozetle.  process_L4.py basta bunu cagirir.'''
     if not _missing:
@@ -339,20 +334,6 @@ def have_lightgbm():
         return True
     except ImportError:
         return False
-
-
-def require_lightgbm():
-    """lightgbm'i import et; yoksa ne yapilmasi gerektigini soyle."""
-    try:
-        import lightgbm
-        return lightgbm
-    except ImportError as exc:
-        raise ImportError(
-            "lightgbm import edilemedi (%s).\n"
-            "  L4 siniflandiricilari onunla egitiliyor ve uygulaniyor.\n"
-            "  IceTray ortamindan kontrol:\n"
-            "    ./setup_env.sh run python -c 'import lightgbm'\n"
-            "  Yoksa:  pip install --user lightgbm\n" % exc)
 
 
 def find_env_shells():

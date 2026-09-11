@@ -1,9 +1,9 @@
 '''
-hdfwriter olmadan HDF5 booking.
+HDF5 booking without hdfwriter.
 
-Meta-proje HDF5 destegi olmadan derlenmisse icecube.hdfwriter bulunmaz.  Bu
-modul ayni isi saf Python + pytables ile yapar ve notebook'un bekledigi tablo
-duzenini birebir uretir:
+If the meta-project was built without HDF5 support, icecube.hdfwriter does not
+exist.  This module does the same job in pure Python + pytables and reproduces
+exactly the table layout the notebook expects:
 
     /IC2018_LE_L3_Vars      Run, Event, SubEvent, NchCleaned, ICVetoHits, ...
     /L4_VICH_nch            Run, Event, SubEvent, value
@@ -11,10 +11,10 @@ duzenini birebir uretir:
     /SRTTWOfflinePulsesDCHitStatistics
                             Run, Event, SubEvent, cog_x, cog_y, cog_z, ...
 
-Genel bir tabulasyon degil -- sadece skaler alanlari cikarir.  L4 degisken
-uretimi icin gereken tam olarak budur (pulse serileri book edilmiyor).
+This is not a general tabulation -- it extracts scalar fields only.  That is
+exactly what L4 variable production needs (pulse series are not booked).
 
-Kullanim:
+Usage:
 
     from simple_booker import SimpleBooker
     tray.Add(SimpleBooker, "booker", Output="out.hdf5", Keys=[...])
@@ -30,11 +30,11 @@ from icecube import icetray, dataclasses
 
 
 # ---------------------------------------------------------------------------
-# Frame objesinden skaler alanlari cikarma
+# Extracting scalar fields from a frame object
 # ---------------------------------------------------------------------------
 
-# Bilinen tiplerin alan listeleri.  Introspection fallback'i de var ama
-# acik liste hem daha hizli hem daha ongorulebilir.
+# Field lists for the known types.  An introspection fallback exists too, but
+# an explicit list is both faster and more predictable.
 KNOWN_FIELDS = {
     "I3Particle": ["time", "energy", "length", "speed",
                    "zenith", "azimuth", "x", "y", "z"],
@@ -49,11 +49,11 @@ KNOWN_FIELDS = {
     "I3EventHeader": ["run_id", "sub_run_id", "event_id", "sub_event_id"],
 }
 
-# I3EventHeader'in zaman alanlari livetime hesabi icin gerekli.
-# start_time / end_time birer I3Time -> MJD gun + saniye olarak acilir.
+# The I3EventHeader time fields are needed for the livetime calculation.
+# start_time / end_time are I3Time objects -> expanded as MJD day + seconds.
 _TIME_FIELDS = {"start_time": "time_start_mjd", "end_time": "time_end_mjd"}
 
-# I3Position / I3Direction alanlari duz kolonlara acilir
+# I3Position / I3Direction fields are expanded into flat columns
 _VECTOR_EXPAND = {
     "pos": ["x", "y", "z"],
     "dir": ["zenith", "azimuth"],
@@ -62,7 +62,7 @@ _VECTOR_EXPAND = {
 
 
 def _num(v):
-    '''Sayiya cevrilebilir mi?  Bool ve enum'lari da kapsar.'''
+    '''Can this be converted to a number?  Covers bools and enums too.'''
     if isinstance(v, bool):
         return float(v)
     if isinstance(v, (int, float, np.integer, np.floating)):
@@ -78,13 +78,13 @@ def _num(v):
 
 def extract_scalars(obj):
     '''
-    Bir frame objesinden {kolon_adi: float} sozlugu cikar.
+    Extract a {column_name: float} dict from a frame object.
 
-    Sirasiyla dener:
-      1) map benzeri (keys() var)         -> her anahtar bir kolon
-      2) .value alani var                 -> tek "value" kolonu
-      3) bilinen tip                      -> KNOWN_FIELDS listesi
-      4) introspection                    -> sayisal public alanlar
+    Tried in order:
+      1) map-like (has keys())            -> one column per key
+      2) has a .value field               -> a single "value" column
+      3) known type                       -> the KNOWN_FIELDS list
+      4) introspection                    -> numeric public fields
     '''
     tname = type(obj).__name__
     out = {}
@@ -128,7 +128,7 @@ def extract_scalars(obj):
                 v = None
             if v is not None:
                 out[f] = v
-        # I3Particle icin pos/dir zaten x,y,z,zenith,azimuth olarak var
+        # For I3Particle, pos/dir are already there as x,y,z,zenith,azimuth
         if out:
             return out
 
@@ -181,9 +181,9 @@ class SimpleBooker(icetray.I3ConditionalModule):
         self.streams = list(self.GetParameter("SubEventStreams"))
         self.verbose = self.GetParameter("Verbose")
 
-        # tablo adi -> {kolon: [degerler]}
+        # table name -> {column: [values]}
         self.tables = {}
-        # tablo adi -> gorulmus satir sayisi (indeks hizalamasi icin)
+        # table name -> rows seen so far (for index alignment)
         self.n_rows = {}
         self.n_frames = 0
         self.missing = {}
@@ -242,8 +242,8 @@ class SimpleBooker(icetray.I3ConditionalModule):
 
         if not self.tables:
             icetray.logging.log_warn(
-                "SimpleBooker: hicbir olay book edilmedi! "
-                "SubEventStreams parametresini kontrol edin.")
+                "SimpleBooker: no events were booked at all! "
+                "Check the SubEventStreams parameter.")
 
         filters = tables.Filters(complevel=5, complib="zlib")
         with tables.open_file(self.output, "w", filters=filters) as h5:
@@ -275,13 +275,13 @@ class SimpleBooker(icetray.I3ConditionalModule):
             print("  Hic bulunamayan / eksik anahtarlar:")
             for k, c in sorted(self.missing.items(), key=lambda kv: -kv[1]):
                 frac = 100.0 * c / max(self.n_frames, 1)
-                flag = "  <-- HIC YOK" if frac > 99.9 else ""
+                flag = "  <-- NEVER PRESENT" if frac > 99.9 else ""
                 print(f"    {k:48s} {c:7d} frame ({frac:5.1f}%){flag}")
 
 
 def add_booker(tray, name, output, keys, sub_event_streams=("InIceSplit",)):
     '''
-    hdfwriter varsa onu, yoksa SimpleBooker'i kullan.
+    Use hdfwriter when it is available, otherwise SimpleBooker.
     '''
     try:
         from icecube import hdfwriter
@@ -294,5 +294,5 @@ def add_booker(tray, name, output, keys, sub_event_streams=("InIceSplit",)):
         tray.Add(SimpleBooker, name,
                  Output=output, Keys=keys,
                  SubEventStreams=list(sub_event_streams))
-        print("Booking: SimpleBooker (hdfwriter yok, pytables fallback)")
+        print("Booking: SimpleBooker (no hdfwriter, pytables fallback)")
         return "simple"

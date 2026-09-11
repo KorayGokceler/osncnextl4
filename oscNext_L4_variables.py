@@ -603,7 +603,7 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
                                              uncleaned_pulses,
                                              cleaned_pulses,
                                              run_qr_box=False,
-                                             run_optional=True):
+                                             run_optional=False):
     '''
     L4 atmosferik muon reddi siniflandiricisinin girdileri.
 
@@ -876,7 +876,7 @@ def oscNext_L4(tray, name,
                apply_l3_cut=True,
                is_genie=False,
                compute_hit_statistics=True,
-               run_optional=True,
+               run_optional=False,
                apply_cut=False,
                classifier_model_dir=None,
                micro_count_uncleaned=False):

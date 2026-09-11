@@ -384,7 +384,8 @@ def main():
                    help="L3 kesimini uygulama (girdi zaten L3 gecmisse)")
     p.add_argument("--apply-cut", action="store_true",
                    help="L4 siniflandirici kesimini uygula (modeller egitilmis olmali)")
-    p.add_argument("--model-dir", default=None, help="Egitilmis .joblib modellerin dizini")
+    p.add_argument("--model-dir", default=None,
+                   help="directory holding the trained L4_<tag>_model.txt files")
 
     p.add_argument("--n", type=int, default=0, help="Islenecek frame sayisi (0=hepsi)")
 
@@ -398,10 +399,11 @@ def main():
                         "(yavas ama kesin), off=tarama yok")
     p.add_argument("--scan-frames", type=int, default=25,
                    help="--scan quick modunda dosya basina okunacak frame (varsayilan 25)")
-    p.add_argument("--skip-optional", action="store_true",
-                   help="BDT girdisi OLMAYAN hesaplari atla: I3TensorOfInertia "
-                        "(L4_ToI) ve separation_in_cogs.  Ikisi de Tablo 11/12'de "
-                        "yok.  Uretimi hizlandirir.")
+    p.add_argument("--run-optional", action="store_true",
+                   help="also compute the variables that are NOT BDT inputs: "
+                        "I3TensorOfInertia (L4_ToI) and separation_in_cogs.  "
+                        "Neither appears in Table 11/12, so this is off by "
+                        "default; it only costs processing time.")
     p.add_argument("--micro-count-uncleaned", action="store_true",
                    help="micro_count zincirini TEMIZLENMEMIS seriden baslat -- "
                         "orijinal pass2 kodunun davranisi.  Varsayilan (bayrak "
@@ -527,7 +529,7 @@ def main():
                  apply_l3_cut=not args.no_l3_cut,
                  is_genie=args.genie,
                  compute_hit_statistics=not args.no_hit_statistics,
-                 run_optional=not args.skip_optional,
+                 run_optional=args.run_optional,
                  apply_cut=args.apply_cut,
                  classifier_model_dir=args.model_dir,
                  micro_count_uncleaned=args.micro_count_uncleaned)
