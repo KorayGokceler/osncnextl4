@@ -40,12 +40,13 @@ from icecube import icetray, dataclasses
 # Frame'den degisken okuma
 # ---------------------------------------------------------------------------
 #
-# Modelin degisken isimleri ("NchCleaned", "cog_z", "micro_count", ...) ile
-# frame'deki konumlari ("IC2018_LE_L3_Vars"["NchCleaned"], ...) arasindaki
-# harita.  Notebook'taki feature registry ile AYNI olmali.
+# The map between the model's variable names ("NchCleaned", "cog_z",
+# "micro_count", ...) and where they live in the frame
+# ("IC2018_LE_L3_Vars"["NchCleaned"], ...).  It must match the feature registry
+# in oscnext_l4.data.
 #
-# Bu haritanin notebook ile senkron kalmasi kritik: egitimde bir kolon,
-# uygulamada baska bir kolon okunursa model sessizce sacmalar.
+# Keeping the two in sync is critical: if training reads one column and
+# application another, the model produces nonsense silently.
 
 L3V = "IC2018_LE_L3_Vars"
 # L3 (grecovariables.DeepCoreCleaning) "SRTTWSplitInIcePulsesDC" uretir.
@@ -59,7 +60,7 @@ FEATURE_MAP = {
     "micro_count":         ("L4_micro_count", "STW_m3500p4000_DTW200"),
     "iLineFit_speed":      ("L4_iLineFitParams", "lf_vel"),
     "fill_ratio":          ("L4_fill_ratio", "fill_ratio_from_mean"),
-    # pass3 L3 map'inde oran YOK -> L4 tray'inde hesaplanip yaziliyor
+    # the ratio is NOT in the pass3 L3 map -> computed and written by the L4 tray
     "FullTimeLengthRatio": ("L4_FullTimeLengthRatio", "value"),
 
     # --- muon BDT ---
@@ -70,7 +71,7 @@ FEATURE_MAP = {
     "accumulated_time": ("L4_accumulated_time", "value"),
     "first_hlc_rho":    ("L4_first_hlc_rho", "value"),
     "cog_z":            (HITSTAT, "cog_z"),
-    "z_sigma":          (HITSTAT, "z_sigma"),   # yoksa cog_z_sigma -- read_feature dener
+    "z_sigma":          (HITSTAT, "z_sigma"),   # else cog_z_sigma -- read_feature tries both
     "z_travel":         (HITSTAT, "z_travel"),
 
     # --- candidate / derived inputs ---
@@ -159,7 +160,7 @@ def load_model(model_file):
     else:
         # No sidecar -> trust the feature names stored in the model itself
         icetray.logging.log_warn(
-            "l4_classifier: %s bulunamadi, degisken sirasi booster'dan aliniyor"
+            "l4_classifier: %s not found, taking the feature order from the booster"
             % json_file)
         sidecar = {}
         features = list(booster.feature_name())
@@ -219,7 +220,7 @@ class L4Classifier(icetray.I3ConditionalModule):
             print("  trained  : %s (lightgbm %s)" %
                   (self.sidecar.get("trained", "?"),
                    self.sidecar.get("lightgbm_version", "?")))
-            print("  varsayilan kesim: %s" % self.sidecar.get("default_cut", "?"))
+            print("  default cut: %s" % self.sidecar.get("default_cut", "?"))
 
     def Physics(self, frame):
         if self.output_key in frame:
@@ -258,7 +259,7 @@ class L4Classifier(icetray.I3ConditionalModule):
 
 
 # ---------------------------------------------------------------------------
-# Kolaylik segmenti
+# Convenience segment
 # ---------------------------------------------------------------------------
 
 NOISE_KEY = "L4_NoiseClassifier_ProbNu"

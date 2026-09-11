@@ -167,7 +167,7 @@ class SimpleBooker(icetray.I3ConditionalModule):
 
     def __init__(self, context):
         icetray.I3ConditionalModule.__init__(self, context)
-        self.AddParameter("Output", "Cikti .hdf5 dosyasi", "output.hdf5")
+        self.AddParameter("Output", "output .hdf5 file", "output.hdf5")
         self.AddParameter("Keys", "Book edilecek frame objeleri", [])
         self.AddParameter("SubEventStreams", "Islenecek sub-event stream'ler",
                           ["InIceSplit"])
@@ -222,9 +222,9 @@ class SimpleBooker(icetray.I3ConditionalModule):
             t["Run"].append(idx[0]); t["Event"].append(idx[1]); t["SubEvent"].append(idx[2])
             for col, v in vals.items():
                 if col in ("Run", "Event", "SubEvent"):
-                    col = col + "_"          # cakismayi onle
+                    col = col + "_"          # avoid the clash
                 lst = t.setdefault(col, [np.nan] * n)
-                # onceki satirlarda bu kolon yoksa NaN ile doldur
+                # pad with NaN when earlier rows lacked this column
                 while len(lst) < n:
                     lst.append(np.nan)
                 lst.append(v)
@@ -268,14 +268,14 @@ class SimpleBooker(icetray.I3ConditionalModule):
                 safe = name.replace("/", "_")
                 h5.create_table("/", safe, rec, title=name)
 
-        print(f"SimpleBooker: {self.n_frames} frame -> {len(self.tables)} tablo "
+        print(f"SimpleBooker: {self.n_frames} frames -> {len(self.tables)} tables "
               f"-> {self.output}")
         if self.verbose and self.missing:
-            print("  Hic bulunamayan / eksik anahtarlar:")
+            print("  Keys never found / often missing:")
             for k, c in sorted(self.missing.items(), key=lambda kv: -kv[1]):
                 frac = 100.0 * c / max(self.n_frames, 1)
                 flag = "  <-- NEVER PRESENT" if frac > 99.9 else ""
-                print(f"    {k:48s} {c:7d} frame ({frac:5.1f}%){flag}")
+                print(f"    {k:48s} {c:7d} frames ({frac:5.1f}%){flag}")
 
 
 def add_booker(tray, name, output, keys, sub_event_streams=("InIceSplit",)):

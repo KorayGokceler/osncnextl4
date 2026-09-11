@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 '''
-oscNext L4 isleme + HDF5 booking.
+oscNext L4 processing + HDF5 booking.
 
-Kullanim:
+Usage:
 
   # MC (GENIE)
   python process_L4.py \
@@ -12,14 +12,14 @@ Kullanim:
       --output-hdf5 /data/L4/hdf5/genie/14640/L4_14640.hdf5 \
       --mc
 
-  # Detektor verisi
+  # Detector data
   python process_L4.py \
       --gcd  /data/GCD/Run00125150_GCD.i3.zst \
       --input "/data/L3/data/Run00125150/*.i3.zst" \
       --output-hdf5 /data/L4/hdf5/data/Run00125150/L4_Run00125150.hdf5
 
-Onemli: --no-cut varsayilandir.  Siniflandiricilari egitmeden once kesim
-uygulamayin; tum olaylari book edin.
+Important: --no-cut is the default.  Do not apply a cut before the
+classifiers are trained; book every event.
 '''
 
 import os
@@ -39,17 +39,17 @@ from oscnext_l4.env import (require_icetray, get_I3Tray, report_missing,
 try:
     require_icetray()
 except IceTrayNotAvailable as _e:
-    # Yigin izi degil, ne yapilmasi gerektigini goster.
+    # Show what to do, not a stack trace.
     sys.exit("\n" + str(_e) + "\n")
 from icecube import icetray, dataio, dataclasses
 I3Tray = get_I3Tray()
 
-# Frame nesnelerinin deserialize edilebilmesi icin gerekli.  Kodda dogrudan
-# kullanilmasalar da import edilmeleri SART -- yoksa
-# "Deserialization failed for object at frame key 'X'" hatasi alinir.
+# Required so that frame objects can be deserialised.  Importing them is
+# MANDATORY even though they are not used directly -- otherwise you get
+# "Deserialization failed for object at frame key 'X'".
 #   simclasses     -> I3MCPESeriesMap, I3MCPulseSeriesMap, noise_weight
 #   recclasses     -> I3DST, PoleMuonLlhFitFitParams, ...
-#   genie_icetray  -> I3GenieInfo, I3GenieResult   <-- n_flux_events icin
+#   genie_icetray  -> I3GenieInfo, I3GenieResult   <-- for n_flux_events
 #   sim_services   -> I3MCPEShifter vb.
 load_deserialization_libs()
 
@@ -61,11 +61,11 @@ from oscnext_l4.variables import (
 
 
 # ---------------------------------------------------------------------------
-# Book edilecek frame objeleri
+# Frame objects to book
 # ---------------------------------------------------------------------------
 
-# L3'ten gelen degiskenler -- muon BDT'nin 4 girdisi ve noise BDT'nin 2 girdisi
-# bu map'in icinde.
+# Variables coming from L3 -- 4 of the muon BDT's inputs and 2 of the noise
+# BDT's live inside this map.
 L3_KEYS = [
     "IC2018_LE_L3_Vars",
     "IC2018_LE_L3_bools",
@@ -76,32 +76,32 @@ L3_KEYS = [
 # Hit statistics / multiplicity -- cog_z, z_sigma, z_travel, n_hit_doms
 COMMON_VAR_KEYS = [HITSTAT_KEY, HITMULT_KEY]
 
-# Her zaman lazim
+# Always needed
 BASE_KEYS = ["I3EventHeader"]
 
-# Sadece simulasyon icin.  Not: MCInIcePrimary GURULTU MC'sinde YOKTUR --
-# vuvuzela dosyalarini book ederken --noise bayragi ile bunlari cikarin.
-# pass3 GENIE L3 ciktisinda MCInIcePrimary YOK -- truth bilgisi
-# I3MCWeightDict icinde (PrimaryNeutrinoEnergy/Zenith/Type).
-# NEvPerFile agirlik normalizasyonu icin onemli.
+# Simulation only.  Note: MCInIcePrimary does NOT exist in the noise MC --
+# use the --noise flag to leave these out when booking vuvuzela files.
+# It is absent from the pass3 GENIE L3 output too; the truth information is in
+# I3MCWeightDict (PrimaryNeutrinoEnergy/Zenith/Type).
+# NEvPerFile matters for the weight normalisation.
 MC_KEYS = [
     "I3MCWeightDict",
     "NEvPerFile",
     "I3GenieSystWeightDict",
-    # asagidakiler varsa book edilir, yoksa sessizce atlanir
+    # booked when present, silently skipped otherwise
     "MCInIcePrimary",
     "MCDeepCoreStartingEvent",
     "MCExtraTruthInfo",
 ]
 
-# Vuvuzela: agirlik "noise_weight" icinde.
-# BIRIM UYARISI: pass3'te 1/ns (x1e9 gerekir), pass2'de zaten Hz.
+# Vuvuzela: the weight is in "noise_weight".
+# UNIT WARNING: 1/ns in pass3 (needs x1e9), already Hz in pass2.
 NOISE_MC_KEYS = [
     "I3MCWeightDict",
     "noise_weight",
 ]
 
-# MuonGun agirlik adaylari -- hangisi varsa book edilir
+# MuonGun weight candidates -- whichever exists is booked
 MUONGUN_KEYS = [
     "I3MCWeightDict",
     "MuonWeight",
@@ -109,9 +109,9 @@ MUONGUN_KEYS = [
     "MuonGunWeight",
 ]
 
-# CORSIKA: agirlik simweights ile hesaplanir.
-# simweights CorsikaWeightMap + PolyplopiaPrimary bekler; ikisi de
-# book edilmeli yoksa CorsikaWeighter kurulamaz.
+# CORSIKA: the weight is computed with simweights, which expects
+# CorsikaWeightMap + PolyplopiaPrimary.  Both must be booked or CorsikaWeighter
+# cannot be constructed.
 CORSIKA_KEYS = [
     "CorsikaWeightMap",
     "PolyplopiaPrimary",
@@ -122,30 +122,32 @@ CORSIKA_KEYS = [
 
 
 # ---------------------------------------------------------------------------
-# Bozuk girdi dosyalari
+# Corrupt input files
 # ---------------------------------------------------------------------------
 #
-# pass3 uretiminde ara sira yarim yazilmis / bozuk .i3.zst dosyalari var.
-# I3Reader boyle bir dosyaya gelince
+# The pass3 production contains the occasional half-written / corrupt
+# .i3.zst.  When I3Reader reaches one it throws
 #
-#     FATAL (I3Reader): Error reading <dosya> at frame N: input stream error!
+#     FATAL (I3Reader): Error reading <file> at frame N: input stream error!
 #
-# atip TUM tray'i oldururuyor.  100 dosyalik bir job'da tek bozuk dosya
-# yuzunden 99 saglam dosyanin islenmesi bosa gidiyor ve geride yarim,
-# acilmayan bir HDF5 kaliyor ("Table ... is still connected" hatasi bunun
-# sonucu, ayri bir bug degil).
+# and kills the WHOLE tray.  In a 100-file job, one bad file wastes the
+# processing of the 99 healthy ones and leaves behind a half-written HDF5 that
+# cannot be opened (the "Table ... is still connected" message is a consequence
+# of that, not a separate bug).
 #
-# Cozum iki katmanli:
-#   1) On tarama  -- her dosyanin ilk N frame'i okunur, acilmayanlar elenir.
-#      Kesik/bos dosyalari saniyeler icinde yakalar (tipik hata frame 4'te).
-#   2) Calisma ani -- tray yine de patlarsa hata mesajindan dosya adi
-#      cikarilir, kara listeye yazilir ve o dosya haric yeniden denenir.
+# The protection has two layers:
+#   1) Pre-scan   -- the first N frames of every file are read and the ones
+#      that do not open are dropped.  Catches truncated/empty files in seconds
+#      (the typical error is at frame 4).
+#   2) Run time   -- if the tray still dies, the file name is extracted from
+#      the error message, written to a blacklist, and the run is retried
+#      without that file.
 
 _BAD_FILE_RE = re.compile(r"Error reading (\S+?) at frame")
 
 
 # ---------------------------------------------------------------------------
-# Ilerleme raporu
+# Progress reporting
 # ---------------------------------------------------------------------------
 #
 # Notebook process_L4.py'yi subprocess olarak calistiriyor.  Ilerleme
@@ -154,17 +156,19 @@ _BAD_FILE_RE = re.compile(r"Error reading (\S+?) at frame")
 #   [CHUNK] 3/10 files=30/100 booked=1840 elapsed=312.4
 #   [PROGRESS] frames=15000 physics=7100 booked=4300 elapsed=98.2 rate=152.7
 #
-# Notebook bu satirlari ayristirip bar cizer.  Terminalde de okunabilir.
-# stdout satir-tamponlu olmali, yoksa notebook bitene kadar hicbir sey gormez.
+# The notebook parses these lines and draws the bar; they are readable in a
+# terminal too.  stdout must be line buffered, otherwise the notebook sees
+# nothing until the job is over.
 
 
 def _emit(line):
-    """Ilerleme satiri bas ve HEMEN flush et (subprocess tamponuna takilmasin)."""
+    """Print a progress line and flush IMMEDIATELY (so it is not held in the
+    subprocess buffer)."""
     print(line, flush=True)
 
 
 class ProgressReporter:
-    """Her N frame'de bir [PROGRESS] satiri basan tray modulu (fonksiyon)."""
+    """Tray module (function) that prints a [PROGRESS] line every N frames."""
 
     def __init__(self, every, counter, t0):
         self.every = every
@@ -183,7 +187,7 @@ class ProgressReporter:
 
 
 def _part_path(path, index):
-    """L4_nue.hdf5 -> L4_nue_part003.hdf5  (notebook glob'u L4_nue*.hdf5 ile eslesir)"""
+    """L4_nue.hdf5 -> L4_nue_part003.hdf5  (matches the notebook glob L4_nue*.hdf5)"""
     if not path:
         return None
     base, ext = os.path.splitext(path)
@@ -192,11 +196,12 @@ def _part_path(path, index):
 
 def _write_meta(output, meta):
     """
-    <cikti>.meta.json yaz.
+    Write <output>.meta.json.
 
-    EN ONEMLI ALAN: n_l3_files -- bu HDF5'in KAC L3 dosyasindan uretildigi.
-    Agirlik normalizasyonu (OneWeight/n_flux/n_files) bu sayiya bolunmeli;
-    HDF5 dosya sayisina DEGIL.  Notebook bunu sidecar'dan okuyor.
+    THE FIELD THAT MATTERS: n_l3_files -- how many L3 files this HDF5 was made
+    from.  The weight normalisation (OneWeight/n_flux/n_files) must be divided
+    by that number, NOT by the number of HDF5 files.  The notebook reads it
+    from this sidecar.
     """
     if not output:
         return
@@ -205,7 +210,7 @@ def _write_meta(output, meta):
         with open(path, "w") as fh:
             json.dump(meta, fh, indent=2)
     except OSError as e:
-        print("  [!] meta yazilamadi: %s" % e)
+        print("  [!] could not write meta: %s" % e)
 
 
 _WANT_USAGE = {"on": False}
@@ -251,7 +256,7 @@ def _bad_list_path(output):
 
 
 def _record_bad(output, paths, reason):
-    """Bozuk dosyalari <cikti>.badfiles.txt icine yaz."""
+    """Append the corrupt files to <output>.badfiles.txt."""
     if not paths:
         return
     path = _bad_list_path(output)
@@ -259,15 +264,15 @@ def _record_bad(output, paths, reason):
         with open(path, "a") as fh:
             for p in paths:
                 fh.write("%s\t%s\n" % (p, reason))
-        print("  Kara liste: %s" % path)
+        print("  Blacklist: %s" % path)
     except OSError as e:
-        print("  [!] kara liste yazilamadi: %s" % e)
+        print("  [!] could not write the blacklist: %s" % e)
 
 
 def _run_tray(build, infiles, output_hdf5, retries):
     """
-    Tray'i calistir.  Bozuk dosya yuzunden patlarsa o dosyayi cikarip
-    yeniden dene (en fazla `retries` kez).
+    Run the tray.  If it dies on a corrupt file, drop that file and retry
+    (at most `retries` times).
     """
     attempt = 0
     while True:
@@ -288,21 +293,21 @@ def _run_tray(build, infiles, output_hdf5, retries):
             if bad not in infiles:
                 raise
             attempt += 1
-            print("\n[!] Bozuk dosya calisma aninda yakalandi:\n    %s" % bad)
+            print("\n[!] Corrupt file caught at run time:\n    %s" % bad)
             print("    %s" % str(e).strip().splitlines()[0][:200])
-            _record_bad(output_hdf5, [bad], "calisma ani: input stream error")
+            _record_bad(output_hdf5, [bad], "run time: input stream error")
             infiles = [f for f in infiles if f != bad]
-            # Yarim kalan HDF5 kullanilamaz -- silinmezse yeniden acilamaz.
+            # A half-written HDF5 is unusable and cannot be reopened.
             if output_hdf5 and os.path.exists(output_hdf5):
                 try:
                     os.remove(output_hdf5)
-                    print("    Yarim HDF5 silindi, bastan basliyor.")
+                    print("    Removed the partial HDF5, starting over.")
                 except OSError as rm:
-                    print("    [!] yarim HDF5 silinemedi: %s" % rm)
-            print("    Kalan dosya: %d  (deneme %d/%d)\n"
+                    print("    [!] could not remove the partial HDF5: %s" % rm)
+            print("    Files left: %d  (attempt %d/%d)\n"
                   % (len(infiles), attempt, retries))
             if not infiles:
-                raise RuntimeError("Tum girdi dosyalari bozuk cikti.")
+                raise RuntimeError("Every input file turned out to be corrupt.")
 
 
 def build_key_list(is_mc=False, is_noise=False, is_muongun=False,
@@ -323,75 +328,74 @@ def build_key_list(is_mc=False, is_noise=False, is_muongun=False,
 
 
 def main():
-    p = argparse.ArgumentParser(description="oscNext L4 isleme + HDF5 booking")
-    p.add_argument("--gcd", required=True, help="GCD dosyasi")
+    p = argparse.ArgumentParser(description="oscNext L4 processing + HDF5 booking")
+    p.add_argument("--gcd", required=True, help="GCD file")
     p.add_argument("--input", nargs="+", default=[],
-                   help="Girdi .i3 dosyalari (glob deseni de olur)")
-    p.add_argument("--output-i3", default=None, help="Cikti .i3 (opsiyonel)")
-    p.add_argument("--output-hdf5", required=True, help="Cikti .hdf5")
+                   help="input .i3 files (glob patterns accepted)")
+    p.add_argument("--output-i3", default=None, help="output .i3 (optional)")
+    p.add_argument("--output-hdf5", required=True, help="output .hdf5")
 
     p.add_argument("--uncleaned-pulses", default=UNCLEANED_PULSES_DEFAULT)
     p.add_argument("--cleaned-pulses", default=CLEANED_PULSES_DEFAULT)
     p.add_argument("--sub-event-stream", default="InIceSplit")
 
-    p.add_argument("--mc", action="store_true", help="Simulasyon (MC truth book et)")
+    p.add_argument("--mc", action="store_true", help="simulation (book the MC truth)")
     p.add_argument("--noise", action="store_true",
-                   help="Saf gurultu MC (noise_weight book edilir)")
+                   help="pure noise MC (books noise_weight)")
     p.add_argument("--muongun", action="store_true",
-                   help="MuonGun MC (muon agirlik anahtarlari book edilir)")
+                   help="MuonGun MC (books the muon weight keys)")
     p.add_argument("--genie", action="store_true",
-                   help="GENIE MC -- I3GenieInfo.n_flux_events her frame'e tasinir")
+                   help="GENIE MC -- carries I3GenieInfo.n_flux_events into every frame")
     p.add_argument("--corsika", action="store_true",
-                   help="CORSIKA MC -- CorsikaWeightMap + PolyplopiaPrimary book edilir")
+                   help="CORSIKA MC -- books CorsikaWeightMap + PolyplopiaPrimary")
 
     p.add_argument("--no-l3-cut", action="store_true",
-                   help="L3 kesimini uygulama (girdi zaten L3 gecmisse)")
+                   help="do not apply the L3 cut (when the input already passed L3)")
     p.add_argument("--apply-cut", action="store_true",
-                   help="L4 siniflandirici kesimini uygula (modeller egitilmis olmali)")
+                   help="apply the L4 classifier cut (the models must be trained)")
     p.add_argument("--model-dir", default=None,
                    help="directory holding the trained L4_<tag>_model.txt files")
 
-    p.add_argument("--n", type=int, default=0, help="Islenecek frame sayisi (0=hepsi)")
+    p.add_argument("--n", type=int, default=0, help="number of frames to process (0=all)")
 
     p.add_argument("--input-list", default=None,
-                   help="Girdi dosyalarini bu metin dosyasindan oku (satir basina "
-                        "bir yol).  scan_files.py --good-list ciktisi ile kullanilir; "
-                        "boylece tarama bir kez yapilir, her job tekrar etmez.")
+                   help="read the input files from this text file (one path per "
+                        "line).  Use with the scan_files.py --good-list output so "
+                        "the scan happens once instead of in every job.")
     p.add_argument("--scan", choices=["quick", "full", "off"], default="quick",
-                   help="Girdi dosyalarini on tarama: quick=ilk frame'ler "
-                        "(varsayilan, kesik dosyalari yakalar), full=tum dosya "
-                        "(yavas ama kesin), off=tarama yok")
+                   help="pre-scan the input files: quick=first frames (default, "
+                        "catches truncated files), full=the whole file (slow but "
+                        "certain), off=no scan")
     p.add_argument("--scan-frames", type=int, default=25,
-                   help="--scan quick modunda dosya basina okunacak frame (varsayilan 25)")
+                   help="frames read per file in --scan quick mode (default 25)")
     p.add_argument("--run-optional", action="store_true",
                    help="also compute the variables that are NOT BDT inputs: "
                         "I3TensorOfInertia (L4_ToI) and separation_in_cogs.  "
                         "Neither appears in Table 11/12, so this is off by "
                         "default; it only costs processing time.")
     p.add_argument("--micro-count-uncleaned", action="store_true",
-                   help="micro_count zincirini TEMIZLENMEMIS seriden baslat -- "
-                        "orijinal pass2 kodunun davranisi.  Varsayilan (bayrak "
-                        "yok) teknik notu izler: temizlenmis seriden baslar. "
-                        "Sadece pass2 sayilarini tekrarlamak icin kullanin.")
+                   help="start the micro_count chain from the UNCLEANED series -- "
+                        "the behaviour of the original pass2 code.  The default "
+                        "(no flag) follows the technical note and starts from the "
+                        "cleaned series.  Only for reproducing the pass2 numbers.")
     p.add_argument("--usage", action="store_true",
-                   help="Bitince MODUL BAZLI CPU zamanini bas -- hangi modulun "
-                        "yavas oldugunu gormek icin.  Once bunu calistirin, "
-                        "sonra optimize edin.")
+                   help="print PER-MODULE CPU time at the end, to see which module "
+                        "is slow.  Run this before optimising anything.")
     p.add_argument("--progress", type=int, default=5000,
-                   help="Her N frame'de bir [PROGRESS] satiri bas (0=kapali). "
-                        "Notebook bu satirlardan ilerleme cubugu cizer.")
+                   help="print a [PROGRESS] line every N frames (0=off).  The "
+                        "notebook draws its progress bar from these lines.")
     p.add_argument("--chunk-files", type=int, default=0,
-                   help="Girdiyi N dosyalik parcalar halinde isle; her parca "
-                        "ayri bir tray ve ayri bir <cikti>_partNNN.hdf5 uretir. "
-                        "Faydasi: GERCEK yuzde/ETA, ve cokme halinde sadece o "
-                        "parca kaybolur (tamamlanan parcalar atlanir).")
+                   help="process the input in parts of N files; each part is its "
+                        "own tray and its own <output>_partNNN.hdf5.  The benefit: "
+                        "a REAL percentage/ETA, and a crash loses only that part "
+                        "(finished parts are skipped).")
     p.add_argument("--overwrite", action="store_true",
-                   help="--chunk-files ile: var olan parcalari da yeniden uret")
+                   help="with --chunk-files: regenerate parts that already exist")
     p.add_argument("--retries", type=int, default=3,
-                   help="Calisma aninda bozuk dosya cikarsa onu atip kac kez "
-                        "yeniden denensin (varsayilan 3, 0=deneme)")
+                   help="how many times to drop a corrupt file found at run time "
+                        "and retry (default 3, 0=no retry)")
     p.add_argument("--no-hit-statistics", action="store_true",
-                   help="HitStatistics'i hesaplama (L3'te zaten varsa)")
+                   help="do not compute HitStatistics (when L3 already has them)")
     args = p.parse_args()
 
     if not args.input and not args.input_list:
@@ -400,11 +404,12 @@ def main():
     _WANT_USAGE["on"] = args.usage
 
     if args.n > 0 and args.chunk_files > 0:
-        p.error("--n ile --chunk-files birlikte kullanilmaz: --n her parcada "
-                "ayri ayri uygulanir ve anlamsiz sonuc verir.  Smoke test icin "
-                "sadece --n, uretim icin sadece --chunk-files.")
+        p.error("--n and --chunk-files cannot be combined: --n would be "
+                "applied separately to every part and give a meaningless "
+                "result.  Use --n alone for a smoke test and --chunk-files "
+                "alone for production.")
 
-    # --- girdi dosyalarini coz ---
+    # --- resolve the input files ---
     infiles = []
     if args.input_list:
         try:
@@ -412,36 +417,36 @@ def main():
                 infiles = [ln.strip() for ln in fh
                            if ln.strip() and not ln.startswith("#")]
         except OSError as e:
-            sys.exit("--input-list okunamadi: %s" % e)
-        print("Girdi listesi: %s (%d dosya)" % (args.input_list, len(infiles)))
+            sys.exit("could not read --input-list: %s" % e)
+        print("Input list: %s (%d files)" % (args.input_list, len(infiles)))
     for pattern in args.input:
         matched = sorted(glob.glob(pattern))
         infiles.extend(matched if matched else [pattern])
     if not infiles:
-        sys.exit("Girdi dosyasi bulunamadi.")
-    print("Girdi dosyasi:", len(infiles))
+        sys.exit("No input files found.")
+    print("Input files:", len(infiles))
 
-    # --- bozuk dosyalari on taramayla ele ---
+    # --- remove corrupt files with a pre-scan ---
     if args.scan != "off":
         nf = 0 if args.scan == "full" else args.scan_frames
         if args.n > 0 and len(infiles) > 5:
-            print("On tarama (%s)... [%d dosya]" % (args.scan, len(infiles)))
-            print("  NOT: --n verildigi icin tray ilk dosyalarda duracak;")
-            print("       tum listeyi taramak bosuna zaman.  Smoke test'te")
-            print("       tek dosya verin ya da --scan off kullanin.")
+            print("Pre-scan (%s)... [%d files]" % (args.scan, len(infiles)))
+            print("  NOTE: --n was given, so the tray stops in the first files;")
+            print("        scanning the whole list is wasted time.  For a smoke")
+            print("        test pass a single file or use --scan off.")
         else:
-            print("On tarama (%s)..." % args.scan)
+            print("Pre-scan (%s)..." % args.scan)
         infiles, bad = validate_files(infiles, n_frames=nf)
         if bad:
-            print("  [!] %d bozuk dosya elendi:" % len(bad))
+            print("  [!] %d corrupt files dropped:" % len(bad))
             for path, why in bad[:10]:
                 print("      %s\n          %s" % (os.path.basename(path), why))
             if len(bad) > 10:
-                print("      ... (+%d tane daha)" % (len(bad) - 10))
-            _record_bad(args.output_hdf5, [b[0] for b in bad], "on tarama: " + args.scan)
-        print("  Islenecek dosya: %d" % len(infiles))
+                print("      ... (+%d more)" % (len(bad) - 10))
+            _record_bad(args.output_hdf5, [b[0] for b in bad], "pre-scan: " + args.scan)
+        print("  Files to process: %d" % len(infiles))
         if not infiles:
-            sys.exit("Saglam girdi dosyasi kalmadi.")
+            sys.exit("No healthy input file left.")
 
     for out in (args.output_i3, args.output_hdf5):
         if out:
@@ -449,19 +454,19 @@ def main():
 
     keys = build_key_list(is_mc=args.mc, is_noise=args.noise,
                           is_muongun=args.muongun, is_corsika=args.corsika)
-    print("Book edilecek anahtar:", len(keys))
+    print("Keys to book:", len(keys))
 
     # --- tray ---
-    # Tray'i bir fabrika fonksiyonu icinde kuruyoruz: calisma aninda bozuk
-    # dosya cikarsa o dosya haric YENIDEN kurulup calistirilabilsin diye
-    # (bir I3Tray ikinci kez Execute edilemez).
+    # The tray is built inside a factory function so that, when a corrupt
+    # file shows up at run time, it can be REBUILT and rerun without that file
+    # (an I3Tray cannot be Executed twice).
     def build_tray(files):
         tray = I3Tray()
         tray.Add("I3Reader", "reader", FilenameList=[args.gcd] + files)
 
-        # --- asamali sayaclar --------------------------------------------
-        # Olay kaybinin NEREDE oldugunu gormek icin.  "--n ile 200 frame
-        # verdim ama 60 olay cikti" sorusunun cevabi bu dokumde.
+        # --- per-stage counters ------------------------------------------
+        # To see WHERE events are lost.  "I gave --n 200 frames and got 60
+        # events" is answered by this breakdown.
         counter = {"physics": 0, "stream": 0, "n": 0}
 
         def _count_physics(frame):
@@ -498,7 +503,7 @@ def main():
                  classifier_model_dir=args.model_dir,
                  micro_count_uncleaned=args.micro_count_uncleaned)
 
-        # --- L3 kesiminden sonra kalan (book edilecek) ---
+        # --- what survives the L3 cut (and gets booked) ---
         def count(frame):
             counter["n"] += 1
             return True
@@ -533,7 +538,7 @@ def main():
         chunks = [infiles[i:i + args.chunk_files]
                   for i in range(0, len(infiles), args.chunk_files)]
         n_chunks = len(chunks)
-        print("Parca sayisi: %d  (%d dosya/parca)" % (n_chunks, args.chunk_files))
+        print("Parts: %d  (%d files/part)" % (n_chunks, args.chunk_files))
         _emit("[CHUNK] 0/%d files=0/%d booked=0 elapsed=0.0"
               % (n_chunks, len(infiles)))
 
@@ -575,10 +580,10 @@ def main():
         build_tray.output_hdf5 = args.output_hdf5
         build_tray.output_i3 = args.output_i3
         totals, used = _run_tray(build_tray, infiles, args.output_hdf5, args.retries)
-        # --n verildiginde tray erken duruyor: dosya listesinin tamami
-        # OKUNMAMIS olabilir, o yuzden n_l3_files GUVENILIR DEGIL.  Agirlik
-        # boleni olarak kullanilmasin diye None yaziyoruz; load_sample
-        # sidecar'i eksik sayip uyaracak.
+        # With --n the tray stops early, so the file list may not have been
+        # read in full and n_l3_files is NOT RELIABLE.  None is written so it
+        # cannot be used as a weight divisor; load_sample treats the sidecar as
+        # missing and warns.
         _write_meta(args.output_hdf5, dict(
             n_l3_files=(None if args.n > 0 else len(used)),
             n_l3_files_unreliable=bool(args.n > 0),
@@ -597,40 +602,40 @@ def main():
     print("Physics frame           : %d" % n_phys)
     print("  %-22s: %d  (%s)" % (args.sub_event_stream, n_stream,
                                  _pct(n_stream, n_phys)))
-    print("  L3 kesimi sonrasi     : %d  (%s)" % (n_booked, _pct(n_booked, n_stream)))
-    print("Book edilen olay        : %d" % n_booked)
+    print("  after the L3 cut      : %d  (%s)" % (n_booked, _pct(n_booked, n_stream)))
+    print("Events booked           : %d" % n_booked)
 
     if args.n > 0:
-        # --n frame sayisidir, olay sayisi DEGIL.  Tray erken durdugu icin
-        # dosya listesinin tamami okunmamis olabilir.
+        # --n is a frame count, NOT an event count.  Because the tray stops
+        # early, the file list may not have been read in full.
         print()
-        print("NOT: --n %d = %d FRAME (olay degil).  Tray bu sayida frame"
+        print("NOTE: --n %d = %d FRAMES (not events).  The tray stopped after"
               % (args.n, args.n))
-        print("     okuyunca durdu; dosya listesinin tamami okunmamis olabilir.")
-        print("     Dosya listesi: %d dosya (kac tanesinin okundugu belli degil)."
+        print("      reading that many; the file list may not have been read in")
+        print("      full.  File list: %d files (how many were read is unknown)."
               % len(used))
     else:
-        print("Islenen dosya           : %d" % len(used))
+        print("Files processed         : %d" % len(used))
 
     if args.chunk_files > 0 and args.output_hdf5:
-        print("HDF5 parcalari          : %s"
+        print("HDF5 parts              : %s"
               % _part_path(args.output_hdf5, 0).replace("_part000", "_partNNN"))
     else:
         print("HDF5:", args.output_hdf5)
     bl = _bad_list_path(args.output_hdf5)
     if os.path.exists(bl):
-        print("Bozuk dosya listesi:", bl)
+        print("Corrupt file list:", bl)
 
     if n_phys and not n_booked:
         print()
-        print("[!] Hic olay book EDILMEDI.  Sirayla kontrol edin:")
+        print("[!] NO events were booked.  Check in order:")
         if not n_stream:
-            print("    * --sub-event-stream '%s' yanlis olabilir -- hicbir"
+            print("    * --sub-event-stream '%s' may be wrong -- no Physics"
                   % args.sub_event_stream)
-            print("      Physics frame bu stream'de degil.")
+            print("      frame is in that stream.")
         else:
-            print("    * L3 kesimi her seyi eledi -- girdi gercekten L3 ciktisi mi?")
-            print("      Test icin: --no-l3-cut")
+            print("    * the L3 cut removed everything -- is the input really")
+            print("      L3 output?  To test: --no-l3-cut")
 
 
 if __name__ == "__main__":

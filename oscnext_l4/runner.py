@@ -79,10 +79,10 @@ def configure_runner(SAMPLES, PROCESS_PY, GCD):
         print("[!] configure_runner: problems found")
         for x in problems:
             print("    " + x)
-        print("    calisma dizini: %s" % cwd)
+        print("    working directory: %s" % cwd)
         print()
-        print("    Jupyter'i DOGRU dizinden baslatmis olmalisin -- kernel")
-        print("    yeniden baslatmak yetmez, calisma dizini sunucudan gelir:")
+        print("    Jupyter must be started from the RIGHT directory -- a kernel")
+        print("    restart is not enough, the cwd comes from the server:")
         print("        cd ~/l4/osncnextl4 && python -m jupyter lab ...")
     else:
         print("configure_runner OK  (cwd: %s)" % cwd)
@@ -105,10 +105,10 @@ def _fmt_eta(sec):
     if sec is None or sec != sec or sec < 0:
         return "?"
     sec = int(sec)
-    # Birimler acikca: sn / dk / sa.  ("8d32s" gibi kisaltmalar belirsizdi --
-    # d hem dakika hem gun, s hem saniye hem saat okunabiliyordu.)
+    # Units spelled out: s / min / h.  (Abbreviations like "8d32s" were
+    # ambiguous -- d could read as minute or day, s as second or hour.)
     if sec < 60:
-        return "%dsn" % sec
+        return "%ds" % sec
     if sec < 3600:
         return "%ddk%02dsn" % (sec // 60, sec % 60)
     return "%dsa%02ddk" % (sec // 3600, (sec % 3600) // 60)
@@ -236,7 +236,7 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
                 continue
 
             if line.startswith(("Pre-scan", "  scanned:", "  Files to process",
-                                "Parca sayisi", "  [!]")) and b:
+                                "Parts:", "  [!]")) and b:
                 b.update(0, line.strip()[:70])
     finally:
         p.wait()
@@ -303,15 +303,15 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
 
 
 # ---------------------------------------------------------------------------
-# Paralel calistirma
+# Parallel execution
 # ---------------------------------------------------------------------------
 #
-# The biggest speedup is here.  process_L4.py is single process, single core
-# kullaniyor; cobalt'ta onlarca cekirdek var.  Girdi dosyalarini N gruba
-# bolup N ayri process_L4.py surecinde islemek neredeyse dogrusal hizlanma
+# The biggest speedup is here.  process_L4.py uses a single process on a
+# single core, while cobalt has dozens.  Splitting the input files into N
+# groups and running N separate process_L4.py workers is almost linear
 # -- separate processes, separate output files, no shared state.
 #
-# Cikti adlari:  L4_nue_job0_part000.hdf5, L4_nue_job1_part000.hdf5, ...
+# Output names:  L4_nue_job0_part000.hdf5, L4_nue_job1_part000.hdf5, ...
 # They all match the notebook's L4_nue*.hdf5 glob, and each part writes its
 # .meta.json'ini yazar, n_l3_files dogru toplanir.
 #

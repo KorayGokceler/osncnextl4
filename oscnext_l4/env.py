@@ -176,10 +176,10 @@ def get_I3Tray():
         return I3Tray
     except ImportError as exc:
         raise IceTrayNotAvailable(
-            "icecube paketi import edildi ama I3Tray bulunamadi.\n"
-            "Denenen yerler: icecube.icetray.I3Tray, I3Tray.I3Tray,\n"
+            "the icecube package imported but I3Tray was not found.\n"
+            "Tried: icecube.icetray.I3Tray, I3Tray.I3Tray,\n"
             "                icecube.icetray.i3tray.I3Tray\n"
-            "Build eksik derlenmis olabilir: python diagnose_env.py\n"
+            "The build may be incomplete: python scripts/diagnose_env.py\n"
             "Original error: %s" % exc) from exc
 
 
@@ -205,8 +205,8 @@ def optional_project(name, required_for=None):
     '''
     Import `icecube.<name>`.  Return None and record it as missing if absent.
 
-    Modul seviyesinde sert import yerine bunu kullanin: tek eksik proje tum
-    repoyu import edilemez hale getirmesin.
+    Use this instead of a hard import at module level, so that one missing
+    project does not make the whole repository unimportable.
     '''
     require_icetray()
     try:
@@ -245,11 +245,11 @@ def require_project(name):
     if mod is None:
         purpose = _PROJECT_PURPOSE.get(name, "")
         raise IceTrayNotAvailable(
-            "icecube.%s bu ortamda YOK.\n"
-            "Gerekli oldugu yer: %s\n"
-            "Build'inizde bu proje derlenmemis.  src/%s var mi kontrol edip\n"
-            "yeniden derleyin, ya da cvmfs metaproject'ini kullanin.\n"
-            "Ayrinti: python diagnose_env.py" % (name, purpose, name))
+            "icecube.%s is NOT in this environment.\n"
+            "Needed for: %s\n"
+            "The project was not built here.  Check whether src/%s exists and\n"
+            "rebuild, or use a cvmfs metaproject.\n"
+            "Details: python scripts/diagnose_env.py" % (name, purpose, name))
 
 
 def load_lib(libname, required=False):
@@ -271,7 +271,7 @@ def load_lib(libname, required=False):
 
 
 # ---------------------------------------------------------------------------
-# DeepCore DOM listeleri  --  DeepCore_Filter yoksa
+# DeepCore DOM lists  --  when DeepCore_Filter is absent
 # ---------------------------------------------------------------------------
 #
 # DOMS.DOMS("IC86") her frame'de yeniden kurulmasin diye burada cache'lenir
@@ -337,9 +337,9 @@ def have_lightgbm():
 
 def find_env_shells():
     '''
-    Sistemde bulunabilen env-shell.sh adaylarini dondur.
+    Return the env-shell.sh candidates found on this system.
 
-    Sirasiyla: I3_BUILD, yerel build dizinleri, cvmfs metaproject'leri.
+    In order: I3_BUILD, local build directories, cvmfs metaprojects.
     '''
     found = []
 
