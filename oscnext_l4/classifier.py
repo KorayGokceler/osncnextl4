@@ -1,19 +1,19 @@
 '''
-L4 siniflandirici uygulama modulu -- icecube.oscNext.tools.classifier.I3Classifier
-yerine gecer.
+L4 classifier application module -- the replacement for
+icecube.oscNext.tools.classifier.I3Classifier.
 
-oscNext projesi meta-projede bulunmadigi icin I3Classifier kullanilamiyor.  Bu
-modul ayni isi yapar:  modeli yukle -> frame'den degiskenleri oku -> tahmin et
--> I3Double olarak frame'e yaz.
+The oscNext project is absent from the meta-project, so I3Classifier is not
+available.  This module does the same job: load the model -> read the
+variables out of the frame -> predict -> write an I3Double into the frame.
 
-BAGIMLILIKLAR: sadece lightgbm + numpy.
-IceTray ortaminda (py3-v4.4.2) sklearn ve joblib YOK, o yuzden model native
-metin formatinda okunur:
+DEPENDENCIES: lightgbm + numpy, nothing else.
+sklearn and joblib do NOT exist in the IceTray environment (py3-v4.4.2), so
+the model is read in the native text format:
 
-    L4_noise_model.txt    LightGBM agaclari
-    L4_noise_model.json   degisken listesi (SIRA ONEMLI) + sinif haritasi
+    L4_noise_model.txt    the LightGBM trees
+    L4_noise_model.json   the feature list (ORDER MATTERS) + class map
 
-Kullanim:
+Usage:
 
     from oscnext_l4.classifier import L4Classifier, add_L4_classifiers
 
@@ -21,7 +21,7 @@ Kullanim:
              ModelFile="models/L4_noise_model.txt",
              OutputKey="L4_NoiseClassifier_ProbNu")
 
-    # ya da ikisi birden + kesim:
+    # or both at once, with the cut:
     add_L4_classifiers(tray, "L4_cut", model_dir="models")
 '''
 
@@ -73,7 +73,7 @@ FEATURE_MAP = {
     "z_sigma":          (HITSTAT, "z_sigma"),   # yoksa cog_z_sigma -- read_feature dener
     "z_travel":         (HITSTAT, "z_travel"),
 
-    # --- aday / turetilmis girdiler icin ---
+    # --- candidate / derived inputs ---
     "VICH_npulses":       ("L4_VICH_npulses", "value"),
     "VICH_qtot":          ("L4_VICH_qtot", "value"),
     "separation_in_cogs": ("L4_separation_in_cogs", "value"),
@@ -96,7 +96,7 @@ FEATURE_MAP = {
 }
 
 
-# Sutun adi surumlere gore degisebilen alanlar icin alternatifler
+# Alternatives for fields whose column name changes between versions
 COLUMN_ALTS = {
     ("L4_iLineFitParams", "lf_vel"): ["LFVel", "speed"],
     (HITSTAT, "z_sigma"):            ["cog_z_sigma"],
@@ -134,20 +134,20 @@ def read_feature(frame, name):
 
 
 # ---------------------------------------------------------------------------
-# Model yukleme
+# Model loading
 # ---------------------------------------------------------------------------
 
 def load_model(model_file):
     '''
-    Native LightGBM modeli + JSON yan dosyasini yukle.
+    Load the native LightGBM model plus its JSON sidecar.
 
-    model_file .txt yolu; yanindaki .json otomatik bulunur.
-    Donen: (booster, features, sidecar)
+    model_file is the .txt path; the .json next to it is found
+    automatically.  Returns (booster, features, sidecar).
     '''
     import lightgbm as lgb
 
     if not os.path.exists(model_file):
-        raise IOError("Model dosyasi yok: %s" % model_file)
+        raise IOError("model file not found: %s" % model_file)
 
     booster = lgb.Booster(model_file=model_file)
 
@@ -157,25 +157,25 @@ def load_model(model_file):
             sidecar = json.load(fh)
         features = list(sidecar["features"])
     else:
-        # Yan dosya yoksa modelin kendi degisken isimlerine guven
+        # No sidecar -> trust the feature names stored in the model itself
         icetray.logging.log_warn(
             "l4_classifier: %s bulunamadi, degisken sirasi booster'dan aliniyor"
             % json_file)
         sidecar = {}
         features = list(booster.feature_name())
 
-    # Tutarlilik kontrolu -- sessiz hatanin en olasi kaynagi burasi
+    # Consistency check -- the most likely source of a silent error
     bn = list(booster.feature_name())
     if bn and bn != features:
         raise ValueError(
-            "Degisken sirasi uyusmuyor!\n  booster: %s\n  json   : %s"
+            "feature order mismatch!\n  booster: %s\n  json   : %s"
             % (bn, features))
 
     unknown = [f for f in features if f not in FEATURE_MAP]
     if unknown:
         raise KeyError(
-            "FEATURE_MAP'te tanimsiz degisken(ler): %s\n"
-            "l4_classifier_module.py icindeki FEATURE_MAP'e ekleyin." % unknown)
+            "variable(s) not defined in FEATURE_MAP: %s\n"
+            "Add them to FEATURE_MAP in oscnext_l4/classifier.py." % unknown)
 
     return booster, features, sidecar
 
@@ -185,17 +185,17 @@ def load_model(model_file):
 # ---------------------------------------------------------------------------
 
 class L4Classifier(icetray.I3ConditionalModule):
-    '''Egitilmis bir LightGBM modelini frame bazinda uygular.'''
+    '''Apply a trained LightGBM model frame by frame.'''
 
     def __init__(self, context):
         icetray.I3ConditionalModule.__init__(self, context)
-        self.AddParameter("ModelFile", "L4_*_model.txt yolu", None)
-        self.AddParameter("OutputKey", "Yazilacak I3Double anahtari", None)
+        self.AddParameter("ModelFile", "path to L4_<tag>_model.txt", None)
+        self.AddParameter("OutputKey", "frame key the I3Double is written to", None)
         self.AddParameter("MissingValue",
-                          "Eksik degisken icin kullanilacak deger "
-                          "(NaN -> LightGBM kendi isler)", np.nan)
+                          "value used for a missing variable "
+                          "(NaN -> LightGBM handles it itself)", np.nan)
         self.AddParameter("SkipIfIncomplete",
-                          "Degiskenlerin hepsi eksikse frame'i atla", False)
+                          "skip the frame when every variable is missing", False)
         self.AddOutBox("OutBox")
 
     def Configure(self):
@@ -216,7 +216,7 @@ class L4Classifier(icetray.I3ConditionalModule):
         print("  agac     : %d,  degisken: %d" %
               (self.booster.num_trees(), len(self.features)))
         if self.sidecar:
-            print("  egitim   : %s (lightgbm %s)" %
+            print("  trained  : %s (lightgbm %s)" %
                   (self.sidecar.get("trained", "?"),
                    self.sidecar.get("lightgbm_version", "?")))
             print("  varsayilan kesim: %s" % self.sidecar.get("default_cut", "?"))
@@ -270,10 +270,10 @@ CUT_KEY   = "L4_Cut_Bool"
 def add_L4_classifiers(tray, name, model_dir,
                        noise_cut=0.70, muon_cut=0.65, apply_cut=True):
     '''
-    Her iki siniflandiriciyi ekle ve L4 kesimini hesapla.
+    Add both classifiers and compute the combined L4 cut.
 
-    Kesim degerleri v00.07 referansi; kendi modelinizin optimal degerini
-    train_L4_classifier.py'nin rate-vs-cut grafiginden secin.
+    The cut values are the v00.07 reference.  Pick your own model's optimum
+    from the efficiency-vs-rejection plot train_L4_classifier.py writes.
     '''
     tray.Add(L4Classifier, name + "_noise",
              ModelFile=os.path.join(model_dir, "L4_noise_model.txt"),

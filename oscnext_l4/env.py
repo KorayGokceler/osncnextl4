@@ -1,28 +1,27 @@
 '''
-IceTray ortam koprusu -- "icetray import edilmiyor" hatasinin tek adresi.
+IceTray environment bridge -- the single address for "icetray will not import".
 
-Bu repodaki tum icetray'e bagimli moduller `icecube` paketini DOGRUDAN import
-etmek yerine buradan gecer.  Neden:
+Every icetray-dependent module in this repository goes through here instead of
+importing the `icecube` package DIRECTLY.  Why:
 
-  1. `import icecube` basarisiz oldugunda Python'un verdigi
-     "ModuleNotFoundError: No module named 'icecube'" mesaji hicbir sey
-     anlatmaz.  Burasi bunun yerine ortami inceleyip SEBEBI soyler
-     (env-shell'e girilmemis / yanlis Jupyter kernel'i / build sourcelanmamis).
+  1. When `import icecube` fails, Python's
+     "ModuleNotFoundError: No module named 'icecube'" says nothing useful.
+     This module inspects the environment and reports the REASON instead
+     (env-shell not entered / wrong Jupyter kernel / build not sourced).
 
-  2. `I3Tray` icetray surumune gore iki farkli yerde:
-        icetray v1.5+           -> from icecube.icetray import I3Tray
-        combo / v1.4 ve oncesi  -> from I3Tray import I3Tray
-     Kendi derledigin bir build'de hangisi oldugu belli olmaz; burada ikisi de
-     denenir.
+  2. `I3Tray` lives in two different places depending on the icetray version:
+        icetray v1.5+            -> from icecube.icetray import I3Tray
+        combo / v1.4 and earlier -> from I3Tray import I3Tray
+     In a self-compiled build you cannot tell which; both are tried here.
 
-  3. `tensor_of_inertia`, `fill_ratio`, `DeepCore_Filter` gibi projeler bir
-     meta-projede olmayabilir.  Modul seviyesinde sert import edilirlerse TEK
-     eksik proje tum repoyu import edilemez hale getirir.  Burada opsiyonel
-     import + net hata mesaji var.
+  3. Projects such as `tensor_of_inertia`, `fill_ratio` and `DeepCore_Filter`
+     may be absent from a meta-project.  Imported hard at module level, ONE
+     missing project makes the whole repository unimportable.  Here the import
+     is optional and the error message is explicit.
 
-Kullanim:
+Usage:
 
-    from icetray_env import require_icetray, get_I3Tray, optional_project
+    from oscnext_l4.env import require_icetray, get_I3Tray, optional_project
 
     icecube = require_icetray()
     I3Tray  = get_I3Tray()
@@ -60,58 +59,58 @@ def _env_report():
     i3_shell = os.environ.get("I3_SHELL")
     srv = os.environ.get("SROOT")
 
-    a("I3_BUILD : %s" % (i3_build or "<bos>"))
-    a("I3_SRC   : %s" % (i3_src or "<bos>"))
-    a("I3_SHELL : %s" % (i3_shell or "<bos>"))
-    a("SROOT    : %s" % (srv or "<bos>"))
+    a("I3_BUILD : %s" % (i3_build or "<unset>"))
+    a("I3_SRC   : %s" % (i3_src or "<unset>"))
+    a("I3_SHELL : %s" % (i3_shell or "<unset>"))
+    a("SROOT    : %s" % (srv or "<unset>"))
     a("")
 
-    # --- Tani
+    # --- Diagnosis
     if not srv and not i3_build:
-        a("TANI: Ne cvmfs python ortami (SROOT) ne de bir icetray build")
-        a("      (I3_BUILD) tanimli.  Hicbir ortam yuklenmemis.")
+        a("DIAGNOSIS: neither the cvmfs python environment (SROOT) nor an")
+        a("      icetray build (I3_BUILD) is set.  No environment is loaded.")
         a("")
-        a("COZUM:")
-        a("      ./setup_env.sh                 # ne oldugunu soyler")
-        a("      ./setup_env.sh shell           # icetray shell'i acar")
+        a("REMEDY:")
+        a("      ./setup_env.sh                 # says what it found")
+        a("      ./setup_env.sh shell           # opens the icetray shell")
     elif srv and not i3_build:
-        a("TANI: cvmfs python ortami yuklu (setup.sh calistirilmis) ama")
-        a("      icetray env-shell.sh CALISTIRILMAMIS.  setup.sh tek basina")
-        a("      icecube paketini PYTHONPATH'e koymaz.")
+        a("DIAGNOSIS: the cvmfs python environment is loaded (setup.sh was")
+        a("      run) but the icetray env-shell.sh was NOT.  setup.sh alone")
+        a("      does not put the icecube package on PYTHONPATH.")
         a("")
-        a("COZUM: env-shell.sh de calistirin:")
-        a("      $I3_BUILD/env-shell.sh          # kendi derlediginiz build")
-        a("      ...ya da metaproject env-shell.sh'i")
+        a("REMEDY: run env-shell.sh as well:")
+        a("      $I3_BUILD/env-shell.sh          # your own build")
+        a("      ...or a metaproject env-shell.sh")
         a("")
-        a("      DIKKAT: env-shell.sh YENI BIR SHELL acar.  Bir script'in")
-        a("      icinden ard arda yazarsaniz sonraki satirlar o shell'de")
-        a("      CALISMAZ.  Tek komut icin:")
-        a("          $I3_BUILD/env-shell.sh -- python process_L4.py ...")
+        a("      CAREFUL: env-shell.sh opens a NEW SHELL.  Writing it and the")
+        a("      next command on consecutive lines of a script means the")
+        a("      later lines DO NOT run in it.  For a single command:")
+        a("          $I3_BUILD/env-shell.sh -- python scripts/process_L4.py ...")
     elif i3_build:
-        a("TANI: I3_BUILD tanimli (%s) ama" % i3_build)
-        a("      bu python icecube paketini bulamiyor.")
+        a("DIAGNOSIS: I3_BUILD is set (%s) but this" % i3_build)
+        a("      python cannot find the icecube package.")
         a("")
         libdir = os.path.join(i3_build, "lib")
         if not os.path.isdir(libdir):
-            a("      %s YOK -> build tamamlanmamis." % libdir)
-            a("      COZUM: build dizininde `ninja` (veya `make`) calistirin.")
+            a("      %s is MISSING -> the build never completed." % libdir)
+            a("      REMEDY: run `ninja` (or `make`) in the build directory.")
         elif not os.path.isdir(os.path.join(libdir, "icecube")):
-            a("      %s/icecube YOK -> derleme yarim." % libdir)
-            a("      COZUM: build dizininde `ninja` (veya `make`) calistirin.")
+            a("      %s/icecube is MISSING -> the build is half done." % libdir)
+            a("      REMEDY: run `ninja` (or `make`) in the build directory.")
         elif libdir not in sys.path:
-            a("      %s var ama sys.path'te DEGIL." % libdir)
-            a("      TIPIK SEBEP: Jupyter kernel'i icetray ortami disinda")
-            a("      baslatilmis.  Notebook'un kernel'i env-shell icinden")
-            a("      kaydedilmis olmali:")
+            a("      %s exists but is NOT on sys.path." % libdir)
+            a("      TYPICAL CAUSE: the Jupyter kernel was started outside the")
+            a("      icetray environment.  The notebook's kernel has to be")
+            a("      registered from inside env-shell:")
             a("          ./setup_env.sh kernel")
-            a("      sonra notebook'ta Kernel > Change Kernel > 'IceTray'.")
+            a("      then in the notebook: Kernel > Change Kernel > 'IceTray'.")
         else:
-            a("      lib dizini sys.path'te -- muhtemelen ABI/python surum")
-            a("      uyusmazligi.  Build'i hangi cvmfs py3-vX ile derlediyseniz")
-            a("      AYNISINI source edin.")
+            a("      the lib directory is on sys.path -- most likely an")
+            a("      ABI/python version mismatch.  Source the SAME cvmfs")
+            a("      py3-vX you compiled the build against.")
 
     a("")
-    a("Detay icin:  python diagnose_env.py")
+    a("For details:  python scripts/diagnose_env.py")
     a("=" * 72)
     return "\n".join(lines)
 
@@ -128,7 +127,7 @@ _icecube = None
 
 
 def require_icetray():
-    '''`icecube` paketini import et; olmazsa ACIKLAYICI bir hata firlat.'''
+    '''Import the `icecube` package, or raise an EXPLANATORY error.'''
     global _icecube
     if _icecube is not None:
         return _icecube
@@ -136,13 +135,13 @@ def require_icetray():
         import icecube  # noqa: F401
     except ImportError as exc:
         raise IceTrayNotAvailable(
-            "%s\n\nOrijinal hata: %s" % (_env_report(), exc)) from exc
+            "%s\n\nOriginal error: %s" % (_env_report(), exc)) from exc
     _icecube = icecube
     return icecube
 
 
 def have_icetray():
-    '''Sessiz kontrol -- notebook gibi icetray'siz ortamlar icin.'''
+    '''Quiet check -- for environments without icetray, such as a notebook.'''
     try:
         importlib.import_module("icecube")
         return True
@@ -181,14 +180,14 @@ def get_I3Tray():
             "Denenen yerler: icecube.icetray.I3Tray, I3Tray.I3Tray,\n"
             "                icecube.icetray.i3tray.I3Tray\n"
             "Build eksik derlenmis olabilir: python diagnose_env.py\n"
-            "Orijinal hata: %s" % exc) from exc
+            "Original error: %s" % exc) from exc
 
 
 # ---------------------------------------------------------------------------
 # Opsiyonel projeler
 # ---------------------------------------------------------------------------
 
-# proje adi -> onu kullanan L4 degiskeni (hata mesajinda gosterilir)
+# project name -> the L4 variable that needs it (shown in the error message)
 _PROJECT_PURPOSE = {
     "DomTools":          "I3OMSelection / I3TimeWindowCleaning (micro_count)",
     "STTools":           "SeededRT temizleme (micro_count)",
@@ -204,7 +203,7 @@ _missing = []
 
 def optional_project(name, required_for=None):
     '''
-    `icecube.<name>` import et.  Yoksa None dondur ve eksikler listesine ekle.
+    Import `icecube.<name>`.  Return None and record it as missing if absent.
 
     Modul seviyesinde sert import yerine bunu kullanin: tek eksik proje tum
     repoyu import edilemez hale getirmesin.
@@ -219,7 +218,7 @@ def optional_project(name, required_for=None):
 
 
 def report_missing(stream=sys.stderr):
-    '''Eksik projeleri ozetle.  process_L4.py basta bunu cagirir.'''
+    '''Summarise the missing projects.  process_L4.py calls this at startup.'''
     if not _missing:
         return False
     print("", file=stream)
@@ -231,7 +230,8 @@ def report_missing(stream=sys.stderr):
         print("  icecube.%-20s %s" % (name, purpose), file=stream)
         print("      %s" % exc, file=stream)
     print("", file=stream)
-    print("  Bu projeler meta-projede yok ya da build'de derlenmemis.", file=stream)
+    print("  These projects are absent from the meta-project or were not built.",
+          file=stream)
     print("  Kendi build'inizde: src/ altinda var mi bakin, sonra yeniden derleyin.",
           file=stream)
     print("  Ayrinti: python diagnose_env.py", file=stream)
@@ -240,7 +240,7 @@ def report_missing(stream=sys.stderr):
 
 
 def require_project(name):
-    '''optional_project gibi ama yoksa net bir hata firlatir.'''
+    '''Like optional_project, but raises an explicit error when absent.'''
     mod = optional_project(name)
     if mod is None:
         purpose = _PROJECT_PURPOSE.get(name, "")
@@ -256,7 +256,7 @@ def load_lib(libname, required=False):
     '''
     C++ modul kutuphanesi yukle (icetray.load).  Basarili ise True.
 
-    `slc-veto`, `static-twc` gibi kutuphaneler her build'de yok.
+    Libraries such as `slc-veto` and `static-twc` are not in every build.
     '''
     require_icetray()
     from icecube import icetray
@@ -275,7 +275,7 @@ def load_lib(libname, required=False):
 # ---------------------------------------------------------------------------
 #
 # DOMS.DOMS("IC86") her frame'de yeniden kurulmasin diye burada cache'lenir
-# (eskiden VICH icinde olay basina cagriliyordu -- gereksiz yavaslik).
+# (it used to be called per event inside VICH -- pointless slowdown).
 
 _doms_cache = {}
 
@@ -284,8 +284,8 @@ def deepcore_doms(detector="IC86"):
     '''
     icecube.DeepCore_Filter.DOMS.DOMS(detector) -- cache'li.
 
-    DeepCore_Filter projesi yoksa hata firlatir.  Bu listeler VICH ve
-    micro_count'un TANIMI; tahmini bir liste ile doldurmak sessizce yanlis
+    Raises when the DeepCore_Filter project is absent.  These lists are the
+    DEFINITION of VICH and micro_count; filling them with a guess would give
     fizik uretir, o yuzden fallback YOK.
     '''
     if detector in _doms_cache:
@@ -298,7 +298,7 @@ def deepcore_doms(detector="IC86"):
 
 
 def deepcore_veto_domset(detector="IC86"):
-    '''VICH icin veto OMKey seti -- olay basina degil, bir kez kurulur.'''
+    '''The veto OMKey set for VICH -- built once, not per event.'''
     key = ("veto", detector)
     if key not in _doms_cache:
         _doms_cache[key] = set(deepcore_doms(detector).DeepCoreVetoDOMs)
@@ -307,12 +307,11 @@ def deepcore_veto_domset(detector="IC86"):
 
 def deepcore_fiducial_domset(detector="IC86"):
     '''
-    Fiducial OMKey seti -- VICH'in COG'u BUNLARLA sinirlanmali.
+    The fiducial OMKey set -- VICH's COG must be restricted to THESE.
 
-    Teknik not §3.4: "the center-of-gravity (COG) of the hits inside the
-    FIDUCIAL VOLUME is calculated".  Bu, DeepCore Filter'in (L2) kendi
-    fiducial/veto ayrimi; L3'un Tablo 7'deki daha genis fiducial tanimi
-    DEGIL.
+    Technical note sec. 3.4: "the center-of-gravity (COG) of the hits inside
+    the FIDUCIAL VOLUME is calculated".  That is the DeepCore Filter's (L2)
+    own fiducial/veto split, NOT L3's wider fiducial definition from Table 7.
     '''
     key = ("fiducial", detector)
     if key not in _doms_cache:
@@ -323,8 +322,8 @@ def deepcore_fiducial_domset(detector="IC86"):
 # ---------------------------------------------------------------------------
 # lightgbm
 # ---------------------------------------------------------------------------
-# Egitim ve uygulama tarafinin tek ML bagimliligi.  `icecube` isim alaninda
-# DEGIL, siradan bir pip paketi -- IceTray ortaminda kurulu gelir.
+# The only ML dependency of both training and application.  NOT in the
+# `icecube` namespace -- an ordinary pip package, present in IceTray.
 
 
 def have_lightgbm():
@@ -352,8 +351,8 @@ def find_env_shells():
 
     home = os.path.expanduser("~")
     user = os.environ.get("USER") or os.path.basename(home)
-    # /data/user/$USER en olasi yer: cobalt'ta home kotali oldugu icin
-    # build oraya yapiliyor (bkz. README).
+    # /data/user/$USER is the likeliest place: home is quota-limited on
+    # cobalt, so builds go there (see README).
     for pat in ("/data/user/%s/icetray_build/build/env-shell.sh" % user,
                 "/data/user/%s/*/build/env-shell.sh" % user,
                 "/data/user/%s/build/env-shell.sh" % user,
@@ -393,7 +392,7 @@ if __name__ == "__main__":
         print("Bulunan env-shell.sh adaylari:")
         cands = find_env_shells()
         if not cands:
-            print("  (yok)")
+            print("  (none)")
         for kind, path in cands:
             print("  [%-12s] %s" % (kind, path))
         sys.exit(1)

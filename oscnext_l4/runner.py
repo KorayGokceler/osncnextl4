@@ -1,30 +1,30 @@
 """
-process_L4.py surucusu + canli ilerleme cubugu.
+Driver for scripts/process_L4.py, with a live progress bar.
 
-NEDEN AYRI DOSYA: notebook .gitignore'da (calistirilinca cikti hucreleri
-degisiyor ve her `git pull`u blokluyordu).  Mantik burada durursa
-versiyonlu kalir ve guncellemeler `git pull` ile gelir; notebook tarafinda
-sadece birkac satirlik cagri kalir.
+WHY A SEPARATE FILE: running the notebook rewrites its output cells, which
+used to block every `git pull`.  With the logic here it stays versioned and
+updates arrive through `git pull`, leaving only a few lines of call in the
+notebook.
 
-KULLANIM (notebook):
+USAGE (notebook):
 
-    from l4_run import configure_runner, run_process, run_all
+    from oscnext_l4.runner import configure_runner, run_process, run_all
     configure_runner(SAMPLES, PROCESS_PY, GCD)
 
     run_process("nue", n_frames=200)     # smoke test
-    results = run_all(chunk_files=10)    # tum ornekler, ilerleme cubuguyla
+    results = run_all(chunk_files=10)    # every sample, with a progress bar
 
-process_L4.py stdout'a makine okunur satirlar basiyor:
+process_L4.py prints machine-readable lines to stdout:
 
     [CHUNK] 3/10 files=30/100 booked=1840 elapsed=312.4
     [PROGRESS] frames=15000 physics=7100 booked=4300 elapsed=98.2 rate=152.7
 
-Buradaki kod onlari ayristirip cubugu gunceller.  ipywidgets varsa gercek
-cubuk, yoksa tek satirlik ASCII cubuk (terminalden de calisir).
+The code here parses them and updates the bar.  With ipywidgets it is a real
+widget, otherwise a single-line ASCII bar (which also works from a terminal).
 
-ONEMLI: alt surec `python -u` ile baslatiliyor.  Onsuz Python stdout'u bir
-pipe'a yazarken tamamen tamponlar ve satirlar is bitene kadar gelmez --
-ilerleme diye bir sey gorunmez.
+IMPORTANT: the subprocess is started with `python -u`.  Without it Python
+fully buffers stdout when writing into a pipe and no line arrives until the
+job is over -- there would be no progress to show.
 """
 
 import os
@@ -54,13 +54,13 @@ _CFG = {"SAMPLES": None, "PROCESS_PY": None, "GCD": None}
 
 def configure_runner(SAMPLES, PROCESS_PY, GCD):
     """
-    Notebook'taki tanimlari bu module tanit.  Bir kez cagrilir.
+    Register the notebook's definitions with this module.  Called once.
 
-    Yollari BURADA dogruluyoruz.  Aksi halde process_L4.py bulunamadiginda
-    alt surec anlamsiz bir "returncode=2" ile oluyor ve sebebi gorunmuyor.
-    Tipik sebep: Jupyter eski/silinmis bir dizinden baslatilmis (calisma
-    dizini ~/.local/share/Trash/... cikar) -- goreli "./process_L4.py"
-    orada aranir.
+    The paths are validated HERE.  Otherwise a missing process_L4.py makes the
+    subprocess die with a meaningless "returncode=2" and no visible cause.
+    The typical reason is a Jupyter server started from an old or deleted
+    directory (the working directory then reads ~/.local/share/Trash/...),
+    where a relative path is resolved against the wrong place.
     """
     _CFG["SAMPLES"] = SAMPLES
     _CFG["PROCESS_PY"] = PROCESS_PY
@@ -69,14 +69,14 @@ def configure_runner(SAMPLES, PROCESS_PY, GCD):
     cwd = os.getcwd()
     problems = []
     if not os.path.exists(PROCESS_PY):
-        problems.append("process_L4.py bulunamadi: %s" % os.path.abspath(PROCESS_PY))
+        problems.append("process_L4.py not found: %s" % os.path.abspath(PROCESS_PY))
     if not os.path.exists(GCD):
-        problems.append("GCD bulunamadi: %s" % GCD)
+        problems.append("GCD not found: %s" % GCD)
     if "Trash" in cwd or "/.Trash" in cwd:
-        problems.append("calisma dizini COP KUTUSUNDA: %s" % cwd)
+        problems.append("the working directory is in the TRASH: %s" % cwd)
 
     if problems:
-        print("[!] configure_runner: sorun var")
+        print("[!] configure_runner: problems found")
         for x in problems:
             print("    " + x)
         print("    calisma dizini: %s" % cwd)
@@ -115,7 +115,7 @@ def _fmt_eta(sec):
 
 
 class _Bar:
-    """ipywidgets varsa gercek cubuk, yoksa tek satir ASCII."""
+    """A real widget when ipywidgets is available, else a one-line ASCII bar."""
 
     def __init__(self, label, total=None):
         self.label, self.total, self.t0 = label, total, time.time()
@@ -139,7 +139,7 @@ class _Bar:
         if _HAS_W:
             if self.total:
                 # total kurulumdan SONRA atanmis olabilir ([CHUNK] satirindan)
-                # -> widget'in max'ini da guncelle, yoksa cubuk hic dolmaz.
+                # -> update the widget's max too, or the bar never fills.
                 if self.w.max != self.total:
                     self.w.max = self.total
                 self.w.value = min(done, self.total)
@@ -180,9 +180,9 @@ class _Bar:
 def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
                 run_optional=False, extra_args=None):
     """
-    process_L4.py'yi bir ornek icin calistir, canli ilerleme goster.
+    Run process_L4.py for one sample and show live progress.
 
-    chunk_files : kac L3 dosyasi bir parcada islensin (0 = tek parca).
+    chunk_files : how many L3 files go into one part (0 = a single part).
                   >0 ise gercek yuzde/ETA ve cokme sonrasi devam.
     n_frames    : >0 ise smoke test (chunk_files otomatik kapanir).
     extra_args  : process_L4.py'ye oldugu gibi eklenecek ek bayraklar,
@@ -193,7 +193,7 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
     if n_frames:
-        chunk_files = 0                      # --n ile birlikte kullanilamaz
+        chunk_files = 0                      # cannot be combined with --n
 
     cmd = [sys.executable, "-u", _cfg("PROCESS_PY"),
            "--gcd", _cfg("GCD"), "--input", cfg["l3"],
@@ -224,18 +224,18 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
             if m and b:
                 done, total, fdone, ftot, booked, el = m.groups()
                 b.total = int(total)
-                b.update(int(done), "dosya %s/%s  olay %s" % (fdone, ftot, booked))
+                b.update(int(done), "files %s/%s  events %s" % (fdone, ftot, booked))
                 continue
 
             m = _PROG_RE.match(line)
             if m and b:
                 frames, phys, booked, el, rate = m.groups()
                 if not b.total:
-                    b.update(0, "frame %s  olay %s  %s fr/s  %s" %
+                    b.update(0, "frames %s  events %s  %s fr/s  %s" %
                              (frames, booked, rate, _fmt_eta(float(el))))
                 continue
 
-            if line.startswith(("On tarama", "  taranan:", "  Islenecek dosya",
+            if line.startswith(("Pre-scan", "  scanned:", "  Files to process",
                                 "Parca sayisi", "  [!]")) and b:
                 b.update(0, line.strip()[:70])
     finally:
@@ -251,7 +251,7 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
 
     parts = sorted(glob.glob(out.replace(".hdf5", "*.hdf5")))
     sz = sum(os.path.getsize(f) for f in parts) / 1e6
-    msg = "%.1f MB, %d dosya, %.0f s" % (sz, len(parts), dt)
+    msg = "%.1f MB, %d files, %.0f s" % (sz, len(parts), dt)
     if b:
         b.done(msg)
     if log_tail:
@@ -263,16 +263,16 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
 def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
             extra_args=None):
     """
-    Tum ornekleri sirayla isle -- her biri icin ayri cubuk + genel ilerleme.
+    Process every sample in turn -- one bar each, plus an overall bar.
 
-    samples       : islenecek ornek adlari (varsayilan: SAMPLES'in hepsi)
-    chunk_files   : kac L3 dosyasi bir parcada islensin.  >0 ise gercek
+    samples       : sample names to process (default: all of SAMPLES)
+    chunk_files   : how many L3 files go into one part.  >0 gives a real
                     yuzde/ETA ve cokme sonrasi kaldigi yerden devam.
-    jobs          : HIZLANDIRMA.  >1 ise her ornek N paralel surecte islenir
+    jobs          : SPEEDUP.  >1 processes each sample in N parallel workers
                     (run_process_parallel).  cobalt paylasilan makine:
-                    8 makul, 64 degil.
+                    8 is reasonable, 64 is not.
     run_optional : also compute the non-BDT variables (I3TensorOfInertia,
-                    separation_in_cogs).  Ikisi de Tablo 11/12'de yok.
+                    separation_in_cogs).  Neither is in Table 11/12.
     extra_args    : process_L4.py'ye oldugu gibi eklenecek ek bayraklar,
                     orn. ["--micro-count-uncleaned"] (pass2 karsilastirmasi).
 
@@ -293,7 +293,7 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
             results[name] = run_process(
                 name, chunk_files=chunk_files, run_optional=run_optional,
                 extra_args=extra_args)
-        overall.update(i + 1, "%d/%d ornek" % (i + 1, len(names)))
+        overall.update(i + 1, "%d/%d samples" % (i + 1, len(names)))
     ok = sum(v is not None for v in results.values())
     overall.done("%d/%d tamam" % (ok, len(names)))
     if ok < len(names):
@@ -306,22 +306,22 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
 # Paralel calistirma
 # ---------------------------------------------------------------------------
 #
-# En buyuk hizlanma burada.  process_L4.py tek surec ve tek cekirdek
+# The biggest speedup is here.  process_L4.py is single process, single core
 # kullaniyor; cobalt'ta onlarca cekirdek var.  Girdi dosyalarini N gruba
 # bolup N ayri process_L4.py surecinde islemek neredeyse dogrusal hizlanma
-# verir -- ayri surecler, ayri cikti dosyalari, ortak durum yok.
+# -- separate processes, separate output files, no shared state.
 #
 # Cikti adlari:  L4_nue_job0_part000.hdf5, L4_nue_job1_part000.hdf5, ...
-# Hepsi notebook'un L4_nue*.hdf5 glob'una uyar; her parca kendi
+# They all match the notebook's L4_nue*.hdf5 glob, and each part writes its
 # .meta.json'ini yazar, n_l3_files dogru toplanir.
 #
-# DIKKAT: cobalt paylasilan bir makine.  jobs=8 makul, jobs=64 degil.
+# CAREFUL: cobalt is a shared machine.  jobs=8 is fine, jobs=64 is not.
 
 import threading
 
 
 def _split(seq, n):
-    """seq'i n gruba bol (son gruplar bir eksik olabilir)."""
+    """Split seq into n groups (the last groups may be one shorter)."""
     n = max(1, min(n, len(seq)))
     k, r = divmod(len(seq), n)
     out, i = [], 0
@@ -337,9 +337,9 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
     """
     Bir ornegi N paralel surecte isle.
 
-    jobs        : kac process_L4.py sureci
-    chunk_files : her surec kendi icinde kac dosyalik parcalar halinde islesin
-                  (cokme sonrasi kaldigi yerden devam icin)
+    jobs        : how many process_L4.py workers
+    chunk_files : part size each worker uses internally, so a crash can be
+                  resumed from where it stopped
     """
     cfg = _cfg("SAMPLES")[name]
     out = cfg["hdf5"]
@@ -347,10 +347,10 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
 
     files = sorted(glob.glob(cfg["l3"]))
     if not files:
-        print("[!] %s: L3 dosyasi yok -> %s" % (name, cfg["l3"]))
+        print("[!] %s: no L3 files -> %s" % (name, cfg["l3"]))
         return None
     groups = _split(files, jobs)
-    print("%s: %d L3 dosyasi -> %d surec (%s dosya/surec)"
+    print("%s: %d L3 files -> %d workers (%s files/worker)"
           % (name, len(files), len(groups), "/".join(str(len(g)) for g in groups)))
 
     listdir = os.path.join(os.path.dirname(out), "_filelists")
@@ -365,7 +365,7 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         cmd = [sys.executable, "-u", _cfg("PROCESS_PY"),
                "--gcd", _cfg("GCD"),
                "--input-list", lst,
-               "--scan", "off",          # tarama bir kez, asagida
+               "--scan", "off",          # scanned once, below
                "--output-hdf5", "%s_job%d%s" % (base, j, ext)] + cfg["flags"]
         if chunk_files:
             cmd += ["--chunk-files", str(chunk_files)]
@@ -397,7 +397,7 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
                     if b:
                         d = sum(v["done"] for v in state.values())
                         bk = sum(v["booked"] for v in state.values())
-                        b.update(d, "%d surec  olay %d" % (len(procs), bk))
+                        b.update(d, "%d workers  events %d" % (len(procs), bk))
         p.wait()
 
     t0 = time.time()
@@ -412,11 +412,11 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
     rc = [p.returncode for p in procs]
     parts = sorted(glob.glob(out.replace(".hdf5", "*.hdf5")))
     sz = sum(os.path.getsize(f) for f in parts) / 1e6
-    msg = "%.1f MB, %d dosya, %.0f s" % (sz, len(parts), dt)
+    msg = "%.1f MB, %d files, %.0f s" % (sz, len(parts), dt)
 
     if any(r != 0 for r in rc):
         if b:
-            b.fail("basarisiz surec: %s" % [j for j, r in enumerate(rc) if r])
+            b.fail("failed workers: %s" % [j for j, r in enumerate(rc) if r])
         for j, r in enumerate(rc):
             if r:
                 print("\n--- job %d (rc=%d) ---" % (j, r))

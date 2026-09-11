@@ -19,19 +19,20 @@ from icecube import dataio          # noqa: E402  -- after require_icetray
 
 def validate_files(paths, n_frames=25, verbose=True):
     """
-    Her dosyayi acip ilk `n_frames` frame'i oku.  (saglam, bozuk) dondur.
+    Open each file and read its first `n_frames` frames.  Returns
+    (healthy, corrupt).
 
-    n_frames=0 -> dosyanin TAMAMI okunur (yavas ama kesin).
+    n_frames=0 -> read the WHOLE file (slow but certain).
 
-    Not: bu, dosyanin tamamen saglam oldugunu garanti etmez -- ortasinda
-    bozulma varsa ancak tam tarama yakalar.  Ama pratikte gordugumuz
-    hatalar (kesik yazilmis dosya) ilk frame'lerde ortaya cikiyor.
+    Note: this does not prove a file is entirely sound -- corruption in the
+    middle is only caught by a full scan.  But the failures seen in practice
+    (truncated writes) show up in the first few frames.
     """
     good, bad = [], []
     for i, path in enumerate(paths):
         try:
             if os.path.getsize(path) == 0:
-                bad.append((path, "bos dosya (0 byte)"))
+                bad.append((path, "empty file (0 bytes)"))
                 continue
         except OSError as e:
             bad.append((path, "stat: %s" % e))
@@ -52,5 +53,5 @@ def validate_files(paths, n_frames=25, verbose=True):
             first = str(e).strip().splitlines()[0] if str(e).strip() else type(e).__name__
             bad.append((path, first[:160]))
         if verbose and (i + 1) % 100 == 0:
-            print("  taranan: %d/%d" % (i + 1, len(paths)))
+            print("  scanned: %d/%d" % (i + 1, len(paths)))
     return good, bad
