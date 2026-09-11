@@ -223,7 +223,7 @@ def report_missing(stream=sys.stderr):
         return False
     print("", file=stream)
     print("!" * 72, file=stream)
-    print("EKSIK ICETRAY PROJELERI -- bazi L4 degiskenleri URETILEMEYECEK",
+    print("MISSING ICETRAY PROJECTS -- some L4 variables CANNOT BE PRODUCED",
           file=stream)
     print("!" * 72, file=stream)
     for name, purpose, exc in _missing:
@@ -380,12 +380,12 @@ if __name__ == "__main__":
         try:
             print("  I3Tray  :", get_I3Tray())
         except Exception as e:
-            print("  I3Tray  : BULUNAMADI --", e)
+            print("  I3Tray  : NOT FOUND --", e)
         if have_lightgbm():
             import lightgbm
             print("  lightgbm:", lightgbm.__version__)
         else:
-            print("  lightgbm: YOK  -- egitim/uygulama calismaz")
+            print("  lightgbm: MISSING  -- training/application will not work")
     else:
         print(_env_report())
         print()

@@ -173,7 +173,7 @@ class _Bar:
             self.w.bar_style = "danger"
             self.txt.value = "<code>%s</code>" % note
         else:
-            sys.stdout.write("\r  [HATA] %s\n" % note)
+            sys.stdout.write("\r  [ERROR] %s\n" % note)
             sys.stdout.flush()
 
 
@@ -245,7 +245,7 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
     if p.returncode != 0:
         if b:
             b.fail("returncode=%d" % p.returncode)
-        print("\n--- HATA (returncode=%d) ---" % p.returncode)
+        print("\n--- FAILED (returncode=%d) ---" % p.returncode)
         print("\n".join(tail[-40:]))
         return None
 
@@ -276,7 +276,7 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
     extra_args    : process_L4.py'ye oldugu gibi eklenecek ek bayraklar,
                     orn. ["--micro-count-uncleaned"] (pass2 karsilastirmasi).
 
-    Varsayilan jobs=1 -- hizlandirma OTOMATIK DEGIL, acikca istenmeli.
+    The default is jobs=1 -- the speedup is NOT automatic, it must be asked for.
     """
     names = list(samples or _cfg("SAMPLES"))
     overall = _Bar("TOPLAM", total=len(names))
@@ -313,7 +313,7 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
 #
 # Output names:  L4_nue_job0_part000.hdf5, L4_nue_job1_part000.hdf5, ...
 # They all match the notebook's L4_nue*.hdf5 glob, and each part writes its
-# .meta.json'ini yazar, n_l3_files dogru toplanir.
+# own .meta.json, so n_l3_files sums correctly.
 #
 # CAREFUL: cobalt is a shared machine.  jobs=8 is fine, jobs=64 is not.
 

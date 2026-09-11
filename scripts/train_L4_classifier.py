@@ -17,7 +17,7 @@ pandas, NO sklearn, NO joblib -- none of them exist in the IceTray environment
 MODEL FORMAT: LightGBM's own text format (.txt) plus a JSON sidecar, not
 joblib/pickle.  The text format is stable across versions and readable; a
 pickle is neither, and joblib is not installed on the application side.
-Application side: l4_classifier_module.py (lgb.Booster + numpy, nothing else).
+Application side: oscnext_l4/classifier.py (lgb.Booster + numpy, nothing else).
 
 HOW IT IS EVALUATED
   Signal efficiency at a target background rejection, COUNTED IN EVENTS, on

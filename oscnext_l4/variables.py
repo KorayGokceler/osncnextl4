@@ -75,7 +75,7 @@ L4_MUON_MODEL_PREDICTION_DATA_KEY = "L4_MuonClassifier_Data_ProbNu"
 #
 # oscNext L3 (online_filterscripts .. grecovariables.DeepCoreCleaning) girdi
 # olarak "SplitInIcePulses" alir ve "SRTTWSplitInIcePulsesDC" uretir.
-# (Eski pass1 isimlendirmesi "SRTTWOfflinePulsesDC" idi -- ARTIK O DEGIL.)
+# (The old pass1 name was "SRTTWOfflinePulsesDC" -- NOT that any more.)
 # ---------------------------------------------------------------------------
 UNCLEANED_PULSES_DEFAULT = "SplitInIcePulses"
 CLEANED_PULSES_DEFAULT   = "SRTTWSplitInIcePulsesDC"

@@ -171,7 +171,7 @@ class SimpleBooker(icetray.I3ConditionalModule):
         self.AddParameter("Keys", "Book edilecek frame objeleri", [])
         self.AddParameter("SubEventStreams", "Islenecek sub-event stream'ler",
                           ["InIceSplit"])
-        self.AddParameter("Verbose", "Eksik anahtarlari raporla", True)
+        self.AddParameter("Verbose", "report the missing keys", True)
         self.AddOutBox("OutBox")
 
     def Configure(self):

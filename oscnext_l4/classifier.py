@@ -37,7 +37,7 @@ from icecube import icetray, dataclasses
 
 
 # ---------------------------------------------------------------------------
-# Frame'den degisken okuma
+# Reading variables out of a frame
 # ---------------------------------------------------------------------------
 #
 # The map between the model's variable names ("NchCleaned", "cog_z",
@@ -214,7 +214,7 @@ class L4Classifier(icetray.I3ConditionalModule):
 
         print("L4Classifier [%s]" % self.output_key)
         print("  model    : %s" % model_file)
-        print("  agac     : %d,  degisken: %d" %
+        print("  trees    : %d,  features: %d" %
               (self.booster.num_trees(), len(self.features)))
         if self.sidecar:
             print("  trained  : %s (lightgbm %s)" %
@@ -242,7 +242,7 @@ class L4Classifier(icetray.I3ConditionalModule):
             self.PushFrame(frame)
             return
 
-        # binary objective -> predict dogrudan P(pozitif sinif)
+        # binary objective -> predict returns P(positive class) directly
         prob = float(self.booster.predict(x)[0])
         frame[self.output_key] = dataclasses.I3Double(prob)
         self.PushFrame(frame)
@@ -250,11 +250,11 @@ class L4Classifier(icetray.I3ConditionalModule):
     def Finish(self):
         bad = {f: n for f, n in self.n_missing.items() if n > 0}
         if bad and self.n_frames:
-            print("L4Classifier [%s] eksik degisken raporu (%d frame):"
+            print("L4Classifier [%s] missing-variable report (%d frames):"
                   % (self.output_key, self.n_frames))
             for f, n in sorted(bad.items(), key=lambda kv: -kv[1]):
                 frac = 100.0 * n / self.n_frames
-                flag = "  <-- HEP EKSIK, model bozuk cikar" if frac > 99.9 else ""
+                flag = "  <-- ALWAYS MISSING, the model output is invalid" if frac > 99.9 else ""
                 print("    %-30s %7d (%5.1f%%)%s" % (f, n, frac, flag))
 
 

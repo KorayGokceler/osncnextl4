@@ -1,333 +1,346 @@
-# HDF5'e ne yazıyoruz + teknik notla satır satır karşılaştırma
+# What we write to HDF5 + a line-by-line comparison with the technical note
 
-Kaynak: `reference/OscNext_v00.074_pass2_technical_note.pdf` (pass2, 83 sayfa).
-İlgili bölümler: §3.4 (DeepCore Filter), §3.5.1 (L3 değişkenleri, Tablo 7–8),
-§3.6 (L4, Tablo 10–13).
+Source: `reference/OscNext_v00.074_pass2_technical_note.pdf` (pass2, 83 pages).
+Relevant sections: 3.4 (DeepCore Filter), 3.5.1 (L3 variables, Tables 7-8),
+3.6 (L4, Tables 10-13).
 
-> **Not pass2 için.** Bizim girdimiz pass3. L4 mantığının büyük kısmı aynı
-> kabul ediliyor ama isimlendirme değişmiş (aşağıda işaretli).
+> **The note is for pass2.** Our input is pass3.  Most of the L4 logic is taken
+> to be the same, but the naming changed (marked below).
 
 ---
 
-# Bölüm 1 — HDF5'e tam olarak ne yazıyoruz
+# Part 1 — Exactly what we write to HDF5
 
-`process_L4.py` bir **anahtar listesi** kuruyor (`build_key_list`) ve booker
-her anahtarı **ayrı bir HDF5 tablosuna** çeviriyor. Tablo adı = frame anahtarı.
-Her tabloda ortak indeks: `Run`, `Event`, `SubEvent`.
+`scripts/process_L4.py` builds a **key list** (`build_key_list`) and the booker
+turns every key into **its own HDF5 table**.  The table name is the frame key.
+Every table carries the shared index `Run`, `Event`, `SubEvent`.
 
-Frame nesnesi tipine göre kolonlaşma (`simple_booker.extract_scalars`,
-hdfwriter da aynı şemayı üretiyor):
+How a frame object becomes columns (`oscnext_l4.booker.extract_scalars`;
+hdfwriter produces the same schema):
 
-| Frame tipi | HDF5'te |
+| Frame type | in HDF5 |
 |---|---|
-| `I3Double` / `I3Int` / `I3Bool` | tek kolon: `value` |
-| `I3MapStringDouble` / `I3MapStringInt` | **her map anahtarı ayrı kolon** |
+| `I3Double` / `I3Int` / `I3Bool` | a single column: `value` |
+| `I3MapStringDouble` / `I3MapStringInt` | **one column per map key** |
 | `I3Particle` | `x, y, z, time, energy, length, speed, zenith, azimuth` |
-| `I3LineFitParams` | `lf_vel`, `lf_vel_x/y/z`, `n_hits` (pass3 adları) |
+| `I3LineFitParams` | `lf_vel`, `lf_vel_x/y/z`, `n_hits` (pass3 names) |
 | `I3HitStatisticsValues` | `cog_x/y/z`, `z_min`, `z_max`, `z_mean`, `z_sigma`, `z_travel`, … |
 | `I3HitMultiplicityValues` | `n_hit_strings`, `n_hit_doms`, `n_hit_doms_one_pulse`, `n_pulses` |
 | `I3FillRatioInfo` | `fill_ratio_from_mean`, `fill_radius_from_mean`, … |
 | `I3EventHeader` | `run_id`, `event_id`, … + `time_start_mjd_day/sec/ns` |
 
-**Pulse serileri book EDİLMİYOR.** 5000 pulse'lık bir olay düz tabloya
-sığmaz. Sadece onlardan hesaplanan özet sayılar yazılıyor — BDT'nin
-ihtiyacı olan da bu.
+**Pulse series are NOT booked.** An event with 5000 pulses does not fit a flat
+table.  Only the summary numbers computed from them are written -- which is all
+the BDT needs.
 
-## Yazılan anahtarlar
+## Keys written
 
-### Her zaman (`BASE_KEYS` + `L3_KEYS` + `COMMON_VAR_KEYS`)
+### Always (`BASE_KEYS` + `L3_KEYS` + `COMMON_VAR_KEYS`)
 
-| Anahtar | Ne için |
+| Key | What for |
 |---|---|
-| `I3EventHeader` | indeks + livetime (MJD alanları) |
-| `IC2018_LE_L3_Vars` | **BDT'nin 4 muon + 2 noise girdisi burada** (map → çok kolon) |
-| `IC2018_LE_L3_bools` | L3 kesim bayrakları |
+| `I3EventHeader` | index + livetime (the MJD fields) |
+| `IC2018_LE_L3_Vars` | **4 muon + 2 noise BDT inputs live here** (map → many columns) |
+| `IC2018_LE_L3_bools` | the L3 cut flags |
 | `L3_oscNext_bool` | `IC2018_LE_L3_Full AND Data_quality_bool` |
-| `Data_quality_bool` | SLOP / LID errata veri kalitesi |
+| `Data_quality_bool` | SLOP / LID errata data quality |
 | `SRTTWSplitInIcePulsesDCHitStatistics` | `cog_z`, `z_sigma`, `z_travel` (muon BDT) |
-| `SRTTWSplitInIcePulsesDCHitMultiplicity` | `n_hit_doms` (aday) |
+| `SRTTWSplitInIcePulsesDCHitMultiplicity` | `n_hit_doms` (candidate) |
 
-### L4'te ürettiklerimiz (`L4_HDF5_KEYS`)
+### What we produce at L4 (`L4_HDF5_KEYS`)
 
-| Anahtar | Tip | BDT girdisi mi? |
+| Key | Type | A BDT input? |
 |---|---|---|
-| `L4_micro_count` | map | **evet** — noise |
-| `L4_fill_ratio` | I3FillRatioInfo | **evet** — noise |
-| `L4_iLineFit` + `L4_iLineFitParams` | I3Particle + Params | **evet** — noise (hız) |
-| `L4_FullTimeLengthRatio` | I3Double | **evet** — noise |
-| `L4_VICH_nch` | I3Double | **evet** — muon |
-| `L4_accumulated_time` | I3Double | **evet** — muon |
-| `L4_first_hlc_rho` | I3Double | **evet** — muon |
-| `L4_first_hlc` | I3Particle | hayır (rho'nun kaynağı) |
-| `L4_VICH_npulses`, `L4_VICH_qtot` | I3Double | hayır (tanı) |
-| `L4_ToI` + `L4_ToIParams` | I3Particle + Params | hayır (aday/legacy) |
-| `L4_separation_in_cogs` | I3Double | hayır |
-| `L4_QR_Box` | — | hayır (slc-veto yok, üretilmiyor) |
-| `L4_n_flux_events` | I3Double | hayır — **ağırlık** |
-| `L4_Cut_Bool`, `L4_NoiseStraightCuts_Bool` | I3Bool | hayır |
-| `L4_NoiseClassifier_ProbNu`, `L4_MuonClassifier_Data_ProbNu` | I3Double | `--apply-cut` ile |
+| `L4_micro_count` | map | **yes** — noise |
+| `L4_fill_ratio` | I3FillRatioInfo | **yes** — noise |
+| `L4_iLineFit` + `L4_iLineFitParams` | I3Particle + Params | **yes** — noise (the speed) |
+| `L4_FullTimeLengthRatio` | I3Double | **yes** — noise |
+| `L4_VICH_nch` | I3Double | **yes** — muon |
+| `L4_accumulated_time` | I3Double | **yes** — muon |
+| `L4_first_hlc_rho` | I3Double | **yes** — muon |
+| `L4_first_hlc` | I3Particle | no (the source of rho) |
+| `L4_VICH_npulses`, `L4_VICH_qtot` | I3Double | no (diagnostic) |
+| `L4_ToI` + `L4_ToIParams` | I3Particle + Params | no (candidate/legacy) |
+| `L4_separation_in_cogs` | I3Double | no |
+| `L4_QR_Box` | — | no (no slc-veto, not produced) |
+| `L4_n_flux_events` | I3Double | no — **weighting** |
+| `L4_Cut_Bool`, `L4_NoiseStraightCuts_Bool` | I3Bool | no |
+| `L4_NoiseClassifier_ProbNu`, `L4_MuonClassifier_Data_ProbNu` | I3Double | with `--apply-cut` |
 
-### Örnek türüne göre (ağırlık için)
+### By sample kind (for the weights)
 
 - `--mc --genie` → `I3MCWeightDict` (`OneWeight`, `NEvents`,
   `PrimaryNeutrinoEnergy/Zenith/Type`), `NEvPerFile`, `I3GenieSystWeightDict`
-- `--noise` → `I3MCWeightDict`, `noise_weight` (**`MCInIcePrimary` YOK**)
+- `--noise` → `I3MCWeightDict`, `noise_weight` (**no `MCInIcePrimary`**)
 - `--corsika` → `CorsikaWeightMap`, `PolyplopiaPrimary`, `I3CorsikaInfo`
-- `--muongun` → `MuonWeight*` adaylarından hangisi varsa
+- `--muongun` → whichever of the `MuonWeight*` candidates exists
 
-### Sidecar: `<çıktı>.hdf5.meta.json`
+### Sidecar: `<output>.hdf5.meta.json`
 
-`n_l3_files` (ağırlık böleni), `physics_frames`, `after_stream_filter`,
-`booked`, `elapsed_s`. HDF5'in içine değil yanına yazılıyor.
+`n_l3_files` (the weight divisor), `physics_frames`, `after_stream_filter`,
+`booked`, `elapsed_s`.  Written next to the HDF5, not inside it.
 
 ---
 
-# Bölüm 1b — Hangi değişken nerede hesaplanıyor
+# Part 1b — Where each variable is computed
 
-Her BDT girdisi için: kodda hangi dosya/fonksiyon, notta hangi sayfa/tablo.
-Satır numaraları `oscNext_L4_variables.py` içindir.
+For every BDT input: which file/function in the code, which page/table in the
+note.  Line numbers refer to `oscnext_l4/variables.py`.
 
-## Noise BDT — 5 girdi (not s.36, Tablo 11)
+## Noise BDT — 5 inputs (note p.36, Table 11)
 
-| Değişken | Nerede hesaplanıyor | Not |
+| Variable | Where it is computed | Note |
 |---|---|---|
-| `NchCleaned` | **hesaplamıyoruz** — L3'ten hazır geliyor (`IC2018_LE_L3_Vars`) | s.28, §3.5.1 |
-| `micro_count` | `_micro_count()` **:616**<br>zincir: `oscNext_L4_noise_cut_variables` **:636** içinde StaticTWC → SeededRT → I3OMSelection → I3TimeWindowCleaning | s.36, Tablo 11 |
-| `iLineFit_speed` | `linefit.simple` segmenti — `oscNext_L4_atm_muon_classifier_variables` **:557** içinde. Kendi kodumuz değil, IceTray projesi. | s.36, Tablo 11 |
-| `fill_ratio` | `I3FillRatioModule` — `oscNext_L4_noise_cut_variables` **:636** sonunda. IceTray projesi. | s.36, Tablo 11 |
-| `FullTimeLengthRatio` | `_full_time_length_ratio()` **:264** | s.36, Tablo 11 |
+| `NchCleaned` | **we do not compute it** — it arrives from L3 (`IC2018_LE_L3_Vars`) | p.28, sec. 3.5.1 |
+| `micro_count` | `_micro_count()`<br>chain inside `oscNext_L4_noise_cut_variables`: StaticTWC → DeepCore fiducial → I3TimeWindowCleaning → count | p.36, Table 11 |
+| `iLineFit_speed` | the `linefit.simple` segment, inside `oscNext_L4_atm_muon_classifier_variables`.  Not our code -- an IceTray project. | p.36, Table 11 |
+| `fill_ratio` | `I3FillRatioModule` at the end of `oscNext_L4_noise_cut_variables`.  An IceTray project. | p.36, Table 11 |
+| `FullTimeLengthRatio` | `_full_time_length_ratio()` | p.36, Table 11 |
 
-## Muon BDT — 10 girdi (not s.41, Tablo 12)
+## Muon BDT — 10 inputs (note p.41, Table 12)
 
-| Değişken | Nerede hesaplanıyor | Not |
+| Variable | Where it is computed | Note |
 |---|---|---|
-| `ICVetoHits` | **L3'ten** (`IC2018_LE_L3_Vars`) | s.28, §3.5.1 |
-| `RTVeto250Hits` | **L3'ten** | s.28–29, §3.5.1 + Tablo 8 |
-| `NchCleaned` | **L3'ten** | s.28, §3.5.1 |
-| `NAbove200Hits` | **L3'ten** | s.28, §3.5.1 |
-| `VICH_nch` | `_vich()` **:470** — **bizim yeniden yazımımız** | tanım s.26–27, §3.4 |
-| `accumulated_time` | `_accumulated_time()` **:402** — **bizim yeniden yazımımız** | s.41, Tablo 12 |
-| `first_hlc_rho` | `_first_hlc()` **:219** → `_add_rho_36()` **:257** | s.41, Tablo 12 |
-| `cog_z` | `common_variables.hit_statistics` segmenti — `oscNext_L4_hit_statistics` **:731**. IceTray projesi. | s.41, Tablo 12 |
-| `z_sigma` | aynı segment | s.41, Tablo 12 |
-| `z_travel` | aynı segment | s.41, Tablo 12 |
+| `ICVetoHits` | **from L3** (`IC2018_LE_L3_Vars`) | p.28, sec. 3.5.1 |
+| `RTVeto250Hits` | **from L3** | p.28-29, sec. 3.5.1 + Table 8 |
+| `NchCleaned` | **from L3** | p.28, sec. 3.5.1 |
+| `NAbove200Hits` | **from L3** | p.28, sec. 3.5.1 |
+| `VICH_nch` | `_vich()` — **our rewrite** | definition p.26-27, sec. 3.4 |
+| `accumulated_time` | `_accumulated_time()` — **our rewrite** | p.41, Table 12 |
+| `first_hlc_rho` | `_first_hlc()` → `_add_rho_36()` | p.41, Table 12 |
+| `cog_z` | the `common_variables.hit_statistics` segment, in `oscNext_L4_hit_statistics`.  An IceTray project. | p.41, Table 12 |
+| `z_sigma` | same segment | p.41, Table 12 |
+| `z_travel` | same segment | p.41, Table 12 |
 
-## Özet: kimin kodu?
+## Summary: whose code is it?
 
-| Kaynak | Kaç değişken | Hangileri |
+| Source | How many | Which |
 |---|---|---|
-| **L3'ten hazır geliyor** | 5 | `NchCleaned`, `ICVetoHits`, `RTVeto250Hits`, `NAbove200Hits` (+`NchCleaned` iki listede) |
-| **IceTray projeleri** | 5 | `iLineFit_speed` (linefit), `fill_ratio` (fill_ratio), `cog_z`/`z_sigma`/`z_travel` (common_variables) |
-| **Bizim saf Python yeniden yazımımız** | 4 | `micro_count`, `FullTimeLengthRatio`, `first_hlc_rho`, `accumulated_time`, `VICH_nch` |
+| **Arrives ready from L3** | 4 | `NchCleaned`, `ICVetoHits`, `RTVeto250Hits`, `NAbove200Hits` |
+| **IceTray projects** | 5 | `iLineFit_speed` (linefit), `fill_ratio` (fill_ratio), `cog_z`/`z_sigma`/`z_travel` (common_variables) |
+| **Our pure-Python rewrites** | 5 | `micro_count`, `FullTimeLengthRatio`, `first_hlc_rho`, `accumulated_time`, `VICH_nch` |
 
-> Riskin tamamı son satırda. L3'ten gelenler ve IceTray projeleri
-> zaten doğrulanmış kod; **doğrulanmamış olan 4–5 fonksiyon** var ve
-> ikisi (`VICH_nch`, `accumulated_time`) muon BDT'sinin ana girdileri.
+> All of the risk is in the last row.  What comes from L3 and what comes from
+> IceTray projects is already validated code; **the unverified part is those
+> five functions**, and two of them (`VICH_nch`, `accumulated_time`) are
+> principal inputs of the muon BDT.
 
-## Yardımcı fonksiyonlar (girdi değil ama hepsi bunları kullanıyor)
+## Helper functions (not inputs, but everything uses them)
 
-| Fonksiyon | Satır | Ne yapar |
-|---|---|---|
-| `charge_weighted_cog()` | **:194** | yük ağırlıklı COG — VICH ve separation_in_cogs kullanıyor |
-| `iter_hits()` | **:175** | `(omkey, pos, time, charge)` üzerinde gezinme |
-| `PropagateGenieInfo` | `process_L4.py` | `n_flux_events` S→P frame (ağırlık için) |
-| `l3_cut` | `oscNext_L4` **:809** içinde | `IC2018_LE_L3_Full AND Data_quality_bool` |
+| Function | What it does |
+|---|---|
+| `charge_weighted_cog()` | charge weighted COG -- used by VICH and separation_in_cogs |
+| `iter_hits()` | iteration over `(omkey, pos, time, charge)` |
+| `PropagateGenieInfo` | carries `n_flux_events` from the S frame to the P frames (for weighting) |
+| `l3_cut` | inside `oscNext_L4`: `IC2018_LE_L3_Full AND Data_quality_bool` |
 
-## Nota nasıl bakılır
+## How to read the note
 
 `reference/OscNext_v00.074_pass2_technical_note.pdf`:
 
-- **s.26–27, §3.4** — DeepCore Filter. VICH'in hız penceresi `[0.25, 0.4] m/ns`
-  ve "veto region" tanımı **burada**, Tablo 12'de değil.
-- **s.27–29, §3.5.1 + Tablo 7/8** — L3 değişkenlerinin tanımları
-  (`NchCleaned`, `ICVetoHits`, …) ve L3 fiducial DOM listesi.
-- **s.35, Tablo 10** — LightGBM hiperparametreleri.
-- **s.36, Tablo 11** — noise BDT'nin 5 girdisi.
-- **s.41, Tablo 12** — muon BDT'nin 10 girdisi.
-- **s.48, Tablo 13** — L3/L4 oranları (ağırlık doğrulama hedefleri).
+- **p.26-27, sec. 3.4** — the DeepCore Filter.  VICH's speed window
+  `[0.25, 0.4] m/ns` and the definition of the "veto region" are **here**, not
+  in Table 12.
+- **p.27-29, sec. 3.5.1 + Tables 7/8** — the L3 variable definitions
+  (`NchCleaned`, `ICVetoHits`, …) and the L3 fiducial DOM list.
+- **p.35, Table 10** — the LightGBM hyperparameters.
+- **p.36, Table 11** — the noise BDT's 5 inputs.
+- **p.41, Table 12** — the muon BDT's 10 inputs.
+- **p.48, Table 13** — the L3/L4 rates (the weight verification targets).
 
 
-# Bölüm 2 — Teknik notla karşılaştırma
+# Part 2 — Comparison with the technical note
 
-## 2.1 Doğrulananlar
+## 2.1 What is verified
 
-**Hiperparametreler (Tablo 10)** — `max_depth 6`, `num_leaves 25`,
-`max_bin 32`, `min_data_in_leaf 500`, `feature_fraction` noise 0.8 / muon 0.7,
+**Hyperparameters (Table 10)** — `max_depth 6`, `num_leaves 25`, `max_bin 32`,
+`min_data_in_leaf 500`, `feature_fraction` noise 0.8 / muon 0.7,
 `lambda_l1 2.0`, `lambda_l2 1.0`, `min_gain_to_split 2.0`,
-`is_unbalanced False`. `train_L4_classifier.py` ile birebir.
+`is_unbalanced False`.  Identical in `scripts/train_L4_classifier.py`.
 
-**Kesim değerleri** — noise `> 0.7`, muon `> 0.65` (§3.6.2, §3.6.3). Kodda aynı.
+**Cut values** — noise `> 0.7`, muon `> 0.65` (sec. 3.6.2, 3.6.3).  The same in
+the code.
 
-**Eğitim oranı** — noise BDT %33.3 train / %66.7 test (§3.6.2). Kodda aynı.
+**Preprocessing** — "event weights manually re-scaled to balance the samples...
+all weights re-scaled to be in range 0-1" (sec. 3.6.1).  Section 6 of the
+notebook does exactly that.
 
-**Ön işleme** — "event weights manually re-scaled to balance the samples...
-all weights re-scaled to be in range 0–1" (§3.6.1). `build_training_set`
-tam olarak bunu yapıyor.
+**`micro_count`** — the full text of Table 11: *"Start with the **cleaned**
+pulse series.  Look at pulses occurring within [-3.5 µs, +4 µs] from the trigger
+time.  Slide a time window of 200 ns that maximizes the number of triggered DOMs
+in it.  Get the number of triggered DOMs in that sliding time window."*
 
-**`micro_count`** — Tablo 11 tam metni: *"Start with the **cleaned** pulse
-series. Look at pulses occurring within [-3.5 µs, +4 µs] from the trigger
-time. Slide a time window of 200 ns that maximizes the number of triggered
-DOMs in it. Get the number of triggered DOMs in that sliding time window."*
+`MICROCOUNT_SUBKEY` is **exactly the same name**, and the window and width
+match.  The counting semantics are right too: `I3TimeWindowCleaning
+(TimeWindow=200)` finds the window maximising the DOM count, and `_micro_count`
+then counts DOMs.
 
-`MICROCOUNT_SUBKEY` **birebir aynı isim**, pencere ve genişlik aynı.
-Sayım semantiği de doğru: `I3TimeWindowCleaning(TimeWindow=200)` DOM
-sayısını maksimize eden pencereyi buluyor, `_micro_count` sonrasında DOM
-sayıyor.
+**Deviation found (fixed):** the chain started from the *uncleaned* series and
+its only cleaning step (`I3SeededRTCleaning`) was bypassed -- its output
+`L4_SRTTWPulses` was read nowhere.  Brought in line with the note: it now starts
+from `cleaned_pulses` and the SeededRT block was removed (L3 has already applied
+SRT cleaning).  Details: `CLAUDE.md` → "Booking/read audit", item 4.  L3's own
+version differs: `STW9000_DTW300Hits` ([-4, +5] µs, 300 ns) -- so the two are
+not fully correlated and the BDT extracts information from both.
 
-**Bulunan sapma (düzeltildi):** zincir *temizlenmemiş* seriden başlıyordu ve
-içindeki tek temizleme adımı (`I3SeededRTCleaning`) bypass edilmişti — çıktısı
-`L4_SRTTWPulses` hiçbir yerde okunmuyordu. Nota uyarlandı: artık
-`cleaned_pulses` ile başlıyor, SeededRT bloğu kaldırıldı (L3 zaten SRT
-temizliği yapmış). Ayrıntı: `CLAUDE.md` → "Booking/okuma denetimi", madde 4. L3'ünki farklı: `STW9000_DTW300Hits` ([-4, +5] µs, 300 ns) — bu yüzden
-ikisi tam korele değil, BDT ikisinden de bilgi çıkarıyor.
+**`accumulated_time`** — Table 12: *"Time to reach 75% of an event's charge in
+the cleaned pulse series."*  Our code: `fraction=0.75`,
+`pulses_key=cleaned_pulses`.  **The fraction and the series are verified, not
+guessed.**  The one thing still open is the reference time: our code takes
+`t[idx] − t[0]` (relative to the first pulse); the note says "time to reach" but
+never states the zero point.  It could have been the trigger time.
 
-**`accumulated_time`** — Tablo 12: *"Time to reach 75% of an event's charge
-in the cleaned pulse series."* Kodumuz: `fraction=0.75`, `pulses_key=cleaned_pulses`.
-**Fraksiyon ve seri artık tahmin değil, doğrulanmış.** Açık kalan tek şey
-referans zamanı: kodumuz `t[idx] − t[0]` (ilk pulse'a göre) alıyor; not
-"time to reach" diyor ama sıfır noktasını söylemiyor. Tetikleme zamanına göre
-de olabilirdi.
+**`first_hlc_rho`** — Table 12: *"Radial distance from string 36 (roughly the
+center of DeepCore) of the first HLC hit."*  Our code embeds the string 36
+coordinates (`46.29, −34.88`) and computes the same thing.
 
-**`first_hlc_rho`** — Tablo 12: *"Radial distance from string 36 (roughly the
-center of DeepCore) of the first HLC hit."* Kodumuz string 36 koordinatlarını
-(`46.29, −34.88`) gömülü tutup aynı şeyi hesaplıyor.
-
-**VICH hız penceresi ve veto DOM kümesi** — §3.4 (DeepCore Filter):
+**The VICH speed window and veto DOM set** — sec. 3.4 (DeepCore Filter):
 
 > *"the center-of-gravity (COG) of the hits inside the fiducial volume is
 > calculated, then a relative velocity is derived between each hit of the veto
-> region and the COG's position/time vertex. If the derived speed of any veto
+> region and the COG's position/time vertex.  If the derived speed of any veto
 > hit is contained within **[0.25, 0.4] m/ns**, the hit is discarded on the
 > basis that the veto hit could be causally related to a muon crossing the
 > detector."*
 
-Bu, `VICH_SPEED = (0.25, 0.40)` değerimizin kaynağı — **doğrulandı**.
-Ayrıca "veto region"un hangi tanım olduğu da netleşti: burada anlatılan
-**DeepCore Filter'ın kendi fiducial/veto ayrımı**, yani
-`icecube.DeepCore_Filter.DOMS`. Kodumuz tam onu kullanıyor — **doğru seçim**.
+That is the source of our `VICH_SPEED = (0.25, 0.40)` -- **verified**.  It also
+settles which definition the "veto region" is: the one described here is **the
+DeepCore Filter's own fiducial/veto split**, i.e.
+`icecube.DeepCore_Filter.DOMS`.  Our code uses exactly that -- **the right
+choice**.
 
-> Dikkat: L3'ün fiducial tanımı **farklı** (Tablo 7: DeepCore string 79–86
-> DOM 11–60; IceCube string 25–27, 34–37, 44–47, 54 DOM 39–60). VICH için
-> L3 tanımını kullanmak yanlış olurdu.
+> Careful: L3's fiducial definition is **different** (Table 7: DeepCore strings
+> 79-86 DOM 11-60; IceCube strings 25-27, 34-37, 44-47, 54 DOM 39-60).  Using
+> the L3 definition for VICH would have been wrong.
 
-**`dt` yönü** — Not doğrudan söylemiyor ama fizik açık: muon detektörü
-geçerken **önce** veto bölgesini vurur, sonra fiducial COG oluşur. Kodumuz
-`dt = t_COG − t_hit > 0` şartını koyuyor — doğru yön.
+**The direction of `dt`** — the note does not state it, but the physics is
+clear: a muon crossing the detector hits the veto region **first**, and the
+fiducial COG forms afterwards.  Our code requires `dt = t_COG − t_hit > 0` --
+the right direction.
 
 ---
 
-## 2.2 Bulunan somut sapma: VICH'in COG'u
+## 2.2 The concrete deviation found: VICH's COG
 
-**Not (§3.4):** COG, **fiducial hacim içindeki** hitlerden hesaplanıyor
-("the COG of the hits **inside the fiducial volume**").
+**The note (sec. 3.4):** the COG is computed from the hits **inside the fiducial
+volume** ("the COG of the hits **inside the fiducial volume**").
 
-**Kodumuz** (`oscNext_L4_variables.py`, `_vich`):
+**Our code used to do:**
 
 ```python
-cog = charge_weighted_cog(iter_hits(cln, geo))   # TUM temizlenmis seri
+cog = charge_weighted_cog(iter_hits(cln, geo))   # the WHOLE cleaned series
 ```
 
-Yani veto bölgesindeki hitler de COG'a katılıyor. Muonlu olaylarda veto
-hitleri COG'u **yukarı ve dışa** çeker → veto DOM'una olan mesafe `d` ve
-`t_COG` değişir → hesaplanan hız kayar → `[0.25, 0.4]` penceresine düşme
-olasılığı değişir. Etki muonlu olaylarda sistematik, nötrinolarda küçük;
-yani **tam da ayırt etme gücünü bozacak yönde**.
+So veto-region hits contributed to the COG.  In events with a muon those hits
+pull the COG **up and out** → the distance `d` to the veto DOM and `t_COG`
+change → the computed speed shifts → the chance of landing in the
+`[0.25, 0.4]` window changes.  The effect is systematic in muon events and small
+in neutrino events -- i.e. **exactly in the direction that destroys the
+separating power**.
 
-**Düzeltme:** COG'u fiducial DOM'larla sınırla —
-`deepcore_doms("IC86").DeepCoreFiducialDOMs`. Bu, kodda zaten hazır olan
-listenin diğer yarısı.
+**Fix (applied):** restrict the COG to the fiducial DOMs,
+`deepcore_fiducial_domset("IC86")`.  `fiducial_cog=True` is now the default;
+`False` restores the old behaviour for comparison.  Measured effect on a test
+event: z moved from −400 to −43.
 
-Bu hâlâ notun tarifiyle *tam* eşleşmeyecek olabilir (not COG'un yük ağırlıklı
-olup olmadığını söylemiyor; biz yük ağırlıklı alıyoruz), ama fiducial
-sınırlaması notta **açıkça yazan** bir şey ve şu an kodda yok.
+This may still not match the note's description *exactly* -- the note does not
+say whether the COG is charge weighted, and we take it charge weighted -- but
+the fiducial restriction is something the note states **explicitly**.
 
 ---
 
-## 2.3 Kalan sapmalar
+## 2.3 Remaining deviations
 
-| Konu | Not | Bizde | Etki |
+| Topic | The note | Ours | Effect |
 |---|---|---|---|
-| **Muon BDT arka planı** | **gerçek dedektör verisi** (bu aşamada %99 muon), 2012–2017'den 18 run, mevsimsel muon akısı dengeli | CORSIKA | Not diyor ki MuonGun ile eğitilen sınıflandırıcı "benzer performans" verdi ama kullanılmadı. CORSIKA için de benzer beklenebilir; ama **data/MC kontrolü yapılamıyor** ve muon bundle gibi simüle edilmeyen popülasyonlar öğrenilemiyor. |
-| **VICH pulse serisi** | DC Filter kendi SRT temizlemesini `SplitUncleanedInIcePulses` üzerinde yapıyor (tüm HLC hitleri korunuyor) | ham `SplitInIcePulses` | Yön belirsiz. Bizimki daha fazla hit görüyor → VICH biraz yüksek çıkabilir. |
-| **`FullTimeLengthRatio`** | Tablo 11'de `IC2018_LE_L3_Vars.FullTimeLengthRatio` — yani **L3 değişkeni** | L4'te kendimiz hesaplıyoruz (pass3 L3 map'inde oran yok) | Bileşenler L3'te var (`CleanedFullTimeLength`, `UncleanedFullTimeLength` — Tablo 8). **Yön ÇÖZÜLDÜ:** Şekil 13'te bu değişkenin x ekseni 0.0–1.0 → oran `cleaned/uncleaned`, kodumuzun aldığı yön. |
-| **HitStatistics anahtarı** | `SRTTWOfflinePulsesDCHitStatistics` (pass2) | `SRTTWSplitInIcePulsesDCHitStatistics` (pass3) | Bilinen pass2→pass3 yeniden adlandırma; `reference/pass3_L3_process.py` ile doğrulanmış. |
-| **ντ** | Tablo 13'te ντ CC var (0.129 mHz) | set yok | Sinyalin ~%3'ü. |
-| **BDT motoru** | LightGBM (§3.6.1) | LightGBM | Aynı; Tablo 10 parametreleri doğrudan kullanılıyor. |
+| **Muon BDT background** | **real detector data** (99% muon at this stage), 18 runs from 2012-2017, balanced over the seasonal muon flux | CORSIKA | The note says a classifier trained with MuonGun performed "similarly" but was not used.  The same can be expected of CORSIKA; but **no data/MC check is possible** and populations that are not simulated (muon bundles, say) cannot be learned. |
+| **VICH pulse series** | the DC Filter does its own SRT cleaning on `SplitUncleanedInIcePulses` (every HLC hit is kept) | raw `SplitInIcePulses` | Direction unclear.  Ours sees more hits → VICH may come out slightly high.  The original pass2 code passes `InputPulses=uncleaned_pulses`, which matches ours. |
+| **`FullTimeLengthRatio`** | Table 11 lists `IC2018_LE_L3_Vars.FullTimeLengthRatio` -- i.e. an **L3 variable** | we compute it at L4 (the pass3 L3 map has no ratio) | The components are in L3 (`CleanedFullTimeLength`, `UncleanedFullTimeLength` -- Table 8).  **Direction RESOLVED:** the x axis of this variable in Figure 13 runs 0.0-1.0 → the ratio is `cleaned/uncleaned`, the direction our code takes.  Verified against the L3 components: maximum deviation 0 over 143 events. |
+| **HitStatistics key** | `SRTTWOfflinePulsesDCHitStatistics` (pass2) | `SRTTWSplitInIcePulsesDCHitStatistics` (pass3) | A known pass2→pass3 rename, confirmed with `reference/pass3_L3_process.py`. |
+| **ντ** | Table 13 has ντ CC (0.129 mHz) | no such set | ~3% of the signal. |
+| **BDT engine** | LightGBM (sec. 3.6.1) | LightGBM | The same; the Table 10 parameters are used directly. |
 
 ---
 
-## 2.4 Eksik BDT girdisi (düzeltildi)
+## 2.4 The missing BDT input (fixed)
 
-Tablo 12 muon sınıflandırıcısı için **10** değişken listeliyor ve metin de
-bunu doğruluyor (*"Table 12 lists the 10 input variables"*). `MUON_FEATURES`
-listemizde **9** vardı — `IC2018_LE_L3_Vars.NchCleaned` atlanmıştı.
+Table 12 lists **10** variables for the muon classifier and the text confirms it
+(*"Table 12 lists the 10 input variables"*).  Our `MUON_FEATURES` had **9** --
+`IC2018_LE_L3_Vars.NchCleaned` had been skipped.
 
-`NchCleaned` hem noise hem muon BDT'sinin girdisi; noise listesinde olduğu
-için gözden kaçmış. Muon BDT'si belgelenmiş girdilerinden biri olmadan
-eğitilecekti. Eklendi, sıra Tablo 12'deki gibi:
+`NchCleaned` is an input to both the noise and the muon BDT; being in the noise
+list, it was overlooked.  The muon BDT would have been trained without one of
+its documented inputs.  Added, in the Table 12 order:
 
 ```
 ICVetoHits, RTVeto250Hits, NchCleaned, NAbove200Hits, VICH_nch,
 accumulated_time, first_hlc_rho, cog_z, z_sigma, z_travel
 ```
 
-Benzersiz BDT değişkeni: **14** (5 noise + 10 muon, `NchCleaned` ortak).
+Unique BDT variables: **14** (5 noise + 10 muon, `NchCleaned` shared).
 
 ---
 
-## 2.5 İsim uyuşmazlıkları — çözüldü
+## 2.5 Name mismatches — resolved
 
-Gerçek pass3 HDF5 çıktısı üzerinde `check_registry` ile doğrulandı:
+Verified with `check_registry` against real pass3 HDF5 output:
 
-| Değişken | Not (Tablo 11) | Gerçek HDF5 kolonu |
+| Variable | The note (Table 11) | The actual HDF5 column |
 |---|---|---|
-| `fill_ratio` | `L4_fill_ratio.fill_ratio_from_mean` | **`fillratio_from_mean`** (alt çizgisiz) |
+| `fill_ratio` | `L4_fill_ratio.fill_ratio_from_mean` | **`fillratio_from_mean`** (no underscore) |
 | `iLineFit_speed` | `L4_iLineFit.speed` | `L4_iLineFitParams.lf_vel` |
-| `noise_weight` | — | `noise_weight.weight` (`value` değil) |
+| `noise_weight` | — | `noise_weight.weight` (not `value`) |
 
-Üçü de `l4_data.ALTS` içinde; dosyada gerçekten hangisi varsa o kullanılıyor.
-`bulundu: 5/5` ve `10/10` — 14 BDT girdisinin hepsi bulundu.
+All three are in `oscnext_l4.data.ALTS`; whichever is actually in the file is
+used.  `found: 5/5` and `10/10` -- all 14 BDT inputs found.
 
-**HDF5 kolon adı ile frame alan adı aynı olmak zorunda değil.** hdfwriter'ın
-çeviricisi yeniden adlandırabiliyor (`fill_ratio_from_mean` →
-`fillratio_from_mean`). Bu yüzden `check_feature_map()` iki tarafın da
-alternatiflerini (`l4_data.ALTS` ve `l4_classifier_module.COLUMN_ALTS`)
-dikkate alıyor — yoksa meşru bir isim farkını çakışma sanıp yanlış alarm
-verirdi. Kontrol yine de gerçek çakışmayı yakalıyor (regresyon testi
-yapıldı: `cog_z` → `cog_x` enjekte edildi, yakalandı).
+**The HDF5 column name need not match the frame field name.** The hdfwriter
+converter may rename (`fill_ratio_from_mean` → `fillratio_from_mean`).  That is
+why `check_feature_map()` takes both sides' alternatives
+(`data.ALTS` and `classifier.COLUMN_ALTS`) into account -- otherwise it would
+mistake a legitimate name difference for a conflict and raise a false alarm.
+It still catches a real conflict (regression tested: injecting
+`cog_z` → `cog_x` was caught).
 
-## 2.6 Ağırlık doğrulama hedefleri (Tablo 13)
+## 2.6 Weight verification targets (Table 13)
 
-L3'teki oranlar — ağırlık zincirinin **tek en iyi göstergesi**:
+The L3 rates -- **the single best indicator** of the weight chain:
 
-| Bileşen | L3 [mHz] | L4 noise sonrası | L4 tam | verim |
+| Component | L3 [mHz] | after L4 noise | full L4 | efficiency |
 |---|---|---|---|---|
 | GENIE νe CC | 0.95 | 0.90 | 0.84 | 88.5 % |
 | GENIE νμ CC | 3.77 | 3.65 | 3.11 | 82.5 % |
 | GENIE ντ CC | 0.129 | 0.124 | 0.119 | 92.1 % |
 | GENIE ν NC | 0.53 | 0.51 | 0.46 | 85.5 % |
 | Atm. μ (MuonGun) | 505 | 490 | 28.1 | 5.6 % |
-| Vuvuzela gürültü | 36.6 | 0.28 | 0.28 | 0.7 % |
-| **Toplam MC** | **547** | 495 | 32.9 | 6.0 % |
+| Vuvuzela noise | 36.6 | 0.28 | 0.28 | 0.7 % |
+| **Total MC** | **547** | 495 | 32.9 | 6.0 % |
 
-pass3'te birebir tutmaz, **mertebe** tutmalı.
+These will not match exactly in pass3; the **order of magnitude** should.
 
-> **Bu tablo bir hatayı ortaya çıkardı.** Notebook ağırlıkları
-> `d["_n_files"]`'a bölüyordu ve bu **HDF5 dosya sayısı**ydı. 100 L3
-> dosyası tek HDF5'e book edilince bölen 1 oluyordu → ağırlıklar **100 kat
-> büyük**. νe için ~0.95 mHz yerine ~95 mHz görürdün. `process_L4.py` artık
-> `<çıktı>.hdf5.meta.json` içine `n_l3_files` yazıyor, `load_sample` onu
-> okuyor. Eski HDF5'lerin sidecar'ı yok → notebook uyarı basıyor.
+> **This table exposed a bug.** The notebook divided the weights by
+> `d["_n_files"]`, and that was the **number of HDF5 files**.  With 100 L3 files
+> booked into one HDF5 the divisor became 1 → the weights were **100 times too
+> large**.  You would have seen ~95 mHz for nue instead of ~0.95.
+> `process_L4.py` now writes `n_l3_files` into `<output>.hdf5.meta.json` and
+> `load_sample` reads it.  Older HDF5 files have no sidecar, so the notebook
+> prints a warning.
+
+> **Measured (see CLAUDE.md 5d):** the noise rate came out at 41.4 mHz for the
+> full sample against the note's 36.6 -- agreement within 13%, so the
+> `NOISE_NS_SCALE = 1e9` assumption holds.  The signal side is a factor 1.5
+> high, which is what an invented E⁻³ power law should give.
 
 ---
 
-# Öncelik sırası
+# Priority order
 
-1. **VICH COG'unu fiducial'la sınırla** (§2.2) — notta açıkça yazan, kodda
-   olmayan tek şey. Muon ayrımını doğrudan etkiler.
-2. **`iLineFit_speed` kolonunu doğrula** (§2.5) — 10 saniyelik iş, sessiz
-   NaN riski.
-3. **Ağırlıkları Tablo 13 ile karşılaştır** (§2.6) — `n_l3_files` düzeltmesi
-   sonrası mertebe tutuyor mu?
-4. `accumulated_time` referans zamanı (§2.1) — fraksiyon ve seri doğrulandı,
-   sıfır noktası açık.
+1. **`accumulated_time` reference time** (2.1) -- the fraction and the series
+   are verified, the zero point is open.
+2. **`fill_ratio`'s `SphericalRadiusMean`** -- never re-tuned for oscNext, and
+   it carries 61% of the noise model's gain (CLAUDE.md 5g).  The single
+   highest-value knob.
+3. **Whether the VICH COG is charge weighted** (2.2) -- the fiducial
+   restriction is done; this assumption remains.
+4. **Compare against the reference L4 files** -- the only way to close items 1
+   and 3 for good.
