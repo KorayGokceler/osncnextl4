@@ -16,15 +16,14 @@ exactly what L4 variable production needs (pulse series are not booked).
 
 Usage:
 
-    from simple_booker import SimpleBooker
+    from oscnext_l4.booker import SimpleBooker
     tray.Add(SimpleBooker, "booker", Output="out.hdf5", Keys=[...])
 '''
 
 import numpy as np
 
 import os, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from icetray_env import require_icetray
+from .env import require_icetray
 require_icetray()
 from icecube import icetray, dataclasses
 

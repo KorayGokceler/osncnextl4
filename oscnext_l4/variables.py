@@ -21,8 +21,7 @@ import numpy as np
 
 # icetray_env bu dosyanin yanindadir; baska bir dizinden import edildiginde
 # de bulunabilmesi icin sys.path'e ekleniyor.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from icetray_env import (require_icetray, optional_project, require_project,
+from .env import (require_icetray, optional_project, require_project,
                          load_deserialization_libs, deepcore_doms,
                          deepcore_veto_domset, deepcore_fiducial_domset,
                          load_lib)
@@ -854,7 +853,7 @@ def compute_L4_cut(tray, name, classifier_model_dir,
     Modeller HENUZ EGITILMEMISSE bu segment'i atlayin: once degiskenleri
     kesimsiz book edip siniflandiricilari egitmeniz gerekir.
     '''
-    from l4_classifier_module import add_L4_classifiers
+    from .classifier import add_L4_classifiers
 
     tray.Add(L4_noise_straight_cuts, name + "_straight_cuts")
 

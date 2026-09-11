@@ -15,7 +15,7 @@ metin formatinda okunur:
 
 Kullanim:
 
-    from l4_classifier_module import L4Classifier, add_L4_classifiers
+    from oscnext_l4.classifier import L4Classifier, add_L4_classifiers
 
     tray.Add(L4Classifier, "noise_clf",
              ModelFile="models/L4_noise_model.txt",
@@ -31,8 +31,7 @@ import json
 import numpy as np
 
 import os, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from icetray_env import require_icetray
+from .env import require_icetray
 require_icetray()
 from icecube import icetray, dataclasses
 

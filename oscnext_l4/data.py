@@ -724,7 +724,7 @@ def read_feature_map(path=None):
     """
     import ast
     path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "l4_classifier_module.py")
+                                "classifier.py")
     if not os.path.exists(path):
         return None
     tree = ast.parse(open(path).read())
@@ -776,7 +776,7 @@ def read_column_alts(path=None):
     """
     import ast
     path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "l4_classifier_module.py")
+                                "classifier.py")
     if not os.path.exists(path):
         return {}
     tree = ast.parse(open(path).read())

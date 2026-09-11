@@ -30,8 +30,11 @@ import json
 import time
 import argparse
 
-from icetray_env import (require_icetray, get_I3Tray, report_missing,
-                         load_deserialization_libs, IceTrayNotAvailable)
+sys.path.insert(0, os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
+
+from oscnext_l4.env import (require_icetray, get_I3Tray, report_missing,
+                            load_deserialization_libs, IceTrayNotAvailable)
 
 try:
     require_icetray()
@@ -50,8 +53,8 @@ I3Tray = get_I3Tray()
 #   sim_services   -> I3MCPEShifter vb.
 load_deserialization_libs()
 
-from simple_booker import add_booker
-from oscNext_L4_variables import (
+from oscnext_l4.booker import add_booker
+from oscnext_l4.variables import (
     oscNext_L4, L4_HDF5_KEYS, HITSTAT_KEY, HITMULT_KEY,
     UNCLEANED_PULSES_DEFAULT, CLEANED_PULSES_DEFAULT,
 )
@@ -259,45 +262,6 @@ def _record_bad(output, paths, reason):
         print("  Kara liste: %s" % path)
     except OSError as e:
         print("  [!] kara liste yazilamadi: %s" % e)
-
-
-def validate_files(paths, n_frames=25, verbose=True):
-    """
-    Her dosyayi acip ilk `n_frames` frame'i oku.  (saglam, bozuk) dondur.
-
-    n_frames=0 -> dosyanin TAMAMI okunur (yavas ama kesin).
-
-    Not: bu, dosyanin tamamen saglam oldugunu garanti etmez -- ortasinda
-    bozulma varsa ancak tam tarama yakalar.  Ama pratikte gordugumuz
-    hatalar (kesik yazilmis dosya) ilk frame'lerde ortaya cikiyor.
-    """
-    good, bad = [], []
-    for i, path in enumerate(paths):
-        try:
-            if os.path.getsize(path) == 0:
-                bad.append((path, "bos dosya (0 byte)"))
-                continue
-        except OSError as e:
-            bad.append((path, "stat: %s" % e))
-            continue
-        try:
-            f = dataio.I3File(path)
-            try:
-                n = 0
-                while f.more():
-                    f.pop_frame()
-                    n += 1
-                    if n_frames and n >= n_frames:
-                        break
-            finally:
-                f.close()
-            good.append(path)
-        except Exception as e:
-            first = str(e).strip().splitlines()[0] if str(e).strip() else type(e).__name__
-            bad.append((path, first[:160]))
-        if verbose and (i + 1) % 100 == 0:
-            print("  taranan: %d/%d" % (i + 1, len(paths)))
-    return good, bad
 
 
 def _run_tray(build, infiles, output_hdf5, retries):

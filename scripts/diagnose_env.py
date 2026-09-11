@@ -10,7 +10,8 @@ import os
 import sys
 import importlib
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
 
 print("=" * 70)
 print("PYTHON")
@@ -21,7 +22,7 @@ print(sys.executable)
 # When icecube cannot be imported at all, print the detailed diagnosis and
 # leave -- every check below would be meaningless.
 try:
-    import icetray_env as _ienv
+    from oscnext_l4 import env as _ienv
 except ImportError:
     _ienv = None
 
