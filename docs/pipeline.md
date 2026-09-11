@@ -1,87 +1,90 @@
-# Akış şeması — hangi dosya ne zaman çalışır
+# Pipeline — which file runs when
 
-İki aşama var: **L3 → L4 işleme** (IceTray gerekir, saatler sürer) ve
-**eğitim** (IceTray gerekmez, dakikalar sürer). Arayüz `oscNext_L4.ipynb`.
+Two stages: **L3 to L4 processing** (needs IceTray, takes hours) and
+**training** (no IceTray, takes minutes).  The interface is
+`notebooks/oscNext_L4.ipynb`.
 
-## Aşama 1 — L3 → L4 işleme
+## Stage 1 — L3 to L4 processing
 
 ```
-L3 .i3.zst dosyalari
+L3 .i3.zst files
    │
-   ├─ scan_files.py            bozuk dosyalari ele, saglam liste uret
-   │                           (set basina BIR KEZ; sonra --scan off)
+   ├─ scripts/scan_files.py    drop the corrupt files, write a healthy list
+   │                           (ONCE per set; then --scan off)
    ▼
-process_L4.py                  surucu: tray kurar, calistirir, book eder
+scripts/process_L4.py          driver: builds the tray, runs it, books
    │   │
-   │   ├─ icetray_env.py       TUM icecube import'lari buradan gecer
+   │   ├─ oscnext_l4.env       EVERY icecube import goes through here
    │   │
-   │   ├─ oscNext_L4_variables.py     tray segment'leri:
-   │   │      oscNext_L4                 ana segment
+   │   ├─ oscnext_l4.variables tray segments:
+   │   │      oscNext_L4                the main segment
    │   │      ├─ common      first_hlc, rho_36, FullTimeLengthRatio
    │   │      ├─ muon vars   ToI, iLineFit, VICH, accumulated_time
    │   │      ├─ noise vars  micro_count, fill_ratio
    │   │      └─ hit_stats   cog_z, z_sigma, z_travel, n_hit_doms
    │   │
-   │   └─ simple_booker.py     add_booker: hdfwriter varsa o,
-   │                           yoksa pytables fallback (cvmfs icin)
+   │   ├─ oscnext_l4.filescan  the pre-scan for corrupt input
+   │   │
+   │   └─ oscnext_l4.booker    add_booker: hdfwriter if present, else the
+   │                           pytables fallback (for cvmfs)
    ▼
-L4_output/hdf5/<ornek>/L4_*.hdf5   + <cikti>.meta.json
+L4_output/hdf5/<sample>/L4_*.hdf5   + <output>.meta.json
 ```
 
-`l4_run.py` bu adımın sürücüsü: `configure_runner`, `run_process`,
-`run_all`, `run_process_parallel` (+ canlı ilerleme çubuğu). Notebook
-bölüm 1 bunu çağırır.
+`oscnext_l4.runner` drives this stage: `configure_runner`, `run_process`,
+`run_all`, `run_process_parallel`, plus a live progress bar.  Section 1 of the
+notebook calls it.
 
-## Aşama 2 — Eğitim
+## Stage 2 — Training
 
 ```
 L4_*.hdf5
    │
-   ├─ l4_data.py               REGISTRY/ALTS, dump_tables, check_registry,
+   ├─ oscnext_l4.data          REGISTRY/ALTS, dump_tables, check_registry,
    │                           check_feature_map, load_sample, add_weights
    ▼
-numpy dizileri  (notebook bolum 4-5)
+numpy arrays  (notebook sections 4-5)
    │
    ▼
-L4_output/ds/L4_<tag>_dataset.npz   (notebook bolum 6)
+L4_output/ds/L4_<tag>_dataset.npz   (notebook section 6)
    │
    ▼
-train_L4_classifier.py         LightGBM, Tablo 10 hiperparametreleri
+scripts/train_L4_classifier.py      LightGBM, Table 10 hyperparameters
    │
    ▼
 L4_output/models/
-   L4_<tag>_model.txt          LightGBM native metin formati
-   L4_<tag>_model.json         degisken sirasi + metrikler + meta
+   L4_<tag>_model.txt          LightGBM native text format
+   L4_<tag>_model.json         feature order + metrics + metadata
    <tag>_cuts.png  <tag>_overtrain.png  <tag>_dist.png
    │
    ▼
-l4_classifier_module.py        L4Classifier tray modulu
-                               add_L4_classifiers(tray, ...) -> frame'e I3Double
+oscnext_l4.classifier          the L4Classifier tray module
+                               add_L4_classifiers(tray, ...) -> I3Double
 ```
 
-## Tray modül sırası (`oscNext_L4` segmenti içinde)
+## Tray module order (inside the `oscNext_L4` segment)
 
-1. L3 kesimi (`l3_cut`) — `IC2018_LE_L3_Full AND Data_quality_bool`
+1. L3 cut (`l3_cut`) — `IC2018_LE_L3_Full AND Data_quality_bool`
 2. `first_hlc` → `L4_FirstHLC`
 3. `rho_36`, `FullTimeLengthRatio`
-4. muon değişkenleri (`iLineFit`, VICH, `accumulated_time`, opsiyonel ToI)
-5. noise değişkenleri (`micro_count` zinciri, `fill_ratio`)
-6. hit istatistikleri (L3 bunları sildiği için yeniden hesaplanır)
-7. ağırlık zinciri (`PropagateGenieInfo`)
+4. muon variables (`iLineFit`, VICH, `accumulated_time`, optional ToI)
+5. noise variables (the `micro_count` chain, `fill_ratio`)
+6. hit statistics (recomputed, because L3 deletes them)
+7. the weight chain (`PropagateGenieInfo`)
 
-## Yardımcı / tanı
+## Helpers / diagnostics
 
-| dosya | ne zaman |
+| file | when |
 |---|---|
-| `setup_env.sh` | ortamı bul, shell aç, tek komut çalıştır, Jupyter kernel kaydet |
-| `icetray_env.py` | her `icecube` import'u; `get_I3Tray`, `require_lightgbm` |
-| `diagnose_env.py` | "import edilmiyor" dediğinde: ortamda ne var/yok |
-| `scan_files.py` | bozuk `.i3.zst` tara, `--good-list` üret |
+| `setup_env.sh` | find the environment, open a shell, run one command, register a Jupyter kernel |
+| `oscnext_l4/env.py` | every `icecube` import; `get_I3Tray`, `have_lightgbm` |
+| `scripts/diagnose_env.py` | when something "will not import": what is and is not in the environment |
+| `scripts/scan_files.py` | scan for corrupt `.i3.zst`, produce a `--good-list` |
 
-## Referans (`reference/`) — çalışmaz, kaynaktır
+## Reference (`reference/`) — never runs, it is source material
 
-| dosya | ne |
+| file | what |
 |---|---|
-| `OscNext_v00.074_pass2_technical_note.pdf` | resmi teknik not (Tablo 10–13) |
-| `oscNext_L4_pass2_original.py` | orijinal L4 tray segment'i (Tom Stuttard) |
-| `pass3_L3_process.py` | kullanıcının gerçek pass3 L3 işleme scripti |
+| `OscNext_v00.074_pass2_technical_note.pdf` | the official technical note (Tables 10-13) |
+| `oscNext_L4_pass2_original.py` | the original L4 tray segment (Tom Stuttard) |
+| `pass3_L3_process.py` | the user's actual pass3 L3 processing script |

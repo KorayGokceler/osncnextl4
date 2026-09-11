@@ -1,131 +1,145 @@
-# oscNext L4 — Level 3 → Level 4
+# oscNext L4 — Level 3 to Level 4
 
-IceCube oscNext (düşük enerji nötrino) analizinin **L3 → L4** adımı.
-L3 `.i3` dosyalarından L4 ayırt edici değişkenlerini hesaplar, HDF5'e book
-eder ve iki LightGBM sınıflandırıcısı eğitir:
+The **L3 to L4** step of the IceCube oscNext (low energy neutrino) analysis.
+It computes the L4 discriminating variables from L3 `.i3` files, books them to
+HDF5, and trains two LightGBM classifiers:
 
-- **noise** — saf gürültü (vuvuzela) reddi
-- **muon** — atmosferik muon reddi (arka plan: CORSIKA)
+- **noise** — rejection of pure noise (vuvuzela)
+- **muon** — rejection of atmospheric muons (background: CORSIKA)
 
-Referans: oscNext technical note v00.07 (bölüm 3.4–3.6, Tablo 10–13).
-Yöntem notunkiyle aynı: LightGBM, Tablo 10 hiperparametreleri.
+Reference: oscNext technical note v00.07 (sections 3.4-3.6, Tables 10-13).
+The method is the note's own: LightGBM with the Table 10 hyperparameters.
 
-## Kurulum
+## Layout
 
-**1. IceTray ortamı.** `icecube.*` import'ları bir IceTray build'inin
-`env-shell.sh`'i içinden çalışır. Arama sırası: `$OSCNEXT_I3_BUILD` →
-`$I3_BUILD` → `/data/user/$USER/icetray_build/build` →
-`/data/user/$USER/*/build` → `~/*/build` → cvmfs metaproject'leri.
-
-```bash
-./setup_env.sh find          # ne bulunuyor
-./setup_env.sh shell         # ortam icinde shell ac
-./setup_env.sh run python diagnose_env.py    # tek komut
+```
+oscnext_l4/     the library      env, variables, booker, data, runner,
+                                 classifier, filescan
+scripts/        entry points     process_L4, train_L4_classifier,
+                                 scan_files, diagnose_env
+notebooks/      oscNext_L4.ipynb -- the interface, sections 0-10
+docs/           pipeline.md, technical_note_comparison.md
+reference/      the technical note and first-hand source material
 ```
 
-> **Tuzak:** `env-shell.sh` **yeni bir shell açar**. Script içinde ard arda
-> `./env-shell.sh` ve `python ...` yazarsan ikinci satır ortam olmadan
-> çalışır. Tek komut için `./env-shell.sh -- python ...` ya da
-> `./setup_env.sh run python ...`.
+## Setup
 
-**2. lightgbm.** Eğitimin ve uygulamanın tek ML bağımlılığı.
+**1. The IceTray environment.** `icecube.*` imports only work inside an
+IceTray build's `env-shell.sh`.  Search order: `$OSCNEXT_I3_BUILD` →
+`$I3_BUILD` → `/data/user/$USER/icetray_build/build` →
+`/data/user/$USER/*/build` → `~/*/build` → cvmfs metaprojects.
+
+```bash
+./setup_env.sh find          # what is found
+./setup_env.sh shell         # open a shell inside the environment
+./setup_env.sh run python scripts/diagnose_env.py    # one command
+```
+
+> **Trap:** `env-shell.sh` **opens a new shell**.  Writing `./env-shell.sh`
+> and `python ...` on consecutive lines of a script runs the second line
+> *after* leaving that shell, i.e. without the environment.  For a single
+> command use `./env-shell.sh -- python ...` or `./setup_env.sh run python ...`.
+
+**2. lightgbm.** The only ML dependency of training and application.
 
 ```bash
 ./setup_env.sh run python -c "import lightgbm; print(lightgbm.__version__)"
 ```
 
-**3. Jupyter.** Notebook'un IceTray'i görmesinin tek yolu, kernel'in
-env-shell içindeki python olması. En temizi Jupyter'i ortam içinden
-başlatmak:
+**3. Jupyter.** The only way the notebook sees IceTray is for the kernel to be
+the python inside env-shell.  Starting Jupyter from inside the environment is
+cleanest:
 
 ```bash
 eval $(/cvmfs/icecube.opensciencegrid.org/py3-v4.4.2/setup.sh)
-cd <build_dizini> && ./env-shell.sh
+cd <build_directory> && ./env-shell.sh
 cd ~/l4/osncnextl4 && python -m jupyter lab --no-browser --port=8896
 ```
 
-Başlatılmadıysa `./setup_env.sh kernel` ile kernel kaydedilip notebook'ta
-seçilir.
+Otherwise register the kernel with `./setup_env.sh kernel` and select it in
+the notebook.
 
-> **Tuzak:** Jupyter'in çalışma dizini **kernel restart ile değişmez**,
-> sunucudan gelir. `returncode=2` ve `~/.local/share/Trash/...` gibi bir yol
-> görüyorsan sunucu yanlış dizinde; kapatıp doğru dizinden yeniden başlat.
-> Notebook'ta kontrol: `import os; os.getcwd()`.
+> **Trap:** Jupyter's working directory **does not change with a kernel
+> restart** — it comes from the server.  If you see `returncode=2` and a path
+> like `~/.local/share/Trash/...`, the server is in the wrong directory: stop
+> it and restart from the right one.  The notebook locates the repository root
+> itself and says so if it cannot; `OSCNEXT_L4_ROOT` overrides the search.
 
-## Kullanım
+## Usage
 
-Her şey `oscNext_L4.ipynb` içinden. Bölümler:
+Everything runs from `notebooks/oscNext_L4.ipynb`:
 
-| # | ne yapar |
+| # | what it does |
 |---|---|
-| 0 | konfigürasyon + ortam kontrolü |
-| 1 | L3 → L4 işleme (`process_L4.py`, + smoke test) |
-| 2 | booking doğrulaması — HDF5'te gerçekte ne var |
-| 3 | feature registry + `FEATURE_MAP` ↔ `REGISTRY` tutarlılığı |
-| 4 | HDF5 → numpy |
-| 5 | ağırlıklar (`w_phys`) |
-| 6 | `.npz` eğitim setleri + train/test ayrımı |
-| 7 | eğitim (`train_L4_classifier.py`) |
-| 8 | doğrulama — verim/red tablosu, overtraining açığı, grafikler |
-| 9 | kesim seçimi |
-| 10 | modeli frame'e uygulama |
+| 0 | configuration + environment check |
+| 1 | L3 to L4 processing (`process_L4.py`, plus a smoke test) |
+| 2 | booking check — what is actually in the HDF5 |
+| 3 | feature registry + `FEATURE_MAP` ↔ `REGISTRY` consistency |
+| 4 | HDF5 to numpy |
+| 5 | weights (`w_phys`) |
+| 6 | `.npz` training sets + the train/test split |
+| 7 | training (`train_L4_classifier.py`) |
+| 8 | validation — efficiency/rejection table, overtraining gap, plots |
+| 9 | choosing the cut |
+| 10 | applying the model to frames |
 
-Komut satırından da çalışır:
+It also works from the command line:
 
 ```bash
-# isleme
-python process_L4.py --input-list nue_good.txt --output L4_output/hdf5/nue/L4_nue.hdf5 \
-    --gcd <GCD> --scan off
+# processing
+python scripts/process_L4.py --input-list nue_good.txt \
+    --output-hdf5 L4_output/hdf5/nue/L4_nue.hdf5 --gcd <GCD> --scan off
 
-# egitim
-python train_L4_classifier.py --tag noise \
+# training
+python scripts/train_L4_classifier.py --tag noise \
     --dataset L4_output/ds/L4_noise_dataset.npz --outdir L4_output/models
 ```
 
-## Bilinen tuzaklar
+## Known traps
 
-**Bozuk girdi dosyaları.** pass3 üretiminde yarım yazılmış `.i3.zst`'ler
-var; `I3Reader` listeyi tek seferde aldığı için bir bozuk dosya **tüm
-tray'i öldürür**. `process_L4.py` iki katmanlı korur: ön tarama
-(`--scan quick`, varsayılan) ve çalışma anı yeniden deneme
-(`--retries 3`). Elenenler `<çıktı>.hdf5.badfiles.txt`'ye yazılır. Set
-başına bir kez `scan_files.py --good-list` çalıştırıp `--scan off`
-kullanmak en verimlisi.
+**Corrupt input files.** The pass3 production contains half-written
+`.i3.zst` files, and since `I3Reader` takes the whole list at once, one
+corrupt file **kills the entire tray**.  `process_L4.py` protects in two
+layers: a pre-scan (`--scan quick`, the default) and a run-time retry
+(`--retries 3`).  Dropped files are listed in `<output>.hdf5.badfiles.txt`.
+Scanning once per set with `scan_files.py --good-list` and then using
+`--scan off` is the efficient route.
 
-**`--n` frame sayar, olay saymaz.** `--n 200` ile 60 olay book edilmesi
-normal: akışta G/C/D/Q/P frame'leri var, P'lerin bir kısmı
-`--sub-event-stream`'e uyar, bir kısmı L3 kesimini geçer. Çıktı kademeyi
-gösterir.
+**`--n` counts frames, not events.** Getting 60 events from `--n 200` is
+normal: the stream carries G/C/D/Q/P frames, only some P frames match
+`--sub-event-stream`, and only some of those pass the L3 cut.  The output
+shows every stage.
 
-**Modül önbelleği.** `git pull` sonrası `cannot import name ... from
-l4_data` alıyorsan modül hafızada eski. Notebook bölüm 0 `%autoreload 2`
-açıyor, tekrarlamamalı; olursa Kernel → Restart.
+**Module cache.** If `cannot import name ... from oscnext_l4.data` appears
+after a `git pull`, the module in memory is stale.  Section 0 of the notebook
+enables `%autoreload 2`, so it should not recur; if it does, Kernel → Restart.
 
-**Hızlandırma otomatik değil.** Varsayılan tek süreç. Paralellik için
-`run_all(jobs=8, chunk_files=10, skip_optional=True)`. cobalt paylaşılan
-makine — `jobs=8` makul, `jobs=64` değil.
+**Speedups are not automatic.** The default is a single process.  For
+parallelism use `run_all(jobs=8, chunk_files=10)`.  cobalt is a shared
+machine — `jobs=8` is reasonable, `jobs=64` is not.
 
-## Notebook'u commit'lemeden önce
+## Before committing the notebook
 
 ```bash
 pip install --user nbstripout && nbstripout --install
 ```
 
-Çıktı hücreleri MB'larca yer kaplar ve anlamsız diff üretir.
+Output cells take megabytes and produce meaningless diffs.
 
-## Durum
+## Status
 
-- [x] Ortam doğrulandı, IceTray/lightgbm import katmanı
-- [x] Bozuk girdi dosyalarına dayanıklılık
-- [x] Sütun isimleri kesinleştirildi (14/14 BDT girdisi bulundu)
-- [x] νe ve CORSIKA işlendi
-- [x] noise sınıflandırıcısı eğitildi — %99 redde %95.9 verim
-      (Tablo 13: ~%96)
-- [ ] νμ / noise yeniden işlenmeli (bozuk `.i3.zst` yüzünden yarım kaldı)
-- [ ] muon sınıflandırıcısı eğitilmedi
-- [ ] Yeniden yazılan değişkenler (VICH, accumulated_time) referansla
-      doğrulanmadı
-- [ ] Gürültü MC istatistiği yetersiz — %99'un sağı ölçülemiyor
+- [x] Environment verified, IceTray/lightgbm import layer
+- [x] Robust against corrupt input files
+- [x] Column names pinned down (14/14 BDT inputs found)
+- [x] nue and CORSIKA processed
+- [x] Noise classifier trained — 95.9% efficiency at 99% rejection
+      (Table 13: ~96%)
+- [ ] numu / noise need reprocessing (cut short by corrupt `.i3.zst`)
+- [ ] Muon classifier not trained
+- [ ] The rewritten variables (VICH, accumulated_time) not verified against
+      the reference
+- [ ] Noise MC statistics are inadequate — nothing right of 99% is measurable
 
-Ayrıntı ve açık riskler: `CLAUDE.md`. Teknik notla satır satır
-karşılaştırma: `TEKNIK_NOT_KARSILASTIRMA.md`. Akış: `AKIS_SEMASI.md`.
+Details and open risks: `CLAUDE.md`.  Line-by-line comparison with the
+technical note: `docs/technical_note_comparison.md`.  Data flow:
+`docs/pipeline.md`.

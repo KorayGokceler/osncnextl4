@@ -1,634 +1,654 @@
-# oscNext L4 — proje bilgilendirmesi
+# oscNext L4 — project briefing
 
-Bu dosya her Claude Code session'ında otomatik yüklenir. Amacı: kod tabanını
-hiç görmemiş bir session'ın, fizik/IceTray bağlamını ve mevcut riskleri
-hızlıca kavrayıp anlamlı fikir yürütebilmesi.
+This file is loaded automatically in every Claude Code session.  Its purpose:
+to let a session that has never seen the codebase grasp the physics/IceTray
+context and the current risks quickly enough to reason usefully about them.
 
-## Ne yapıyor bu repo
+## What this repository does
 
-IceCube deneyinin oscNext (düşük enerji nötrino) analizinde **Level 3 → Level
-4** işleme adımını yeniden inşa ediyor. L3 çıktısı `.i3` dosyalarından L4
-ayırt edici değişkenlerini hesaplıyor, HDF5'e "book" ediyor ve iki LightGBM
-sınıflandırıcısı eğitiyor:
+It rebuilds the **Level 3 → Level 4** processing step of the IceCube oscNext
+(low energy neutrino) analysis.  It computes the L4 discriminating variables
+from L3 `.i3` files, books them to HDF5, and trains two LightGBM classifiers:
 
-- **noise**: saf gürültü (vuvuzela) reddi
-- **muon**: atmosferik muon reddi (arka plan = CORSIKA)
+- **noise**: rejection of pure noise (vuvuzela)
+- **muon**: rejection of atmospheric muons (background = CORSIKA)
 
-Referans: oscNext technical note v00.07 (bölüm 3.4–3.6, Tablo 10–13).
-**Yöntem notunkiyle aynı:** LightGBM, Tablo 10 hiperparametreleri.
+Reference: oscNext technical note v00.07 (sections 3.4-3.6, Tables 10-13).
+**The method is the note's own:** LightGBM with the Table 10 hyperparameters.
 
-> Proje bir süre pybdt (IceCube'un AdaBoost tabanlı BDT kütüphanesi)
-> kullandı — bilinçli bir sapmaydı ve bedeli ölçüldü: aynı veri, aynı
-> değişkenler, aynı ayrım üzerinde %99 gürültü reddinde AdaBoost %65.8,
-> LightGBM %95.9 verim verdi (Tablo 13 hedefi ~%96). pybdt yolu bu yüzden
-> kaldırıldı; ölçümün kendisi `claude/lightgbm-compare` branch'inde duruyor.
+> The project used pybdt (IceCube's AdaBoost-based BDT library) for a while --
+> a deliberate deviation whose cost was then measured: on the same data, the
+> same variables and the same split, AdaBoost kept 65.8% of the signal at 99%
+> noise rejection where LightGBM kept 95.9% (the Table 13 target is ~96%).
+> The pybdt path was removed for that reason; the measurement itself lives on
+> the `claude/lightgbm-compare` branch.
 
-## Neden yeniden yazıldı (kritik bağlam)
+## Why it was rewritten (critical context)
 
-Kullanılan IceTray meta-projesinde (`py3-v4.4.2`) şu satırlar **yok**:
+The IceTray meta-project in use (`py3-v4.4.2`) does **not** have:
 
-- `icecube.oscNext` projesi tamamen yok → `I3Classifier` (model uygulama),
-  `oscNext_cut`, `calc_rho_36` kullanılamıyor.
-- `icecube.hdfwriter` **cvmfs metaproject'inde** yoktu → `simple_booker.py`
-  pytables ile fallback booking yapıyor. Kullanıcının kendi build'inde
-  (`/data/user/$USER/icetray_build/build`) hdfwriter VAR — gerçek çalışmada
-  `Booking: icecube.hdfwriter` yazıyor. Fallback devrede değil ama kod
-  duruyor (cvmfs ortamına dönülürse gerekli).
-- Eski proje bağımlılıkları yok: `tau_bdt.I3CutL7Module` (VICH),
-  `analysis.event_selection` (Dunkman değişkenleri: accumulated_time,
-  separation_in_cogs), `slc-veto` (QR box, opsiyonel).
+- The `icecube.oscNext` project at all → `I3Classifier` (model application),
+  `oscNext_cut` and `calc_rho_36` are unavailable.
+- `icecube.hdfwriter` was missing **from the cvmfs metaproject** →
+  `oscnext_l4/booker.py` falls back to pytables.  The user's own build
+  (`/data/user/$USER/icetray_build/build`) DOES have hdfwriter -- a real run
+  prints `Booking: icecube.hdfwriter`.  The fallback is not in use but the
+  code stays (it is needed if we return to a cvmfs environment).
+- The old project dependencies: `tau_bdt.I3CutL7Module` (VICH),
+  `analysis.event_selection` (the Dunkman variables: accumulated_time,
+  separation_in_cogs), `slc-veto` (QR box, optional).
 
-Bu yüzden `oscNext_L4_variables.py` içinde VICH, accumulated_time,
-separation_in_cogs saf Python'la **teknik nottaki tanımlara göre** yeniden
-yazıldı ve **orijinal C++ implementasyonuyla doğrulanmadı**. Bkz. "Açık
-riskler".
+So VICH, accumulated_time and separation_in_cogs were rewritten in pure Python
+inside `oscnext_l4/variables.py`, **following the definitions in the technical
+note**, and have **not been verified against the original C++ implementation**.
+See "Open risks".
 
-## Dosya haritası ve veri akışı
+## File map and data flow
 
 ```
-.i3 (L3 çıktısı, pass3)
+.i3 (L3 output, pass3)
    │
    ▼
-process_L4.py  ──uses──►  oscNext_L4_variables.py (oscNext_L4 traysegment)
+scripts/process_L4.py  ──uses──►  oscnext_l4.variables (the oscNext_L4 segment)
    │                          ├─ common: first_hlc, rho_36, FullTimeLengthRatio
    │                          ├─ muon vars: ToI, iLineFit, VICH, accumulated_time
    │                          ├─ noise vars: micro_count, fill_ratio
    │                          └─ hit_statistics: cog_z, z_sigma, z_travel, n_hit_doms
    │
-   ├─uses──► simple_booker.py (add_booker: hdfwriter varsa o, yoksa SimpleBooker)
+   ├─uses──►  oscnext_l4.booker (add_booker: hdfwriter if present, else SimpleBooker)
    │
    ▼
 .hdf5  (L4_output/hdf5/<sample>/L4_*.hdf5)
    │
    ▼
-oscNext_L4.ipynb   ◄── ANA ARAYÜZ (11 bölüm, 0–10)
+notebooks/oscNext_L4.ipynb   ◄── THE INTERFACE (11 sections, 0-10)
    │
-   ▼  bölüm 6: L4_output/ds/L4_<tag>_dataset.npz
+   ▼  section 6: L4_output/ds/L4_<tag>_dataset.npz
    │
-train_L4_classifier.py  →  L4_<tag>_model.txt + .json + grafikler
+scripts/train_L4_classifier.py  →  L4_<tag>_model.txt + .json + plots
    │
    ▼
-l4_classifier_module.py  (L4Classifier tray modülü, add_L4_classifiers)
+oscnext_l4.classifier  (the L4Classifier tray module, add_L4_classifiers)
 ```
 
-Yardımcı dosyalar:
-- `icetray_env.py` — **tüm `icecube` import'ları buradan geçer**; import
-  başarısız olursa sebebini raporlar. `require_lightgbm()` de burada.
-- `setup_env.sh` — ortamı bul / shell aç / tek komut çalıştır / Jupyter kernel.
-- `scan_files.py` — bozuk `.i3.zst` dosyalarını bul, sağlam liste üret.
-- `l4_run.py` — `process_L4.py` sürücüsü + canlı ilerleme çubuğu.
-- `l4_data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
+Supporting files:
+- `oscnext_l4/env.py` — **every `icecube` import goes through here**; when an
+  import fails it reports why.  `have_lightgbm()` lives here too.
+- `setup_env.sh` — find the environment / open a shell / run one command /
+  register a Jupyter kernel.
+- `scripts/scan_files.py` — find corrupt `.i3.zst` files, write a healthy list.
+- `oscnext_l4/runner.py` — the `process_L4.py` driver plus a live progress bar.
+- `oscnext_l4/data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
   `check_feature_map`, `load_sample`, `add_weights`.
-- `diagnose_env.py` — ortamda ne var/yok.
-- `AKIS_SEMASI.md` — hangi dosya ne zaman çalışır.
-- `TEKNIK_NOT_KARSILASTIRMA.md` — HDF5'e ne yazdığımız + teknik notla satır
-  satır karşılaştırma (Tablo 7/10/11/12/13).
+- `scripts/diagnose_env.py` — what is and is not in the environment.
+- `docs/pipeline.md` — which file runs when.
+- `docs/technical_note_comparison.md` — exactly what we write to HDF5, compared
+  line by line with the technical note (Tables 7/10/11/12/13).
 
-HDF5 kolonlarını dökmek için notebook bölüm 2.
+To dump the HDF5 columns, use section 2 of the notebook.
 
-## Kritik senkronizasyon noktası
+## The critical synchronisation point
 
-`FEATURE_MAP` (`l4_classifier_module.py`) ile `REGISTRY` (`l4_data.py`)
-birbiriyle satır satır aynı olmalı. Biri diğerinden farklı bir kolon
-okursa model **sessizce** yanlış tahmin üretir — hata fırlatmaz.
+`FEATURE_MAP` (`oscnext_l4/classifier.py`) and `REGISTRY`
+(`oscnext_l4/data.py`) must agree line for line.  If one reads a different
+column than the other, the model produces wrong predictions **silently** -- it
+does not raise.
 
-Elle değil, kodla kontrol ediliyor: `l4_data.check_feature_map()`
-`FEATURE_MAP`'i **AST ile** okuyor (icetray gerekmiyor) ve çakışmaları
-listeliyor. FEATURE_MAP'in fazladan aday değişken içermesi normal;
-tehlikeli olan **aynı isim, farklı kolon**.
+This is checked in code, not by eye: `data.check_feature_map()` reads
+`FEATURE_MAP` **with AST** (no icetray needed) and lists the conflicts.  It is
+normal for FEATURE_MAP to hold extra candidate variables; what is dangerous is
+**the same name pointing at a different column**.
 
-İlk çalıştırmada gerçek bir çakışma yakaladı: `iLineFit_speed` REGISTRY'de
-`LFVel`, FEATURE_MAP'te `lf_vel`, teknik not Tablo 11'de ise
-`L4_iLineFit.speed`. Üçü de `l4_data.ALTS` içinde — dosyada **gerçekten
-hangisi varsa** o kullanılıyor.
+The first run caught a real conflict: `iLineFit_speed` was `LFVel` in REGISTRY,
+`lf_vel` in FEATURE_MAP, and `L4_iLineFit.speed` in Table 11 of the note.  All
+three are in `data.ALTS` -- whichever is **actually in the file** is used.
 
-Model formatı bilinçli olarak joblib/pickle değil, LightGBM native metin
-formatı (`.txt`) + JSON sidecar: IceTray ortamında sklearn/joblib yok, sadece
-`lightgbm` + `numpy` var.
+The model format is deliberately not joblib/pickle but LightGBM's native text
+format (`.txt`) plus a JSON sidecar: the IceTray environment has no
+sklearn/joblib, only `lightgbm` + `numpy`.
 
-## Mevcut durum
+## Current status
 
-- [x] Ortam doğrulandı (`oscNext` projesi yok; `slc-veto` yok; kendi
-      build'de `hdfwriter` VAR)
-- [x] IceTray/lightgbm import katmanı (`icetray_env.py` + `setup_env.sh`)
-- [x] Bozuk girdi dosyalarına dayanıklılık (`--scan` + `--retries`)
-- [x] νe işleme (100 dosya → 256 799 olay), CORSIKA (500 dosya → 6 462 olay)
-- [x] Sütun isimleri kesinleştirildi (14/14 BDT girdisi bulundu)
-- [x] noise sınıflandırıcısı eğitildi: %99 redde %95.9 verim, train/test
-      açığı +0.1 puan
-- [ ] νμ / noise yeniden işlenmeli — bozuk `.i3.zst` yüzünden yarım kaldı
-- [ ] muon sınıflandırıcısı eğitilmedi
-- [ ] Yeniden yazılan değişkenler (VICH, accumulated_time) doğrulanmadı
-- [ ] Gürültü MC istatistiği yetersiz (~2 000 olay) — %99'un sağı ölçülemiyor
+- [x] Environment verified (no `oscNext` project; no `slc-veto`; the user's own
+      build DOES have `hdfwriter`)
+- [x] IceTray/lightgbm import layer (`oscnext_l4/env.py` + `setup_env.sh`)
+- [x] Robust against corrupt input files (`--scan` + `--retries`)
+- [x] nue processed (100 files → 256,799 events), CORSIKA (500 files → 6,462)
+- [x] Column names pinned down (14/14 BDT inputs found)
+- [x] Noise classifier trained: 95.9% efficiency at 99% rejection, train/test
+      gap +0.1 points
+- [ ] numu / noise need reprocessing -- cut short by corrupt `.i3.zst`
+- [ ] Muon classifier not trained
+- [ ] The rewritten variables (VICH, accumulated_time) not verified
+- [ ] Noise MC statistics inadequate (~2,000 events) -- nothing right of 99%
+      rejection is measurable
 
-## Açık riskler / fikir yürütülebilecek noktalar
+## Open risks / places worth thinking about
 
-> Teknik not okundu ve kodla satır satır karşılaştırıldı:
-> **`TEKNIK_NOT_KARSILASTIRMA.md`**.
+> The technical note has been read and compared with the code line by line:
+> **`docs/technical_note_comparison.md`**.
 
-1. **VICH** (`_vich`, `oscNext_L4_variables.py`) — büyük ölçüde **doğrulandı**:
-   §3.4 hız penceresini ([0.25, 0.4] m/ns) ve "veto region"un DeepCore
-   **Filter'ın** (L2) tanımı olduğunu açıkça yazıyor — `DeepCore_Filter.DOMS`
-   kullanımımız doğru. (L3'ün Tablo 7'deki fiducial tanımı **farklı**, onu
-   kullanmak yanlış olurdu.) `dt = t_COG − t_hit > 0` yönü de fizikle uyumlu.
-   **Bulunan sapma (düzeltildi):** not COG'un *fiducial hacimdeki* hitlerden
-   hesaplandığını söylüyor; kod tüm temizlenmiş seriyi kullanıyordu. Muonlu
-   olaylarda veto hitleri COG'u yukarı çekiyordu (test: z −400 → −43).
-   `fiducial_cog=True` artık varsayılan; `False` eski davranış.
-   **Kalan açık:** COG yük ağırlıklı mı? Not söylemiyor, biz yük ağırlıklı
-   alıyoruz. **Pulse serisi DOĞRULANDI:** orijinal pass2 kodu
-   (`reference/oscNext_L4_pass2_original.py`) `I3CutL7Module`'e
-   `InputPulses=uncleaned_pulses  # Use uncleaned hits` veriyor — bizim
-   ham `SplitInIcePulses` kullanmamız orijinalle aynı.
-2. **accumulated_time** — **doğrulandı**: Tablo 12 "Time to reach 75% of an
-   event's charge in the cleaned pulse series" diyor; kod `fraction=0.75` ve
-   `cleaned_pulses` kullanıyor. Fraksiyon ve seri artık tahmin değil.
-   Orijinal pass2 kodu da Dunkman `CalculateVariables`'a
-   `PulseSeries=cleaned_pulses` veriyor — seri seçimi **doğrulandı**.
-   **Kalan açık:** referans zamanı — kod `t[idx] − t[0]` (ilk pulse) alıyor,
-   not sıfır noktasını söylemiyor (tetikleme zamanı da olabilirdi); orijinalin
-   içi de `analysis.event_selection` C++ kodunda, elimizde yok.
-   `separation_in_cogs` BDT girdisi değil, düşük öncelik.
-3. **FullTimeLengthRatio yönü — ÇÖZÜLDÜ.** Tablo 11 metni oranın yönünü
-   söylemiyor ama **Şekil 13** söylüyor: `IC2018_LE_L3_Vars.FullTimeLengthRatio`
-   dağılımının x ekseni **0.0 – 1.0** aralığında. Ters yön (uncleaned/cleaned)
-   ≥ 1 olurdu ve bu eksene sığmazdı. Yani `cleaned / uncleaned` — kodun
-   (`_full_time_length_ratio`) aldığı yön. Artık çıkarım değil, notta var.
-   **Kalan (küçük) fark:** not bunu **L3 değişkeni** olarak listeliyor
-   (`IC2018_LE_L3_Vars.FullTimeLengthRatio`); pass3 L3 map'inde oran yok,
-   bileşenleri var (`CleanedFullTimeLength`, `UncleanedFullTimeLength`) —
-   biz oranı L4'te bölerek üretiyoruz, değer aynı olmalı. **Doğrulandı:**
-   bölme L3 bileşenleriyle karşılaştırıldı,
-   143 olayda maks sapma 0.
-   **Fizik açıklaması DÜZELTİLDİ (ölçümle).** Docstring "gerçek olay ~1,
-   gürültü ~0" diyordu; gerçek ölçüm (126 νe + 17 noise):
+1. **VICH** (`_vich`, `oscnext_l4/variables.py`) — largely **verified**:
+   sec. 3.4 states the speed window ([0.25, 0.4] m/ns) and that the "veto
+   region" is the DeepCore **Filter's** (L2) definition -- so our use of
+   `DeepCore_Filter.DOMS` is right.  (L3's fiducial definition in Table 7 is
+   **different**; using it would have been wrong.)  The direction
+   `dt = t_COG − t_hit > 0` is consistent with the physics.
+   **Deviation found (fixed):** the note says the COG is computed from the hits
+   *in the fiducial volume*; the code used the whole cleaned series.  In events
+   with a muon the veto hits pulled the COG upward (test: z −400 → −43).
+   `fiducial_cog=True` is now the default; `False` restores the old behaviour.
+   **Still open:** is the COG charge weighted?  The note does not say; we take
+   it charge weighted.  **The pulse series IS verified:** the original pass2
+   code (`reference/oscNext_L4_pass2_original.py`) passes
+   `InputPulses=uncleaned_pulses  # Use uncleaned hits` to `I3CutL7Module`, so
+   our use of the raw `SplitInIcePulses` matches the original.
 
-   |  | oran (medyan) | temizlenmiş | temizlenmemiş |
+2. **accumulated_time** — **verified**: Table 12 says "Time to reach 75% of an
+   event's charge in the cleaned pulse series"; the code uses `fraction=0.75`
+   and `cleaned_pulses`.  Neither the fraction nor the series is a guess any
+   more.  The original pass2 code also passes `PulseSeries=cleaned_pulses` to
+   Dunkman's `CalculateVariables` -- the series choice is **verified**.
+   **Still open:** the reference time.  The code takes `t[idx] − t[0]` (the
+   first pulse); the note does not state the zero point (it could have been the
+   trigger time), and the original's internals are in the
+   `analysis.event_selection` C++ code, which we do not have.
+   `separation_in_cogs` is not a BDT input -- low priority.
+
+3. **FullTimeLengthRatio direction — RESOLVED.** The text of Table 11 does not
+   give the direction of the ratio, but **Figure 13** does: the x axis of the
+   `IC2018_LE_L3_Vars.FullTimeLengthRatio` distribution runs **0.0 – 1.0**.
+   The other direction (uncleaned/cleaned) would be ≥ 1 and would not fit that
+   axis.  So it is `cleaned / uncleaned` -- the direction the code
+   (`_full_time_length_ratio`) takes.  No longer an inference; it is in the note.
+   **Remaining (small) difference:** the note lists it as an L3 variable
+   (`IC2018_LE_L3_Vars.FullTimeLengthRatio`); the pass3 L3 map has no ratio,
+   only its components (`CleanedFullTimeLength`, `UncleanedFullTimeLength`), so
+   we produce the ratio at L4 by dividing.  The value should be identical.
+   **Verified:** the division was compared against the L3 components, maximum
+   deviation 0 over 143 events.
+   **The physics explanation was CORRECTED (by measurement).** The docstring
+   said "real event ~1, noise ~0"; the actual measurement (126 nue + 17 noise):
+
+   |  | ratio (median) | cleaned | uncleaned |
    |---|---|---|---|
-   | νe | 0.16 | 1626 ns | 10 100 ns |
-   | noise (L3 geçen) | 0.27 | 2780 ns | 10 290 ns |
+   | nue | 0.16 | 1626 ns | 10,100 ns |
+   | noise (passing L3) | 0.27 | 2780 ns | 10,290 ns |
 
-   Oran **hiçbir zaman 1'e yaklaşmıyor**: `SplitInIcePulses` tüm okuma
-   penceresini kapladığı için temizlenmemiş süre her olayda ~10 µs, yani
-   değişken fiilen "temizlenmiş süre / 10 µs". Ayırt etme yönü de **ters**:
-   gürültünün temizlenmiş serisi νe'ninkinden daha uzun. Ayırt ediyor ama
-   beklenen hikâye değil. (17 noise olayı az; sıralama tek dosyada böyle,
-   magnitüd tespiti yapısal.)
-   Kodda ayrıca `inf`/`NaN` koruması eklendi: `uncleaned <= 0` kontrolü
-   sıfıra bölmeyi engelliyordu ama **NaN paydayı geçiriyordu**
-   (`NaN <= 0` → False), sonuç sessizce NaN yazılıyordu. Artık sonuç
-   `np.isfinite` ile denetleniyor ve oran > 1 çıkarsa bir kez uyarı basılıyor.
-3a. **Muon BDT'de eksik girdi (düzeltildi).** Tablo 12 **10** değişken
-   listeliyor, `MUON_FEATURES`'ta **9** vardı — `NchCleaned` atlanmıştı
-   (noise listesinde olduğu için gözden kaçmış). Eklendi. Benzersiz BDT
-   değişkeni: 14 (5 noise + 10 muon, `NchCleaned` ortak).
-3c. **`noise_weight` kolonu (düzeltildi).** `AUX`'ta `("noise_weight",
-   "value")` yazıyordu; eski LightGBM notebook'unda doğrulanmış hali
-   `("noise_weight", "weight")`. Yanlış olduğu için gürültü ağırlığı
-   **tamamen NaN** kalıyordu → noise örneğinin `w_phys`'i sıfır olurdu.
-   Düzeltildi, ikisi de `ALTS`'te.
-3b. **Kolon adları — ÇÖZÜLDÜ.** Gerçek pass3 çıktısı üzerinde
-   `check_registry` ile doğrulandı: `fill_ratio` → **`fillratio_from_mean`**
-   (alt çizgisiz), `iLineFit_speed` → `lf_vel`, `noise_weight` → `weight`.
-   Üçü de `ALTS`'te. `bulundu: 5/5` ve `10/10` — 14 BDT girdisinin hepsi
-   bulundu.
-   HDF5 kolon adı ile frame alan adı aynı olmak zorunda değil (hdfwriter
-   çeviricisi yeniden adlandırıyor); `check_feature_map()` iki tarafın da
-   alternatiflerini dikkate alıyor.
-3d. **CORSIKA ağırlığı (düzeltildi).** pybdt yolundaki `corsika_weight`
-   her olaya **eşit** ağırlık veriyordu (`np.ones/n_files`) — yani
-   ağırlıklandırma hiç yoktu. Sadece mutlak oranı bozmuyordu; muon BDT'si
-   atmosferik spektrumu değil simülasyonun düz spektrumunu görüyordu,
-   yani **eğitim setinin şekli yanlıştı**. Eski LightGBM notebook'undaki
-   yöntem taşındı: `simweights` + `GaisserH3a`, yoksa
-   `CorsikaWeightMap.Weight / (NEvents × OverSampling)`.
-   Eşleştirme `Run/Event/SubEvent` üzerinden (satır sırasına güvenilmiyor).
-   **Normalizasyon eski koddan bilerek farklı:** eski kod her HDF5 için
-   `nfiles=1` verip sonda HDF5 sayısına bölüyordu; bizim parçalarımızda
-   `--chunk-files` yüzünden birden fazla L3 dosyası var, o yüzden parçanın
-   kendi `n_l3_files`'i `nfiles` olarak veriliyor ve sonda ayrıca bölme
-   yapılmıyor.
-4. **Ağırlık zinciri** (`PropagateGenieInfo`, `process_L4.py` MC_KEYS/
-   NOISE_MC_KEYS/CORSIKA_KEYS) — pass3'te I3GenieInfo yoksa NEvents*fraksiyon
-   fallback'ine düşülüyor; bunun ne sıklıkla tetiklendiği ve ne kadar sapma
-   yarattığı ölçülmedi.
-5. **fill_ratio — ÇÖZÜLDÜ (orijinal kodla).** Tablo 11 metni vertex'i
-   *"about some vertex (details here)"* diye **boş bırakıyor** (doldurulmamış
-   çapraz referans), yani nottan çıkarılamazdı. Orijinal pass2 kodu söylüyor:
-   ana segment `oscNext_L4_noise_cut_variables`'a
-   `fill_ratio_vertex=L4_FIRST_HLC_KEY` veriyor — yani **ilk HLC hit'in
-   konumu**, bizim verdiğimizle aynı. `RecoPulseName=cleaned_pulses` ve
-   `SphericalRadiusMean=1.6` de birebir aynı; orijinalin kendi yorumu:
-   *"Was optimised for GRECO but has not been re-optimised for oscNext"* —
-   yani 1.6'nın oscNext için ayarlanmamış olması **bilinen** bir durum,
-   bizim eksiğimiz değil. Bölüm 10'daki feature importance / incremental
-   scan ile yeniden optimize edilebilir (orijinal de bunu öneriyor).
-5a. **iLineFit_speed — ÇÖZÜLDÜ (orijinal kodla).** Tablo 11 sadece
-   *"Speed fitted by the improved LineFit algorithm"* diyor, parametre
-   vermiyor. Orijinal pass2 kodu birebir bizim çağrımız:
+   The ratio **never approaches 1**: `SplitInIcePulses` spans the whole readout
+   window, so the uncleaned duration is ~10 µs in every event and the variable
+   is effectively "cleaned duration / 10 µs".  The separating direction is also
+   **inverted**: the cleaned series of noise is longer than that of nue.  It
+   does separate, but not in the expected way.  (17 noise events is few; the
+   ordering is what this file shows, while the magnitude finding is structural.)
+   An `inf`/`NaN` guard was also added: the `uncleaned <= 0` check prevented
+   division by zero but **let a NaN denominator through** (`NaN <= 0` → False),
+   so NaN was written silently.  The result is now checked with `np.isfinite`
+   and a ratio > 1 warns once.
+
+3a. **Missing muon BDT input (fixed).** Table 12 lists **10** variables;
+   `MUON_FEATURES` had **9** -- `NchCleaned` had been skipped (it was in the
+   noise list, so it was overlooked).  Added.  Unique BDT variables: 14
+   (5 noise + 10 muon, `NchCleaned` shared).
+
+3b. **Column names — RESOLVED.** Verified with `check_registry` against real
+   pass3 output: `fill_ratio` → **`fillratio_from_mean`** (no underscore),
+   `iLineFit_speed` → `lf_vel`, `noise_weight` → `weight`.  All three are in
+   `ALTS`.  `found: 5/5` and `10/10` -- all 14 BDT inputs found.
+   The HDF5 column name need not match the frame field name (the hdfwriter
+   converter renames); `check_feature_map()` takes both sides' alternatives
+   into account.
+
+3c. **The `noise_weight` column (fixed).** `AUX` said
+   `("noise_weight", "value")`; the version verified in the earlier LightGBM
+   notebook is `("noise_weight", "weight")`.  Being wrong, the noise weight
+   stayed **entirely NaN** → the noise sample's `w_phys` would have been zero.
+   Fixed; both are in `ALTS`.
+
+3d. **CORSIKA weighting (fixed).** The `corsika_weight` on the pybdt path gave
+   every event an **equal** weight (`np.ones/n_files`) -- i.e. there was no
+   weighting at all.  It did not merely break the absolute rate: the muon BDT
+   saw the simulation's flat spectrum rather than the atmospheric one, so
+   **the shape of the training set was wrong**.  The method from the earlier
+   LightGBM notebook was carried over: `simweights` + `GaisserH3a`, else
+   `CorsikaWeightMap.Weight / (NEvents × OverSampling)`.  Matching goes through
+   `Run/Event/SubEvent` (row order is not trusted).
+   **The normalisation deliberately differs from the old code:** that code
+   passed `nfiles=1` per HDF5 and divided by the HDF5 count at the end; our
+   parts hold several L3 files (`--chunk-files`), so each part's own
+   `n_l3_files` is passed as `nfiles` and there is no further division.
+
+4. **The weight chain** (`PropagateGenieInfo`, `process_L4.py` MC_KEYS /
+   NOISE_MC_KEYS / CORSIKA_KEYS) -- when pass3 has no I3GenieInfo it falls back
+   to NEvents × fraction.  How often that triggers, and how much it shifts the
+   result, has not been measured.
+
+5. **fill_ratio — RESOLVED (from the original code).** The text of Table 11
+   leaves the vertex **blank**: *"about some vertex (details here)"*, an
+   unfilled cross-reference, so it could not be derived from the note.  The
+   original pass2 code says it: the main segment passes
+   `fill_ratio_vertex=L4_FIRST_HLC_KEY` to `oscNext_L4_noise_cut_variables` --
+   the position of the first HLC hit, exactly what we pass.
+   `RecoPulseName=cleaned_pulses` and `SphericalRadiusMean=1.6` match verbatim
+   too, and the original's own comment reads *"Was optimised for GRECO but has
+   not been re-optimised for oscNext"* -- so 1.6 being untuned for oscNext is a
+   **known** situation, not an omission of ours.  It can be re-optimised with a
+   feature importance / incremental scan (the original suggests as much).
+
+5a. **iLineFit_speed — RESOLVED (from the original code).** Table 11 only says
+   *"Speed fitted by the improved LineFit algorithm"* and gives no parameters.
+   The original pass2 code is our call verbatim:
    `tray.AddSegment(linefit.simple, ..., inputResponse=cleaned_pulses,
-   fitName=L4_LINEFIT_KEY)`. Yani "improved LineFit" = `linefit.simple`,
-   ekstra parametre yok. Şekil 13'ün x ekseni log ölçekte 10⁻³ – 10³ (m/ns).
-5b. **micro_count: orijinal kod ile teknik not çelişiyor — KARAR: not.**
-   Orijinal pass2 kodu zincire `uncleaned_pulses` ile başlıyor
-   (`I3StaticTWC(InputResponse=uncleaned_pulses)`), Tablo 11 ise
-   *"Start with the cleaned pulse series"* diyor. **Notu izliyoruz**
-   (varsayılan, kalıcı karar).
-   **Ölçüldü — fark neredeyse yok:** iki zincir aynı olayda
-   hesaplandı. νe'de 126 olayın 115'i, noise'da 17 olayın 16'sı
-   **birebir eşit**; medyanlar aynı (5 ve 3). Sebep: zincirin sonundaki
-   200 ns'lik pencere zaten belirleyici — gürültü hitleri ~10 µs'ye yayılmış
-   olduğu için en yoğun 200 ns penceresine iki seride de aynı hitler düşüyor.
-   Pass2'deki ölü SeededRT kodunun yıllarca fark edilmemesinin sebebi de bu.
-   Yani düzeltme **doğru ama etkisi küçük**; "sınıflandırıcının ayırt etme
-   gücü ciddi düşüyordu" değerlendirmesi (md. 4) fazla iddialıydı.
-   Karşılaştırma için ikisi de üretilebilir:
-   `process_L4.py --micro-count-uncleaned`, notebook'tan
-   `run_all(extra_args=["--micro-count-uncleaned"])`, doğrudan segmentte
-   `oscNext_L4(micro_count_uncleaned=True)`. `fill_ratio` her iki durumda da
-   temizlenmiş seriyi kullanır (orijinalde de öyle).
-   Ayrıntı için "Booking/okuma denetimi" md. 4.
-   Orijinalden **doğrulanan** kısımlar: DeepCore fiducial `I3OMSelection`
-   adımı (notta yok ama orijinalde var — bizde de var), `TriggerConfigIDs
-   =[1010, 1011]`, `WindowMinus/Plus = 3500/4000`, `dtw = 200`, alt anahtar
-   adı `STW_m%ip%i_DTW%i`, ve sayımın **DOM** sayısı olduğu
-   (`len(reco_pulse_series.values())` — bizde `len(pmap)`, aynı şey).
-5c. **ÇÖZÜLDÜ — sinyal train/test ayrımı iki BDT'de farklıydı.** Notebook
-   bölüm 6'da `make_datasets` noise ve muon BDT'si için ayrı ayrı
-   çağrılıyor ve her çağrıda `istrain = rng.random(...)` **yeniden**
-   çekiliyor. İkisi de aynı νe+νμ sinyal olaylarını kullandığı için bir
-   olay noise BDT'sinin *eğitim*, muon BDT'sinin *test* setinde olabiliyor.
-   Tek tek modeller için sorun değil; ama L4 kesimi ikisinin **birleşimi**
-   (orijinal: `noise ≥ 0.7 AND muon ≥ 0.65`) ve birleşik kesimi
-   değerlendirecek ortak held-out set yok → nihai verim olduğundan iyi
-   görünür. **Çözüm:** sinyal ayrımını bir kez çekip iki BDT'de de aynısını
-   kullanmak. **Yapıldı:** `oscNext_L4.ipynb` bölüm 6 sinyali bir kez
-   yığıp `SIG_ISTRAIN`'i bir kez çekiyor, iki `.npz` de aynısını
-   taşıyor. Aynı yerde CORSIKA sızıntısı da kapatıldı: `split_by_shower`
-   arka planı olay değil **duş** (`Run`) bazında ayırıyor — aynı hava
-   duşu `OverSampling` kadar tekrarlandığı için olay bazlı ayrım
-   kopyaları train ve test'e birden dağıtıyor ve muon BDT'sinin test
-   verimini şişiriyordu.
-5d. **`NOISE_NS_SCALE = 1e9` — DOĞRULANDI (ölçümle).** Vuvuzela
-   `noise_weight`'inin birimi pass3'te 1/ns varsayılıyordu. İlk gerçek
-   koşuda test setinin toplam gürültü oranı **20.5 mHz** çıktı; test seti
-   2 051 olayın 1 016'sı (%49.5) olduğuna göre tam örnek **41.4 mHz** →
-   teknik not Tablo 13'teki **36.6 mHz** ile **%13 uyum**. Varsayım doğru.
-   Sinyal tarafı: 3.99 mHz (test) → 7.97 mHz (tam), notun νe CC + νμ CC +
-   NC toplamı 5.25 mHz — **1.5 kat**, uydurma E⁻³ güç yasası için beklenen.
-   Ayrıca gürültü ağırlıkları **tam olarak düzgün** (her olay %0.10 =
-   1/1016): vuvuzela sabit livetime üzerinde üretildiği için beklenen,
-   hata değil. Sonuç: gürültü için ağırlıklı ve ağırlıksız verim/red
-   **her kesimde birebir aynı**.
-5e. **Noise MC istatistiği — ÖLÇÜLDÜ, YETERSİZ.** 100 L3 dosyasından
-   toplam **2 051** olay (train 1 035 / test 1 016); sinyal 329 545.
-   Oran **159:1**. ölçülen %8'lik L3 geçme oranıyla
-   (νe'de %84) tutarlı. Referansın istatistiği çok daha büyük olmalı:
-   Tablo 10 noise BDT'si için `min data in leaf = 500` veriyor — bizim
-   1 035 eğitim olayımızla bu ayar 2 yaprak demek olurdu.
-5f. **LightGBM ölçüldü — darboğaz motordu, arka plan istatistiği değil.**
-   Aynı `.ds`, aynı 5 değişken, aynı train/test ayrımı, aynı ağırlıklar,
-   aynı ölçüm kodu. Test seti, ağırlıksız olay sayısı:
+   fitName=L4_LINEFIT_KEY)`.  So "improved LineFit" = `linefit.simple`, no
+   extra parameters.  The x axis of Figure 13 is logarithmic, 10⁻³ – 10³ (m/ns).
 
-   | red | pybdt/AdaBoost en iyi | LightGBM |
+5b. **micro_count: the original code and the note CONTRADICT -- DECISION: the
+   note.**  The original pass2 code starts the chain from `uncleaned_pulses`
+   (`I3StaticTWC(InputResponse=uncleaned_pulses)`), while Table 11 says
+   *"Start with the cleaned pulse series"*.  **We follow the note** (the
+   default, a permanent decision).
+   **Measured -- the difference is almost nil:** the two chains were computed on
+   the same events.  115 of 126 nue events and 16 of 17 noise events are
+   **exactly equal**; the medians agree (5 and 3).  The reason: the closing
+   200 ns window is what decides, and since noise hits are spread over ~10 µs
+   the densest 200 ns window catches the same hits in either series.  That is
+   also why the dead SeededRT code in pass2 went unnoticed for years.
+   So the fix is **right but small**; the original assessment ("the
+   classifier's separating power was seriously degraded") was overstated.
+   Both can be produced for comparison: `process_L4.py --micro-count-uncleaned`,
+   `run_all(extra_args=["--micro-count-uncleaned"])` from the notebook, or
+   `oscNext_L4(micro_count_uncleaned=True)` directly.  `fill_ratio` uses the
+   cleaned series either way (as the original does).
+   Details in "Booking/read audit", item 4.
+   **Verified from the original:** the DeepCore fiducial `I3OMSelection` step
+   (absent from the note but present in the original -- and in ours),
+   `TriggerConfigIDs=[1010, 1011]`, `WindowMinus/Plus = 3500/4000`, `dtw = 200`,
+   the subkey name `STW_m%ip%i_DTW%i`, and that the count is of **DOMs**
+   (`len(reco_pulse_series.values())` -- ours is `len(pmap)`, the same thing).
+
+5c. **RESOLVED — the signal train/test split differed between the two
+   classifiers.**  Section 6 of the notebook used to call `make_datasets`
+   separately for the noise and muon BDT, drawing `istrain = rng.random(...)`
+   **afresh** each time.  Both use the same nue+numu signal events, so one event
+   could be in the noise BDT's *training* set and the muon BDT's *test* set.
+   That is harmless for the individual models, but the L4 cut is their
+   **conjunction** (originally `noise ≥ 0.7 AND muon ≥ 0.65`) and there was no
+   common held-out set on which to evaluate it → the final efficiency looked
+   better than it was.  **Fix: draw the signal split once and share it.**
+   **Done:** section 6 of `notebooks/oscNext_L4.ipynb` stacks the signal once
+   and draws `SIG_ISTRAIN` once; both `.npz` files carry the same split.  The
+   CORSIKA leak was closed in the same place: `split_by_shower` splits the
+   background by **shower** (`Run`) rather than by event -- since one air shower
+   is repeated `OverSampling` times, an event-level split spread its copies
+   across train and test and inflated the muon BDT's test efficiency.
+
+5d. **`NOISE_NS_SCALE = 1e9` — VERIFIED (by measurement).** The unit of the
+   vuvuzela `noise_weight` was assumed to be 1/ns in pass3.  In the first real
+   run the test set's total noise rate came out at **20.5 mHz**; since the test
+   set is 1,016 of 2,051 events (49.5%), the full sample is **41.4 mHz** --
+   **within 13%** of the **36.6 mHz** in Table 13 of the note.  The assumption
+   holds.  Signal side: 3.99 mHz (test) → 7.97 mHz (full), against the note's
+   nue CC + numu CC + NC total of 5.25 mHz -- a factor **1.5**, which is what
+   an invented E⁻³ power law should give.  The noise weights are also **exactly
+   uniform** (0.10% per event = 1/1016): expected, because vuvuzela is generated
+   over a fixed livetime, not an error.  Consequence: for noise the weighted and
+   unweighted efficiency/rejection are **identical at every cut**.
+
+5e. **Noise MC statistics — MEASURED, INADEQUATE.** 100 L3 files give a total
+   of **2,051** events (train 1,035 / test 1,016) against 329,545 signal.  A
+   ratio of **159:1**.  Consistent with the measured 8% L3 pass rate (84% for
+   nue).  The reference's statistics must be far larger: Table 10 gives
+   `min data in leaf = 500` for the noise BDT, which with our 1,035 training
+   events would mean 2 leaves.
+
+5f. **LightGBM measured — the bottleneck was the engine, not the background
+   statistics.**  Same `.ds`, same 5 variables, same train/test split, same
+   weights, same measurement code.  Test set, unweighted event counts:
+
+   | rejection | best pybdt/AdaBoost | LightGBM |
    |---|---|---|
-   | %90 | 94.0 | **99.0** |
-   | %95 | 91.7 | **98.5** |
-   | %99 | 65.8 | **95.9** |
+   | 90% | 94.0 | **99.0** |
+   | 95% | 91.7 | **98.5** |
+   | 99% | 65.8 | **95.9** |
 
-   Tablo 13 hedefi (%99.2 redde ~%96) tutturuldu — üstelik
-   `min_data_in_leaf=500` handikabıyla (828 arka plan olayı fit ediliyor)
-   ve 122 ağaçta erken durarak. Overtraining yok: train/test verim açığı
-   **+0.1 puan**. `w_phys` cross-check tutarlı (%95.2 / %98.92).
-   **Güven sınırı:** %99 satırı 10 arka plan olayı üzerinde duruyor, yani
-   ölçülebilirliğin tam kenarında; %95 satırı 50 olayla daha sağlam.
-   Bir dönem "darboğaz arka plan istatistiği, model kapasitesi değil"
-   sonucuna varılmıştı — bu ölçüm onu **geri çekti**. 1 035 arka plan
-   olayı LightGBM için yetiyor. Daha çok vuvuzela MC hâlâ değerli
-   (%99'un sağını ölçmek için) ama **engelleyici değil**.
+   The Table 13 target (~96% at 99.2% rejection) was met -- and met while
+   handicapped by `min_data_in_leaf=500` (828 background events fitted) and
+   stopping early at 122 trees.  No overtraining: the train/test efficiency gap
+   is **+0.1 points**.  The `w_phys` cross-check agrees (95.2% / 98.92%).
+   **Confidence limit:** the 99% row rests on 10 background events, right at
+   the edge of what is measurable; the 95% row, with 50, is firmer.
+   An earlier conclusion held that "the bottleneck is background statistics,
+   not model capacity" -- this measurement **retracted** it.  1,035 background
+   events are enough for LightGBM.  More vuvuzela MC is still valuable (to
+   measure right of 99%) but is **not blocking**.
 
-5g. **`fill_ratio` baskın — 5. maddeyi büyütüyor.** LightGBM gain
-   dağılımı: `fill_ratio` **%60.9**, `NchCleaned` %26.0,
-   `FullTimeLengthRatio` %8.1, `micro_count` %3.9, `iLineFit_speed`
-   **%1.1** (neredeyse ölü). Modelin en çok yaslandığı değişken,
-   orijinal kodun kendi yorumunda *"Was optimised for GRECO but has not
-   been re-optimised for oscNext"* dediği `SphericalRadiusMean=1.6`
-   parametresine bağlı olan değişken. Yani 5'teki "yeniden optimize
-   edilebilir" notu artık merak değil, **en yüksek getirili tek ayar**.
+5g. **`fill_ratio` dominates — this enlarges item 5.** The LightGBM gain
+   distribution: `fill_ratio` **60.9%**, `NchCleaned` 26.0%,
+   `FullTimeLengthRatio` 8.1%, `micro_count` 3.9%, `iLineFit_speed` **1.1%**
+   (nearly dead).  The variable the model leans on most is the one that depends
+   on `SphericalRadiusMean=1.6`, which the original code's own comment calls
+   *"optimised for GRECO but not re-optimised for oscNext"*.  So the "could be
+   re-optimised" note in item 5 is no longer a curiosity: it is **the single
+   highest-value knob**.
 
-5h. **Overtraining ölçütü: verim açığı, KS DEĞİL.** `p_KS` bu veri
-   üzerinde ölçüldü ve işe yaramadığı görüldü: en iyi modeli
-   "overtrained" (p=0.002), en kötüsünü "temiz" (p=0.98) damgaladı.
-   Sebep: KS train/test **skor dağılımlarını** karşılaştırıyor; 165 bin
-   sinyal olayıyla istatistiksel olarak anlamlı ama fiziksel olarak
-   önemsiz farkları yakalıyor. `train_L4_classifier.py` bunun yerine
-   **aynı redde train ve test verimini ve aradaki farkı** basıyor
-   (`--gap-at`, varsayılan %90 red — %99'da eşiğin üstünde ~10 olay
-   kalıyor ve açık gürültüye boğuluyor).
+5h. **The overtraining criterion is the efficiency gap, NOT KS.** `p_KS` was
+   measured on this data and found useless: it stamped the best model
+   "overtrained" (p=0.002) and the worst one "clean" (p=0.98).  The reason: KS
+   compares the train/test **score distributions**, and with 165k signal events
+   it catches differences that are statistically significant and physically
+   irrelevant.  `train_L4_classifier.py` prints **the efficiency on train and
+   on test at the same rejection, and their difference** instead (`--gap-at`,
+   default 90% rejection -- at 99% only ~10 events sit above the cut and the
+   gap is mostly noise).
 
-6. **ντ ve gerçek dedektör verisi yok** — sinyal tanımı νe+νμ (ντ CC ~%3),
-   muon BDT arka planı CORSIKA (gerçek veri değil). Bu ikame ne kadar
-   sapma yaratıyor, data/MC uyum kontrolü (bölüm 9) devreye girince
-   netleşecek.
+6. **No ντ and no real detector data** — the signal is defined as νe+νμ
+   (ντ CC is ~3%), and the muon BDT's background is CORSIKA rather than real
+   data.  How much that substitution shifts things will become clear once the
+   data/MC agreement check is in place.
 
-## Booking/okuma denetimi — bulunan hatalar
+## Booking/read audit — the bugs found
 
-Kod baştan sona gözden geçirildi; üçü **sessiz veri bozulması** üreten
-gerçek hatalardı.
+The code was reviewed end to end; three of these produced **silent data
+corruption**.
 
-**1. `__I3Index__` gerçek veriyi eziyordu (düzeltildi).**
-`h5.walk_nodes("/", "Table")` alt gruplara da iniyor. hdfwriter her anahtar
-için `/X` (veri) ve `/__I3Index__/X` (indeks) yazıyor; sözlük leaf isimle
-kurulunca indeks veriyi eziyordu → her tablo `start/stop` kolonlu görünüyor,
-**tüm değişkenler NaN** oluyordu. `_table_nodes()` `__I3Index__` altını
-atlıyor.
+**1. `__I3Index__` was overwriting the real data (fixed).**
+`h5.walk_nodes("/", "Table")` descends into subgroups too.  hdfwriter writes
+`/X` (data) and `/__I3Index__/X` (index) for every key; keyed by leaf name the
+index overwrote the data → every table appeared to have `start/stop` columns
+and **every variable came out NaN**.  `_table_nodes()` now skips everything
+under `__I3Index__`.
 
-**2. Tekrar eden `Run/Event/SubEvent` yanlış eşleştirme (düzeltildi).**
-Bir tablo `I3EventHeader` ile hizalı değilse (anahtar bazı frame'lerde
-yoksa) eşleştirme `(Run, Event, SubEvent)` sözlüğüyle yapılıyordu. Bu üçlü
-**benzersiz değil**: MC'de `run_id` = set no, `event_id` her L3 dosyasında
-sıfırdan başlıyor ve `--chunk-files` ile bir parçada 10 dosya var. Sözlükte
-son gelen kazanıyor → olaylar ya NaN kalıyor ya **başka bir olayın
-değerini** alıyordu.
-Düzeltme: eşleştirme artık hdfwriter'ın `/__I3Index__/<anahtar>`
-tablosundan (`exists`/`start`) yapılıyor. Indeks yoksa ve üçlüler
-tekrarlıyorsa sessizce yanlış eşleştirmek yerine NaN bırakılıp bildiriliyor.
+**2. Repeated `Run/Event/SubEvent` matched wrongly (fixed).**
+When a table was not aligned with `I3EventHeader` (because the key is absent in
+some frames), matching went through a `(Run, Event, SubEvent)` dictionary.  That
+triple is **not unique**: in MC `run_id` is the set number, `event_id` restarts
+from zero in every L3 file, and `--chunk-files` puts 10 files in one part.  The
+last entry won in the dictionary → events either stayed NaN or picked up
+**another event's value**.
+Fix: matching now goes through hdfwriter's `/__I3Index__/<key>` table
+(`exists`/`start`).  When there is no index and the triples repeat, NaN is left
+and reported rather than matching wrongly in silence.
 
-**3. `n_flux_events` dosya başına güncellenmiyordu (düzeltildi).**
-`PropagateGenieInfo` değeri bir kez okuyup sabitliyordu. Bir tray
-`--chunk-files` ile 10 L3 dosyası işliyor ve **her dosyanın kendi
-`I3GenieInfo`'su** var → ilk dosyanın değeri hepsine uygulanıyordu, sonraki
-dosyaların ağırlıkları yanlış çıkıyordu. Artık her `I3GenieInfo`'da
-güncelleniyor, değer değişirse loglanıyor.
+**3. `n_flux_events` was not updated per file (fixed).**
+`PropagateGenieInfo` read the value once and froze it.  One tray processes 10 L3
+files with `--chunk-files` and **each file has its own `I3GenieInfo`** → the
+first file's value was applied to all of them and the later files' weights came
+out wrong.  It is now updated at every `I3GenieInfo`, and a change is logged.
 
-**4. `micro_count` gürültü temizliği olmadan sayılıyordu (düzeltildi).**
-Zincir `uncleaned_pulses` → `I3StaticTWC` → `I3SeededRTCleaning` →
-`I3OMSelection` → `I3TimeWindowCleaning` → say olarak **belgelenmişti**, ama
-`I3OMSelection` girdi olarak SeededRT çıktısını (`L4_SRTTWPulses`) değil
-StaticTWC çıktısını (`L4_TWPulses`) alıyordu. `L4_SRTTWPulses` frame'e
-yazılıp **hiçbir yerde okunmuyordu** (grep ile doğrulandı) — yani zincirdeki
-tek gürültü temizleme adımı fiilen devre dışıydı.
+**4. `micro_count` was counted without noise cleaning (fixed).**
+The chain was **documented** as `uncleaned_pulses` → `I3StaticTWC` →
+`I3SeededRTCleaning` → `I3OMSelection` → `I3TimeWindowCleaning` → count, but
+`I3OMSelection` took the StaticTWC output (`L4_TWPulses`) as its input, not the
+SeededRT output (`L4_SRTTWPulses`).  `L4_SRTTWPulses` was written into the frame
+and **read nowhere** (verified by grep) -- so the only noise-cleaning step in
+the chain was effectively disabled.
 
-**Bu hata bizim değil, orijinal pass2 kodundan miras** — sonradan bulundu:
-`reference/oscNext_L4_pass2_original.py` içinde aynı satırlar duruyor ve
-yazarın kendi yorumu bile şüpheli: `srt_tw_pulses = "L4_SRTTWPulses"
-#TODO Is this actually used?`. Yani **pass2 sayıları da gürültü temizliği
-olmadan üretilmiş** (Şekil 12'nin micro_count paneli bu haliyle).
-Bizim düzeltmemiz **notu** izliyor, orijinal kodu değil — bilinçli sapma.
+**This bug is not ours; it is inherited from the original pass2 code** -- found
+afterwards: the same lines are in `reference/oscNext_L4_pass2_original.py`, and
+even the author's own comment is doubtful:
+`srt_tw_pulses = "L4_SRTTWPulses"  #TODO Is this actually used?`.  So **the
+pass2 numbers were produced without noise cleaning too** (the micro_count panel
+of Figure 12 is in that state).  Our fix follows **the note**, not the original
+code -- a deliberate deviation.
 
-Sonuç: `micro_count` ham hitler üzerinden sayılıyordu. Kalan adımların hiçbiri
-gürültü elemiyor (StaticTWC geniş zaman kesiti, OMSelection uzaysal kesim,
-TimeWindowCleaning en yoğun 200 ns penceresi).
+Consequence: `micro_count` was counted over raw hits.  None of the remaining
+steps removes noise (StaticTWC is a wide time slice, OMSelection a spatial cut,
+TimeWindowCleaning the densest 200 ns window).
 
-**Etkisi sonradan ölçüldü ve KÜÇÜK çıktı** (bkz. açık risk 5b): iki zincir
-νe'de olayların %91'inde, noise'da %94'ünde birebir aynı sayıyı veriyor.
-200 ns'lik pencere zaten gürültüyü fiilen eliyor. Düzeltme nota uygunluk
-için doğru, ama buraya ilk yazılan "ayırt etme gücü düşüyordu" ifadesi
-ölçümle desteklenmiyor — abartılıydı.
+**The effect was measured afterwards and came out SMALL** (see open risk 5b):
+the two chains give exactly the same count in 91% of nue and 94% of noise
+events.  The 200 ns window already removes the noise in practice.  The fix is
+right for conformity with the note, but the "separating power was degraded"
+phrasing originally written here is not supported by measurement -- it was
+overstated.
 
-Teknik not (Tablo 11) *"Start with the **cleaned** pulse series"* diyor.
-Düzeltme nota göre yapıldı: zincir artık `cleaned_pulses`
-(`SRTTWSplitInIcePulsesDC`) ile başlıyor ve SeededRT bloğu kaldırıldı —
-L3 o seriye zaten SRT temizliği uygulamış (adındaki "SRT" bu), tekrarı
-çift temizleme olurdu. Yeni zincir notun dört adımıyla birebir:
-`cleaned → StaticTWC [-3500,+4000] ns → DeepCore fiducial → 200 ns DTW → say`.
+The technical note (Table 11) says *"Start with the **cleaned** pulse series"*.
+The fix follows it: the chain now starts from `cleaned_pulses`
+(`SRTTWSplitInIcePulsesDC`) and the SeededRT block was removed -- L3 has already
+applied SRT cleaning to that series (that is the "SRT" in its name), so doing it
+again would be double cleaning.  The new chain matches the note's four steps
+exactly: `cleaned → StaticTWC [-3500,+4000] ns → DeepCore fiducial → 200 ns DTW
+→ count`.
 
-`oscNext_L4_noise_cut_variables` artık `uncleaned_pulses` parametresi
-almıyor; segmentte STTools bağımlılığı da kalmadı.
+`oscNext_L4_noise_cut_variables` no longer takes an `uncleaned_pulses`
+parameter, and the segment no longer depends on STTools.
 
-**Bu düzeltme mevcut HDF5'leri geçersiz kılar** — νe ve CORSIKA yeniden
-işlenmeli (νμ/noise zaten yeniden işlenecekti).
+**This fix invalidates the existing HDF5 files** -- nue and CORSIKA must be
+reprocessed (numu/noise were going to be anyway).
 
-**Küçük:** `--n` ile üretilen smoke çıktısında `n_l3_files` yanıltıcıydı
-(tray erken duruyor, liste tamamen okunmuyor). Artık `None` +
-`n_l3_files_unreliable` yazılıyor, `load_sample` bölen olarak kullanmıyor.
-`PropagateGenieInfo`'daki `DAQ()`/`Simulation()` ölü koddu (`Process()`
-override edilince çağrılmıyorlar) — kaldırıldı.
-## Referans belgeler (`reference/`)
+**Minor:** `n_l3_files` was misleading in smoke output produced with `--n` (the
+tray stops early and the list is not read in full).  It now writes `None` plus
+`n_l3_files_unreliable`, and `load_sample` does not use it as a divisor.
+The `DAQ()`/`Simulation()` methods in `PropagateGenieInfo` were dead code (they
+are never called once `Process()` is overridden) -- removed.
 
-- `reference/OscNext_v00.074_pass2_technical_note.pdf` — pass2 için resmi
-  oscNext teknik notu (83 sayfa). **pass3 için değil**, ama L4 mantığının
-  büyük kısmı (değişken tanımları, BDT hiperparametreleri) pass3'te de
-  aynı kabul ediliyor.
-- `reference/oscNext_L4_pass2_original.py` — **orijinal oscNext L4 tray
-  segment'i** (Tom Stuttard, pass2). Tüm gövde yorum satırı hâlinde
-  (`#TODO migrate` — GitHub IceTray'e taşınmamış), ama parametre değerleri
-  ve modül zincirleri **birinci elden kaynak**. Bizim
-  `oscNext_L4_variables.py`'miz bunun yeniden yazımı. Doğruladığı şeyler:
+## Reference documents (`reference/`)
+
+- `reference/OscNext_v00.074_pass2_technical_note.pdf` — the official oscNext
+  technical note for pass2 (83 pages).  **Not for pass3**, but most of the L4
+  logic (variable definitions, BDT hyperparameters) is taken to be the same in
+  pass3.
+- `reference/oscNext_L4_pass2_original.py` — **the original oscNext L4 tray
+  segment** (Tom Stuttard, pass2).  The whole body is commented out
+  (`#TODO migrate` -- it was never ported to the GitHub IceTray), but the
+  parameter values and module chains are a **first-hand source**.  Our
+  `oscnext_l4/variables.py` is a rewrite of it.  What it verifies:
   `fill_ratio_vertex=L4_FIRST_HLC_KEY`, `SphericalRadiusMean=1.6`,
-  `linefit.simple`, VICH'in `uncleaned_pulses` kullanması, Dunkman'ın
-  `cleaned_pulses` kullanması, micro_count parametreleri, straight-cut
-  eşikleri, ve L4 kesim eşikleri (noise ProbNu ≥ 0.7, muon ProbNu ≥ 0.65).
-  Tek çelişki: micro_count zincirinin `uncleaned_pulses` ile başlaması
-  (bkz. açık risk 5b).
-- `reference/pass3_L3_process.py` — kullanıcının elindeki **gerçek pass3 L3
-  işleme scripti** (GRECO `grecovariables.DeepCoreCleaning`/`DeepCoreCuts`
-  kullanıyor). `oscNext_L4_variables.py`'nin varsaydığı L3 çıktısıyla
-  karşılaştırıldı ve **doğrulandı**:
-  - `SRTTWSplitInIcePulsesDC` → `CLEANED_PULSES_DEFAULT` ile birebir aynı
+  `linefit.simple`, VICH's use of `uncleaned_pulses`, Dunkman's use of
+  `cleaned_pulses`, the micro_count parameters, the straight-cut thresholds, and
+  the L4 cut thresholds (noise ProbNu ≥ 0.7, muon ProbNu ≥ 0.65).
+  The one contradiction: the micro_count chain starting from
+  `uncleaned_pulses` (see open risk 5b).
+- `reference/pass3_L3_process.py` — the user's **actual pass3 L3 processing
+  script** (it uses GRECO `grecovariables.DeepCoreCleaning`/`DeepCoreCuts`).
+  Compared against the L3 output `oscnext_l4/variables.py` assumes, and
+  **verified**:
+  - `SRTTWSplitInIcePulsesDC` is exactly `CLEANED_PULSES_DEFAULT`
   - `L3_oscNext_bool = IC2018_LE_L3_bools["IC2018_LE_L3_Full"] AND
-    Data_quality_bool` → `oscNext_L4_variables.py`'deki `l3_cut`
-    fonksiyonuyla birebir aynı mantık
-  - SLOP filtresi / LID errata veri kalitesi kesimi de kod yorumundaki
-    varsayımla eşleşiyor
+    Data_quality_bool` is exactly the logic of the `l3_cut` function
+  - the SLOP filter / LID errata data-quality cut also matches the assumption
+    in the code comment
 
-  **Dikkat:** Bu script `IC2018_LE_L3_Vars`'ı hiç anmıyor (ne yazıyor ne
-  okuyor) — `DeepCoreCuts`'ın onu da ürettiği bir *çıkarımdı*. Aşağıdaki
-  gerçek dosya dökümüyle doğrulandı.
-## Gerçek L3 dosyasında ne var (doğrulandı)
+  **Careful:** this script never mentions `IC2018_LE_L3_Vars` (it neither
+  writes nor reads it) -- that `DeepCoreCuts` also produces it was an
+  *inference*.  It was confirmed by the real file dump below.
 
-`genie_NuE_IC86.023800.000000.i3.zst` Physics frame'i dökülerek
-**doğrulandı** — artık varsayım değil:
+## What is actually in an L3 file (verified)
 
-- **`IC2018_LE_L3_Vars`** (`I3MapStringDouble`) **VAR**, 14 kolon:
+The Physics frame of `genie_NuE_IC86.023800.000000.i3.zst` was dumped, so this
+is **verified**, not assumed:
+
+- **`IC2018_LE_L3_Vars`** (`I3MapStringDouble`) **EXISTS**, 14 columns:
   `C2HR6`, `CausalVetoHits`, `CleanedFullTimeLength`, `DCFiducialHits`,
-  `ICVetoHits`, `NAbove200Hits`, `NchCleaned`, `NoiseEngine`,
-  `RTVeto250Hits`, `RTVetoCutHit`, `STW9000_DTW300Hits`,
-  `UncleanedFullTimeLength`, `VertexGuessZ`, `VetoFiducialRatioHits`.
-  `FEATURE_MAP`/`REGISTRY`'de L3'ten okuduğumuz her kolon bu listede.
-- `IC2018_LE_L3_bools` (`I3MapStringBool`): `IC2018_LE_L3_Full`,
-  `..._No_Nch`, `..._No_Nch_No_RTVeto`, `..._No_RTVeto`,
-  `..._No_UncleanedTime`
-- `SRTTWSplitInIcePulsesDC` ve `SplitInIcePulses` VAR — ikisi de
-  `I3RecoPulseSeriesMapMask`, `get_pulses()` bunları `.apply(frame)` ile
-  açıyor
-- `L3_oscNext_bool`, `Data_quality_bool` VAR
-- `I3GenieInfo` VAR → ağırlıkta `NEvents × 0.7/0.3` fallback'ine
-  düşmemeliyiz
-- `MCInIcePrimary` **YOK** → truth bilgisi `I3MCWeightDict`'ten alınmalı
-- HitStatistics / HitMultiplicity **YOK** → L3 bunları siliyor, bizim
-  yeniden hesaplamamız (`oscNext_L4_hit_statistics`) gerekli
+  `ICVetoHits`, `NAbove200Hits`, `NchCleaned`, `NoiseEngine`, `RTVeto250Hits`,
+  `RTVetoCutHit`, `STW9000_DTW300Hits`, `UncleanedFullTimeLength`,
+  `VertexGuessZ`, `VetoFiducialRatioHits`.
+  Every column we read from L3 in `FEATURE_MAP`/`REGISTRY` is in that list.
+- `IC2018_LE_L3_bools` (`I3MapStringBool`): `IC2018_LE_L3_Full`, `..._No_Nch`,
+  `..._No_Nch_No_RTVeto`, `..._No_RTVeto`, `..._No_UncleanedTime`
+- `SRTTWSplitInIcePulsesDC` and `SplitInIcePulses` both exist -- both are
+  `I3RecoPulseSeriesMapMask`, and `get_pulses()` unpacks them with
+  `.apply(frame)`
+- `L3_oscNext_bool`, `Data_quality_bool` exist
+- `I3GenieInfo` exists → we should not be falling back to `NEvents × 0.7/0.3`
+- `MCInIcePrimary` is **ABSENT** → truth information must come from
+  `I3MCWeightDict`
+- HitStatistics / HitMultiplicity are **ABSENT** → L3 deletes them, so our
+  recomputation (`oscNext_L4_hit_statistics`) is necessary
 
-**İki tuzak:**
-1. `I3GenieResult` deserialize **edilemiyor**: *"Attempting to read
-   version 2 from file but running version 1 of I3GenieResult"* — dosya
-   kurulu `simclasses`'tan yeni. Bu anahtarı book etmediğimiz için
-   şimdilik zararsız, ama `--output-i3` kullanılırsa iş çökebilir.
-2. Frame'de ayrıca `pole_grecofilter_onlineLowEnL3_Vars` var — bu
-   *online* filtrenin ayrı map'i, `IC2018_LE_L3_Vars` ile karıştırılmamalı.
-## Ortam kurulumu — bilinen tuzaklar
+**Two traps:**
+1. `I3GenieResult` cannot be deserialised: *"Attempting to read version 2 from
+   file but running version 1 of I3GenieResult"* -- the file is newer than the
+   installed `simclasses`.  Harmless for now because we do not book that key,
+   but a job could die if `--output-i3` is used.
+2. The frame also contains `pole_grecofilter_onlineLowEnL3_Vars` -- a separate
+   map belonging to the *online* filter, not to be confused with
+   `IC2018_LE_L3_Vars`.
 
-**1. `env-shell.sh` yeni bir shell açar.** Script içinde ard arda
-`./env-shell.sh` ve `python ...` yazarsan ikinci satır o shell'den
-çıkıldıktan sonra, yani ortam olmadan çalışır. Bu, "icetray import
-edilmiyor" hatasının 1 numaralı sebebi. Tek komut için:
-`./env-shell.sh -- python ...` ya da `./setup_env.sh run python ...`.
+## Environment setup — known traps
 
-**2a. `cannot import name '...' from 'l4_data'` — modül önbelleği.**
-Python bir modülü bir kez import edince kernel'de tutar; `git pull` dosyayı
-güncelleşe bile `from l4_data import yeni_fonksiyon` eski modül nesnesine
-bakar ve ImportError verir. Ayırt etmek için:
+**1. `env-shell.sh` opens a new shell.** Writing `./env-shell.sh` and
+`python ...` on consecutive lines of a script runs the second line *after*
+leaving that shell, i.e. without the environment.  This is the number one cause
+of "icetray will not import".  For a single command:
+`./env-shell.sh -- python ...` or `./setup_env.sh run python ...`.
+
+**2a. `cannot import name '...' from 'oscnext_l4.data'` — the module cache.**
+Python keeps a module once imported; a `git pull` updates the file but
+`from oscnext_l4.data import new_function` still looks at the old module object
+and raises ImportError.  To tell them apart:
 ```python
-import l4_data
-print("dosyada  :", "def aux_for" in open(l4_data.__file__).read())
-print("hafizada :", hasattr(l4_data, "aux_for"))
+from oscnext_l4 import data
+print("in the file  :", "def aux_for" in open(data.__file__).read())
+print("in memory    :", hasattr(data, "aux_for"))
 ```
-`dosyada True, hafizada False` → önbellek; **Kernel → Restart**.
-İkisi de False → `git pull` yapılmamış.
-Notebook bölüm 0 artık `%autoreload 2` açıyor, bu sorun tekrarlamamalı.
+`file True, memory False` → the cache; **Kernel → Restart**.
+Both False → `git pull` was not run.
+Section 0 of the notebook enables `%autoreload 2`, so this should not recur.
 
-**2b. Jupyter'in CALISMA DIZINI kernel restart ile degismez.**
-Belirti: alt surec `returncode=2` ile oluyor ve yol
-`~/.local/share/Trash/files/...` gibi bir yeri gosteriyor. Sebep: repo
-klasoru silinmis/tasinmis ama Jupyter sunucusu hala eski dizinde
-calisiyor; `./process_L4.py` gibi **goreli** yollar oraya cozuluyor.
-Ayni sebep eski `l4_data.py`'nin okunmasina da yol acar.
+**2b. Jupyter's WORKING DIRECTORY does not change with a kernel restart.**
+Symptom: a subprocess dies with `returncode=2` and the path points somewhere
+like `~/.local/share/Trash/files/...`.  Cause: the repository directory was
+deleted or moved but the Jupyter server is still running in the old one, so
+relative paths resolve there.
 
-Kernel Restart YETMEZ — calisma dizini **sunucudan** gelir. Jupyter
-sunucusunu kapatip dogru dizinden yeniden baslat:
+A kernel restart is NOT enough -- the working directory comes from **the
+server**.  Stop it and restart from the right directory:
 ```bash
 cd ~/l4/osncnextl4 && python -m jupyter lab --no-browser --port=8896
 ```
-Notebook'ta kontrol: `import os; os.getcwd()`.
-`configure_runner` artik bunu basta yakalayip soyluyor.
+Check in the notebook: `import os; os.getcwd()`.  Section 0 locates the
+repository root itself and reports clearly when it cannot; `OSCNEXT_L4_ROOT`
+overrides the search.  `configure_runner` also catches this at the start.
 
-> Klasoru dosya yoneticisinden ya da Jupyter'in sil dugmesinden silmek
-> `rm` degil, **cop kutusuna tasima**dir (`~/.local/share/Trash/files/`).
-> Dosyalar orada durur ve home kotasindan yer yer — kurtarilacak bir sey
-> varsa oradan alin, sonra `rm -rf` ile gercekten silin.
+> Deleting the directory from a file manager or Jupyter's delete button is not
+> `rm` -- it **moves it to the trash** (`~/.local/share/Trash/files/`).  The
+> files stay there and keep consuming the home quota.  Recover what you need
+> from there, then remove it for real with `rm -rf`.
 
-**2. Jupyter kernel'i.** Notebook'un IceTray'i görmesinin tek yolu
-kernel'in env-shell içindeki python olması. Jupyter'i ortam içinden
-başlatmak en temizi (README adım 4); başlatılmadıysa `./setup_env.sh kernel`
-ile kernel kaydedilip notebook'ta seçilir.
+**2. The Jupyter kernel.** The only way the notebook sees IceTray is for the
+kernel to be the python inside env-shell.  Starting Jupyter from inside the
+environment is cleanest (README step 3); otherwise register the kernel with
+`./setup_env.sh kernel` and select it in the notebook.
 
-**3. `lightgbm` kernel'de yok görünüyor.** `icecube` isim alanında değil,
-sıradan bir pip paketi — env-shell içindeki python'da kurulu olması gerekir.
-`icetray_env.require_lightgbm()` eksikse ne yapılacağını söylüyor.
+**3. `lightgbm` appears to be missing in the kernel.** It is not in the
+`icecube` namespace -- an ordinary pip package that must be installed in the
+env-shell python.
 
-**4. `I3Tray`'in yeri sürüme göre değişiyor** — `icecube.icetray.I3Tray`
-(v1.5+) vs top-level `I3Tray` (combo). `icetray_env.get_I3Tray()` ikisini
-de dener.
+**4. The location of `I3Tray` depends on the version** —
+`icecube.icetray.I3Tray` (v1.5+) versus a top-level `I3Tray` (combo).
+`env.get_I3Tray()` tries both.
 
-**5. Tek eksik proje tüm repoyu kilitliyordu.** `oscNext_L4_variables.py`
-eskiden modül seviyesinde `tensor_of_inertia`, `fill_ratio`,
-`DeepCore_Filter` import ediyordu; biri eksikse dosya hiç import
-edilemiyordu. Artık `optional_project()` ile; eksik proje, o değişkeni
-üreten segment çağrıldığında (`require_project(...)`) net hata veriyor.
+**5. One missing project used to lock the whole repository.**
+`oscnext_l4/variables.py` used to import `tensor_of_inertia`, `fill_ratio` and
+`DeepCore_Filter` at module level; if one was absent the file could not be
+imported at all.  It now uses `optional_project()`, and a missing project
+raises a clear error when the segment that produces its variable is called
+(`require_project(...)`).
 
-Build arama sırası (`setup_env.sh` ve `icetray_env.find_env_shells()`):
-`$OSCNEXT_I3_BUILD` → `$I3_BUILD` → `/data/user/$USER/icetray_build/build`
-→ `/data/user/$USER/*/build` → `~/*/build` → cvmfs metaproject'leri.
-## Bozuk girdi dosyaları (çözüldü)
+Build search order (`setup_env.sh` and `env.find_env_shells()`):
+`$OSCNEXT_I3_BUILD` → `$I3_BUILD` → `/data/user/$USER/icetray_build/build` →
+`/data/user/$USER/*/build` → `~/*/build` → cvmfs metaprojects.
 
-pass3 üretiminde yarım yazılmış `.i3.zst` dosyaları var:
+## Corrupt input files (solved)
+
+The pass3 production contains half-written `.i3.zst` files:
 
 ```
 FATAL (I3Reader): Error reading .../genie_NuMu_IC86.023799.000046.i3.zst
                   at frame 4: input stream error!
 ```
 
-`I3Reader` tüm dosya listesini tek seferde alıyor → bir dosya bozuksa **tüm
-tray ölüyor**. numu (100 dosya) ve noise (100 dosya) job'ları bu yüzden
-yarım kaldı. Ardından gelen `Table ... is still connected ... This is a
-BUG!` mesajı **bunun sonucu**, ayrı bir bug değil — tray patlayınca HDF5
-düzgün kapanmadı demek. O yarım HDF5'ler açılamaz, silinmeli.
+`I3Reader` takes the whole file list at once, so one corrupt file **kills the
+entire tray**.  That is why the numu (100 files) and noise (100 files) jobs were
+cut short.  The `Table ... is still connected ... This is a BUG!` message that
+follows is a **consequence**, not a separate bug -- it means the HDF5 was not
+closed properly when the tray died.  Those partial HDF5 files cannot be opened
+and should be deleted.
 
-`process_L4.py` iki katmanlı koruma yapıyor:
-1. **Ön tarama** (`--scan quick`, varsayılan) — dosya başına ilk 25 frame
-   okunur, açılmayanlar elenir.
-2. **Çalışma anı** (`--retries 3`, varsayılan) — tray yine patlarsa hata
-   mesajından dosya adı regex ile çıkarılır, kara listeye yazılır, yarım
-   HDF5 silinir, o dosya hariç yeniden denenir. (Tray bir fabrika
-   fonksiyonuna alındı: bir `I3Tray` ikinci kez `Execute` edilemiyor.)
+`process_L4.py` protects in two layers:
+1. **Pre-scan** (`--scan quick`, the default) -- the first 25 frames of each
+   file are read and the ones that do not open are dropped.
+2. **Run time** (`--retries 3`, the default) -- if the tray still dies, the file
+   name is extracted from the error message with a regex, blacklisted, the
+   partial HDF5 is removed, and the run is retried without that file.  (The tray
+   was moved into a factory function: an `I3Tray` cannot be `Execute`d twice.)
 
-Elenen dosyalar `<çıktı>.hdf5.badfiles.txt`'ye yazılır. Set başına bir kez
-`scan_files.py --good-list` ile tarayıp `--input-list ... --scan off`
-kullanmak en verimlisi.
-## HDF5 üretimini hızlandırma
+Dropped files are written to `<output>.hdf5.badfiles.txt`.  The efficient route
+is to scan once per set with `scan_files.py --good-list` and then use
+`--input-list ... --scan off`.
 
-Ölçülen: νe 100 dosya / 1019 s (~10 s/dosya), CORSIKA 500 dosya / 2578 s.
-Tek süreç, tek çekirdek.
+## Speeding up HDF5 production
 
-**Önce ölç, sonra optimize et:**
+Measured: nue 100 files / 1019 s (~10 s/file), CORSIKA 500 files / 2578 s.
+Single process, single core.
+
+**Measure first, optimise second:**
 ```bash
-python process_L4.py --usage --n 2000 --scan off --input <tek_dosya> ...
+python scripts/process_L4.py --usage --n 2000 --scan off --input <one_file> ...
 ```
-IceTray modül bazlı CPU zamanını basar. En yavaş modülü görmeden
-optimize etmeye çalışma.
+IceTray prints per-module CPU time.  Do not try to optimise before seeing which
+module is slow.
 
-**Hızlandırma OTOMATİK DEĞİL** — açıkça istenmeli. Varsayılan
-`run_all()` hâlâ tek süreç ve tüm değişkenleri hesaplar.
+**Speedups are NOT automatic** -- they have to be asked for.  The default
+`run_all()` is still a single process.
 
-**1. Paralellik (en büyük kazanç).** Girdi dosyalarını N sürece böl:
+**1. Parallelism (the biggest win).** Split the input files across N processes:
 ```python
-run_all(jobs=8, chunk_files=10, skip_optional=True)   # tüm örnekler
-run_process_parallel("numu", jobs=8, chunk_files=10)  # tek örnek
+run_all(jobs=8, chunk_files=10)                       # every sample
+run_process_parallel("numu", jobs=8, chunk_files=10)  # one sample
 ```
-Ayrı süreçler, ayrı çıktılar (`L4_nue_job0_part000.hdf5` …), ortak durum
-yok → neredeyse doğrusal hızlanma. Hepsi `L4_nue*.hdf5` glob'una uyar ve
-her parça kendi `.meta.json`'ını yazar, `n_l3_files` doğru toplanır.
-**cobalt paylaşılan makine** — `jobs=8` makul, `jobs=64` değil.
+Separate processes, separate outputs (`L4_nue_job0_part000.hdf5`, ...), no
+shared state → almost linear speedup.  They all match the `L4_nue*.hdf5` glob
+and each part writes its own `.meta.json`, so `n_l3_files` sums correctly.
+**cobalt is a shared machine** -- `jobs=8` is reasonable, `jobs=64` is not.
 
-**2. Gereksiz hesabı atla.** `--skip-optional` → `I3TensorOfInertia`
-(`L4_ToI`) ve `separation_in_cogs` hesaplanmaz. İkisi de Tablo 11/12'de
-**yok**, yani BDT girdisi değil; aday/legacy olarak duruyorlar.
+**2. Skip the unnecessary computation.** `I3TensorOfInertia` (`L4_ToI`) and
+`separation_in_cogs` are in neither Table 11 nor Table 12, i.e. they are not BDT
+inputs; they are off by default and `--run-optional` turns them on.
 
-**3. Taramayı bir kez yap.** `scan_files.py --good-list` ile set başına bir
-kez tara, sonra `--input-list ... --scan off`. `run_process_parallel`
-zaten `--scan off` kullanıyor.
+**3. Scan once.** Scan each set once with `scan_files.py --good-list`, then use
+`--input-list ... --scan off`.  `run_process_parallel` already uses `--scan off`.
 
-**4. Az anahtar book et.** 33 anahtar yazılıyor; `I3GenieSystWeightDict`
-gibi büyük map'ler gerekmiyorsa `process_L4.build_key_list`'ten çıkarmak
-hem yazmayı hızlandırır hem dosyayı küçültür.
-## `--n` frame sayar, olay saymaz
+**4. Book fewer keys.** 33 keys are written; dropping large maps such as
+`I3GenieSystWeightDict` from `process_L4.build_key_list` speeds up writing and
+shrinks the files.
 
-`process_L4.py --n N` → `tray.Execute(N)` → **N frame** işlenir. Frame ≠ olay:
-akışta G/C/D (GCD), Q (DAQ) ve P (Physics) frame'leri var; bir DAQ olayı
-birden fazla P frame (sub-event) üretebilir. Üstelik P frame'lerin ancak bir
-kısmı `--sub-event-stream`'e uyar ve ancak bir kısmı L3 kesimini geçer.
+## `--n` counts frames, not events
 
-Bu yüzden `--n 200` ile 60 olay book edilmesi normal. Çıktı artık kademeyi
-gösteriyor:
+`process_L4.py --n N` → `tray.Execute(N)` → **N frames** are processed.  A frame
+is not an event: the stream carries G/C/D (GCD), Q (DAQ) and P (Physics) frames,
+and one DAQ event can produce several P frames (sub-events).  On top of that,
+only some P frames match `--sub-event-stream` and only some pass the L3 cut.
+
+So 200 frames booking 60 events is normal.  The output shows each stage:
 
 ```
-Physics frame           : 98
+Physics frames          : 98
   InIceSplit            : 98  (100.0%)
-  L3 kesimi sonrasi     : 60  (61.2%)
-Book edilen olay        : 60
+  after the L3 cut      : 60  (61.2%)
+Events booked           : 60
 ```
 
-Kayıp nerede olursa olsun burada görünür: `InIceSplit` satırı 0 ise
-`--sub-event-stream` yanlış; L3 satırı 0 ise girdi L3 çıktısı değil ya da
-`Data_quality_bool` eliyor (test için `--no-l3-cut`).
+Wherever the loss happens, it is visible here: an `InIceSplit` line at 0 means
+`--sub-event-stream` is wrong; an L3 line at 0 means the input is not L3 output,
+or `Data_quality_bool` is removing everything (use `--no-l3-cut` to test).
 
-`--n` verildiğinde tray erken durur, yani **dosya listesinin tamamı okunmaz**.
-Bu yüzden `--n` modunda "işlenen dosya" sayısı basılmıyor (yanıltıcı olurdu:
-listede 100 dosya olsa da tray ilk dosyada durmuş olabilir). Smoke test'te
-tek dosya verin ya da `--scan off` kullanın — 100 dosyayı taramak boşuna.
-## Konvansiyonlar
+When `--n` is given the tray stops early, so **the file list is not read in
+full**.  For that reason the "files processed" count is not printed in `--n`
+mode (it would mislead: the list may hold 100 files while the tray stopped in
+the first).  For a smoke test, pass a single file or use `--scan off` --
+scanning 100 files is pointless.
 
-- **Kod, yorumlar, docstring'ler, `print` çıktıları ve grafik etiketleri
-  İNGİLİZCE.** Bu dosya ve diğer `.md` belgeleri **Türkçe** kalıyor;
-  onlar proje anlatısı, kod değil. Notebook markdown'ı da Türkçe.
-  Devam eden geçiş — İngilizce olanlar: `train_L4_classifier.py`.
-  Sırada: `l4_classifier_module.py`, `scan_files.py`, `diagnose_env.py`,
-  `simple_booker.py`, `l4_run.py`, `icetray_env.py`, `process_L4.py`,
-  `l4_data.py`, `oscNext_L4_variables.py`.
-  `reference/` altındaki dosyalar **olduğu gibi kalır** — başkasının kodu
-  ya da tarihsel kayıt, çevrilmez.
-- Veri repoya girmez (`.gitignore`: `L4_output/`, model/veri uzantıları).
-- Notebook commit'lenmeden önce `nbstripout` ile temizlenmeli.
-- `oscNext_L4_variables.py` içindeki her yeniden yazılmış fonksiyonun
-  docstring'inde orijinalin nereden geldiği ve neden değiştiği yazılı —
-  değişiklik yapmadan önce bu docstring'leri okuyun.
+## Conventions
+
+- **Code, comments, docstrings, printed output, plot labels and documentation
+  are all ENGLISH**, including this file and the notebook's markdown.
+- Data never enters the repository (`.gitignore`: `L4_output/`, model/data
+  extensions).
+- The notebook must be cleaned with `nbstripout` before committing.
+- Every rewritten function in `oscnext_l4/variables.py` records in its docstring
+  where the original came from and why it differs -- read those docstrings
+  before changing anything.
+- Files under `reference/` are left **exactly as they are**: someone else's code
+  or a historical record, never edited or translated.
