@@ -63,7 +63,7 @@
 \date{\today}
 
 \begin{document}
-% =========================================================== 1  TITLE ======
+% =========================================== 1  TITLE ========================
 \begin{frame}[plain]
   \titlepage
   \begin{center}\small
@@ -73,7 +73,7 @@
   \end{center}
 \end{frame}
 
-% =========================================================== 2  oscNEXT ====
+% =========================================== 2  oscNEXT ======================
 \setlength{\plotht}{0.72\textheight}
 \begin{frame}{oscNext and where L4 sits}
   \framesubtitle{low-energy neutrino selection in DeepCore}
@@ -117,7 +117,7 @@
   one that follows it -- that is the whole design of the chain.}
 \end{frame}
 
-% =========================================================== 3  RATES ======
+% =========================================== 3  RATES ========================
 \setlength{\plotht}{0.42\textheight}
 \begin{frame}{pass3 rates}
   \framesubtitle{our processing against the reference values in the note}
@@ -165,7 +165,7 @@
   with oscillations.}
 \end{frame}
 
-% =========================================================== 4  L4 ========
+% =========================================== 4  L4 ===========================
 \begin{frame}[c]{What L4 does, and what had to be rebuilt}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.48\textwidth}
@@ -220,7 +220,7 @@
   is inherited from the original pass2 code, not introduced by us.}
 \end{frame}
 
-% =========================================================== 5  VARIABLES ==
+% =========================================== 5  VARIABLES ====================
 \setlength{\plotht}{0.78\textheight}
 \begin{frame}[c]{Noise BDT input variables (pass3)}
   \framesubtitle{definitions from Table 11 of the technical note}
@@ -259,7 +259,48 @@
   compact in time, not because noise is.}
 \end{frame}
 
-% =========================================================== 6  BDT =======
+% =========================================== 6  INPUTS 2 =====================
+\setlength{\plotht}{0.56\textheight}
+\begin{frame}[c]{Input correlations and feature importance}
+  \framesubtitle{do the five inputs overlap, and which one does the work?}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.49\textwidth}
+      \centering
+      \plot{input_correlation.png}
+      \figcap{Spearman rank correlation, signal and background}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \centering
+      \plot{feature_importance.png}
+      \figcap{gain split of the trained noise model}
+    \end{column}
+  \end{columns}
+
+  \vspace{6pt}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.49\textwidth}
+      \footnotesize
+      \tick~the inputs are largely independent -- each one carries its own
+      information, none is redundant
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \footnotesize
+      \cross~\texttt{fill\_ratio} carries most of the gain -- and its radius
+      was never re-optimised for oscNext
+
+      \smallskip
+      \cross~\texttt{iLineFit\_speed} is nearly dead
+    \end{column}
+  \end{columns}
+  \note{This is the argument for next step 2.  The variable the model leans on
+  hardest is the one whose only free parameter is inherited from GRECO -- the
+  original code says so itself.  Re-tuning it is the single highest-value knob
+  we have.  Note the importance comes from the trained model, so strictly it
+  is a result of the next two slides; it sits here because it belongs with the
+  discussion of the inputs.}
+\end{frame}
+
+% =========================================== 7  BDT ==========================
 \setlength{\plotht}{0.56\textheight}
 \begin{frame}[c]{How a boosted decision tree works}
   \begin{columns}[T,onlytextwidth]
@@ -299,7 +340,7 @@
   value can be reused or has to be recalibrated.}
 \end{frame}
 
-% =========================================================== 7  PYBDT =====
+% =========================================== 8  PYBDT ========================
 \setlength{\plotht}{0.42\textheight}
 \begin{frame}[c]{Training with pybdt (AdaBoost)}
   \framesubtitle{a deliberate deviation from the note -- and its cost}
@@ -347,7 +388,7 @@
   it flagged the best model and cleared the worst one.}
 \end{frame}
 
-% =========================================================== 8  LIGHTGBM ==
+% =========================================== 9  LIGHTGBM =====================
 \setlength{\plotht}{0.34\textheight}
 \begin{frame}{Training with LightGBM}
   \framesubtitle{the note's own method and hyperparameters (Table 10)}
@@ -390,7 +431,7 @@
   well short of the tree budget.  The model met the target anyway.}
 \end{frame}
 
-% =========================================================== 9  MC LIMIT ==
+% =========================================== 10 MC LIMIT =====================
 \setlength{\plotht}{0.60\textheight}
 \begin{frame}[c]{The limit: noise MC statistics}
   \framesubtitle{why the far tail is not a measurement}
@@ -445,9 +486,8 @@
   itself evidence the reference had far more noise MC than we do.}
 \end{frame}
 
-% =========================================================== 10 TO DO =====
-\setlength{\plotht}{0.42\textheight}
-\begin{frame}{Status and next steps}
+% =========================================== 11 TO DO ========================
+\begin{frame}[c]{Status and next steps}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.44\textwidth}
       \footnotesize
@@ -458,11 +498,6 @@
         \item validated against the note and the original segment
         \item noise classifier trained, target reached
       \end{itemize}
-
-      \medskip
-      \centering
-      \plot{feature_importance.png}
-      \figcap{gain split -- the case for item 2}
     \end{column}
     \begin{column}{0.54\textwidth}
       \footnotesize
@@ -471,7 +506,8 @@
         \item \textbf{Cross-check against pass2 L4 files} -- validates the
               rewritten variables; tests each model on the other pass
         \item \textbf{Re-tune the \texttt{fill\_ratio} radius} -- carries most
-              of the gain, never re-optimised for oscNext
+              of the gain (see the importance plot), never re-optimised for
+              oscNext
         \item \textbf{Muon classifier} -- CORSIKA background
         \item \textbf{More vuvuzela MC} -- to measure the far tail
         \item Reprocess the remaining samples
