@@ -7,6 +7,13 @@
 %  box of the SAME SIZE naming the file it wants, so the layout does not move
 %  when you drop the real plot in, and the deck compiles at every stage.
 %  See FIGURES.md for which plot belongs where.
+%
+%  STYLE RULES for this deck -- keep them when editing:
+%    * plots carry the talk; text is a frame around them, never a paragraph
+%    * NO numbers in running prose.  Every number lives in a tabular or in a
+%      plot, where it can be read off and pointed at.
+%    * anything about pass2 is sourced from the technical note and says so.
+%      Nothing here reprocesses pass2.
 % ===========================================================================
 \documentclass[aspectratio=169,10pt]{beamer}
 
@@ -47,6 +54,7 @@
 \newcommand{\figcap}[1]{\\[1pt]{\scriptsize #1}}
 \newcommand{\tick}{\textcolor{good}{\textbf{\checkmark}}}
 \newcommand{\cross}{\textcolor{bad}{\textbf{$\times$}}}
+\newcommand{\src}[1]{{\scriptsize\itshape\color{gray}#1}}
 
 \title{oscNext Level 4: rebuilding the noise classifier}
 \subtitle{pass3 processing, variable validation, and the choice of BDT}
@@ -54,61 +62,64 @@
 \date{\today}
 
 \begin{document}
-
 % =========================================================== 1  TITLE ======
 \begin{frame}[plain]
   \titlepage
   \begin{center}\small
   L3 $\to$ L4 rebuilt for pass3 \quad$\cdot$\quad
   noise BDT trained \quad$\cdot$\quad
-  95.9\% signal efficiency at 99\% noise rejection
+  the note's target reached
   \end{center}
 \end{frame}
 
 % =========================================================== 2  oscNEXT ====
-\setlength{\plotht}{0.62\textheight}
+\setlength{\plotht}{0.72\textheight}
 \begin{frame}{oscNext and where L4 sits}
   \framesubtitle{low-energy neutrino selection in DeepCore}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.46\textwidth}
+    \begin{column}{0.36\textwidth}
       \footnotesize
-      \textbf{oscNext} is the low-energy ($\sim$5--100\,GeV) neutrino sample
-      used for the DeepCore oscillation measurements.  The selection runs as a
-      chain of levels, each cheaper than the reconstruction that follows it.
+      \begin{itemize}\footnotesize
+        \item the sample behind the DeepCore oscillation measurements
+        \item selected by a chain of levels
+        \item \textbf{L4 rejects background} -- before any reconstruction
+      \end{itemize}
 
       \medskip
-      \begin{tabular}{@{}ll@{}}
+      At L3, background still dominates:
+
+      \smallskip
+      \centering
+      \begin{tabular}{@{}lr@{}}
         \toprule
-        \textbf{L2} & DeepCore Filter: fiducial vs.\ veto \\
-        \textbf{L3} & fast cuts, veto variables \\
-        \textbf{\textcolor{bad}{L4}} & \textbf{two BDTs: noise, muon} \\
-        L5--L7 & reconstruction, PID, final cuts \\
+        at L3 & rate [mHz] \\
+        \midrule
+        atmospheric muons & 505 \\
+        detector noise    & 36.6 \\
+        neutrinos         & 5.25 \\
         \bottomrule
-      \end{tabular}
+      \end{tabular}\\[2pt]
+      \src{technical note, Table 13}
 
       \medskip
-      At L3 the sample is still background dominated: atmospheric muons at
-      $\sim$505\,mHz and detector noise at $\sim$37\,mHz, against $\sim$5\,mHz
-      of neutrinos.
-
-      \medskip
-      \textbf{L4 inverts that ratio} -- and has to do it without the
-      reconstruction that only starts at L5.
+      \raggedright
+      \textbf{L4 inverts this ratio.}
     \end{column}
-    \begin{column}{0.52\textwidth}
+    \begin{column}{0.62\textwidth}
       \centering
       \plot{oscnext_levels.png}
       \figcap{oscNext selection chain / DeepCore geometry}
     \end{column}
   \end{columns}
-  \note{Set the scene: L4 is background rejection, not reconstruction.  The
-  whole point is that it must be cheap.}
+  \note{L4 is background rejection, not reconstruction, and it has to be cheap
+  because reconstruction only starts at L5.  Each level is cheaper than the
+  one that follows it -- that is the whole design of the chain.}
 \end{frame}
 
 % =========================================================== 3  RATES ======
 \setlength{\plotht}{0.46\textheight}
 \begin{frame}{pass3 rates}
-  \framesubtitle{pass2 vs.\ pass3, and the rate check against the note}
+  \framesubtitle{our processing against the reference values in the note}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.50\textwidth}
       \centering
@@ -118,63 +129,69 @@
     \begin{column}{0.48\textwidth}
       \centering
       \plot{nue_spectrum_pass2_pass3.png}
-      \figcap{$\nu_e$ CC at L2 -- pass3 has $\sim$2$\times$ the rate below
-           10\,GeV and stops at $\sim$1\,TeV}
+      \figcap{$\nu_e$ CC at L2}
     \end{column}
   \end{columns}
 
   \vspace{4pt}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.50\textwidth}
-      \footnotesize
-      \textbf{Processed.}  $\nu_e$ 100 files $\to$ 256\,799 events, 84\,\% pass
-      L3.  CORSIKA 500 $\to$ 6\,462.  Noise 100 $\to$ 2\,051,
-      \textcolor{bad}{8\,\%} -- the origin of every statistics problem later in
-      this talk.  $\nu_\mu$ partial: corrupt input files.
+    \begin{column}{0.40\textwidth}
+      \centering\scriptsize
+      \begin{tabular}{@{}lrr@{}}
+        \toprule
+        at L3 [mHz] & note & ours \\
+        \midrule
+        noise  & 36.6 & \textbf{41.4} \\
+        signal & 5.25 & 7.97 \\
+        \bottomrule
+      \end{tabular}
     \end{column}
-    \begin{column}{0.48\textwidth}
+    \begin{column}{0.58\textwidth}
       \footnotesize
-      \textbf{Against Table 13} (L3, mHz).
-      Noise 36.6 $\to$ \textbf{41.4}, \tick~agreement to 13\,\%, which
-      validates the \texttt{noise\_weight} unit (1/ns in pass3).
-      Signal 5.25 $\to$ 7.97, a factor 1.5 -- expected for an invented
-      $E^{-3}$ law rather than a real flux with oscillations.
+      \tick~noise agrees -- this validates the vuvuzela weight unit
+
+      \smallskip
+      \cross~signal high -- our flux is a plain power law
+
+      \smallskip
+      \src{pass2 side is the note's, Table 13.  Nothing here reprocesses pass2.}
     \end{column}
   \end{columns}
-  \note{The rate table is the best single test of the whole weighting chain.
+  \note{The rate table is the single best test of the whole weighting chain.
   It already caught one bug: the weights were divided by the number of HDF5
-  files instead of the number of L3 files -- a factor 100.}
+  files instead of the number of L3 files, a factor of one hundred.  The
+  signal excess is expected -- an invented power law instead of a real flux
+  with oscillations.}
 \end{frame}
 
 % =========================================================== 4  L4 ========
 \begin{frame}{What L4 does, and what had to be rebuilt}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.50\textwidth}
+    \begin{column}{0.48\textwidth}
       \footnotesize
-      Two independent classifiers, applied as a conjunction:
       \[
         \text{L4} \;=\; P_{\nu}^{\text{noise}} \ge 0.70
         \;\wedge\;
         P_{\nu}^{\text{muon}} \ge 0.65
       \]
+      \centering\src{thresholds: technical note, sec.\ 3.5}
 
-      \medskip
-      \textbf{Why it needed rebuilding.}  The original L4 tray segment is
-      commented out in full and depends on three projects absent from the
-      current meta-project:
+      \bigskip
+      \raggedright
+      \textbf{Why rebuild?}  The original segment is commented out and needs
+      missing projects:
       \begin{itemize}\footnotesize
-        \item \texttt{icecube.oscNext} -- no \texttt{I3Classifier}
+        \item \texttt{icecube.oscNext} -- \texttt{I3Classifier}
         \item \texttt{tau\_bdt} -- VICH
         \item \texttt{analysis.event\_selection} -- Dunkman variables
       \end{itemize}
 
       \medskip
-      So 5 of the 14 BDT inputs are \textbf{rewritten in pure Python} from
-      their definitions in the technical note.
+      Part of the inputs were \textbf{rewritten in pure Python}, from the note.
     \end{column}
-    \begin{column}{0.48\textwidth}
+    \begin{column}{0.50\textwidth}
       \centering\footnotesize
-      \textbf{Where the 14 inputs come from}\\[5pt]
+      \textbf{Where the BDT inputs come from}\\[5pt]
       \begin{tabular}{@{}clp{2.9cm}@{}}
         \toprule
         n & source & status \\
@@ -183,125 +200,113 @@
         5 & IceTray projects & validated \\
         \textbf{5} & \textbf{our rewrite} & \textcolor{bad}{unverified} \\
         \bottomrule
-      \end{tabular}
+      \end{tabular}\\[2pt]
+      \src{definitions: note, Tables 11--12}
 
-      \medskip
+      \bigskip
       \raggedright
-      \textbf{All of the risk is in the last row.}  That is why the code was
-      compared line by line against the note \emph{and} against the original
-      pass2 segment.
+      \textbf{All the risk is in the last row.}
 
       \medskip
-      That comparison found four bugs.  Three produced \textbf{silent} data
-      corruption -- wrong numbers, no error raised.  One of them,
-      \texttt{micro\_count} counted without noise cleaning, turned out to be
-      inherited from the original pass2 code rather than introduced by us.
+      Compared line by line against the note and the original pass2 segment --
+      which found bugs that \textbf{raise no error}.
     \end{column}
   \end{columns}
-  \note{One sentence on the bugs; do not enumerate.  If asked: the index table
-  overwriting data, non-unique event IDs mismatching rows, n\_flux\_events
-  frozen across files, and the bypassed cleaning step in micro\_count.}
+  \note{Do not enumerate the bugs.  If asked: the index table overwriting
+  data, non-unique event IDs mismatching rows, the flux event count frozen
+  across files, and a bypassed cleaning step in micro\_count -- that last one
+  is inherited from the original pass2 code, not introduced by us.}
 \end{frame}
 
 % =========================================================== 5  VARIABLES ==
-\setlength{\plotht}{0.70\textheight}
+\setlength{\plotht}{0.78\textheight}
 \begin{frame}{Noise BDT input variables (pass3)}
-  \framesubtitle{5 inputs, Table 11 of the technical note}
+  \framesubtitle{definitions from Table 11 of the technical note}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.38\textwidth}
+    \begin{column}{0.32\textwidth}
       \scriptsize
-      \begin{tabular}{@{}p{1.9cm}p{3.2cm}@{}}
+      \begin{tabular}{@{}p{1.6cm}p{2.9cm}@{}}
         \toprule
         \textbf{NchCleaned} & hit DOMs, cleaned series \\[3pt]
-        \textbf{micro\_count} & DOMs in the densest 200\,ns window \\[3pt]
+        \textbf{micro\_count} & DOMs in the densest time window \\[3pt]
         \textbf{iLineFit\_speed} & speed from the improved LineFit \\[3pt]
-        \textbf{fill\_ratio} & how filled a sphere about the first HLC hit is \\[3pt]
+        \textbf{fill\_ratio} & filling of a sphere about the first HLC hit \\[3pt]
         \textbf{FullTime\-LengthRatio} & cleaned / uncleaned duration \\
         \bottomrule
       \end{tabular}
 
-      \medskip
-      \raggedright
+      \bigskip
+      \raggedright\footnotesize
       \textbf{Measured, not assumed.}
-      \texttt{FullTimeLengthRatio} separates in the \emph{opposite} direction
-      to the expectation:
 
       \smallskip
-      Median 0.16 for $\nu_e$ (1626\,ns cleaned) against 0.27 for noise
-      (2780\,ns).  It separates -- but because a low-energy cascade is
-      \emph{compact} in time, not because noise is.
+      \texttt{FullTimeLengthRatio} separates the \emph{opposite} way to the
+      expectation.
     \end{column}
-    \begin{column}{0.60\textwidth}
+    \begin{column}{0.66\textwidth}
       \centering
       \plot{noise_inputs.png}
       \figcap{signal vs.\ noise for the five inputs}
     \end{column}
   \end{columns}
-  \note{The ratio's docstring used to say "real event ~1, noise ~0" and that
-  was simply wrong: the uncleaned duration is ~10 microseconds in every event
-  because SplitInIcePulses spans the whole readout window.}
+  \note{The docstring used to claim the ratio is near one for a real event and
+  near zero for noise.  Wrong: the uncleaned series spans the whole readout
+  window in every event, so the variable is effectively the cleaned duration
+  over a constant.  It does separate -- but because a low-energy cascade is
+  compact in time, not because noise is.}
 \end{frame}
 
 % =========================================================== 6  BDT =======
-\setlength{\plotht}{0.44\textheight}
+\setlength{\plotht}{0.56\textheight}
 \begin{frame}{How a boosted decision tree works}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.48\textwidth}
+    \begin{column}{0.42\textwidth}
       \footnotesize
-      A single shallow tree is a weak classifier.  \textbf{Boosting} trains
-      many in sequence, each correcting what the previous ones got wrong, and
-      sums their outputs.
+      Many shallow trees in sequence, each correcting the last.
 
       \medskip
-      The two engines differ in \emph{how} the next tree is chosen:
+      The engines differ in \emph{how} the next tree is chosen:
 
-      \medskip
-      \begin{tabular}{@{}p{2.0cm}p{3.4cm}@{}}
+      \smallskip
+      \centering
+      \begin{tabular}{@{}p{1.9cm}p{3.2cm}@{}}
         \toprule
         \textbf{AdaBoost}\newline(pybdt) &
-        re-weights the \emph{events} the ensemble gets wrong \\[4pt]
+        re-weights the \emph{events} it gets wrong \\[4pt]
         \textbf{Gradient}\newline\textbf{boosting}\newline(LightGBM) &
-        fits the next tree to the \emph{gradient} of the loss \\
+        fits the \emph{gradient} of the loss \\
         \bottomrule
-      \end{tabular}
-
-      \medskip
-      The note (\S3.6.1) uses LightGBM, and the Table 10 hyperparameters are
-      its native names.
+      \end{tabular}\\[2pt]
+      \src{the note uses LightGBM, sec.\ 3.6.1}
     \end{column}
-    \begin{column}{0.50\textwidth}
+    \begin{column}{0.56\textwidth}
       \centering
       \plot{bdt_schematic.png}
       \figcap{trees in sequence, leaf values summed}
 
-      \medskip
+      \bigskip
       \raggedright\footnotesize
-      \textbf{The output.}  An event passes through every tree; the leaf
-      values are summed and squashed into $P(\text{signal}) \in [0,1]$.
-
-      \smallskip
-      This is why the note's cut of 0.70 transfers directly to a LightGBM
-      model -- and why it does \emph{not} transfer to a pybdt score, which
-      lives on $[-1,1]$.
+      \textbf{Output scale.}  LightGBM returns a probability, so the note's
+      cut transfers to our model directly.  A pybdt score does not.
     \end{column}
   \end{columns}
-  \note{Keep this short -- the audience knows what a BDT is.  The one point
-  that matters downstream is the output scale, because it decides whether the
-  note's cut value can be reused.}
+  \note{Keep this short, the audience knows what a BDT is.  The one point that
+  matters downstream is the output scale -- it decides whether the note's cut
+  value can be reused or has to be recalibrated.}
 \end{frame}
 
 % =========================================================== 7  PYBDT =====
-\setlength{\plotht}{0.68\textheight}
+\setlength{\plotht}{0.76\textheight}
 \begin{frame}{Training with pybdt (AdaBoost)}
   \framesubtitle{a deliberate deviation from the note -- and its cost}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.54\textwidth}
+    \begin{column}{0.58\textwidth}
       \centering
       \plot{pybdt_model_comparison.png}
       \figcap{six configurations, efficiency vs.\ rejection, test set}
     \end{column}
-    \begin{column}{0.44\textwidth}
-      \scriptsize
+    \begin{column}{0.40\textwidth}
+      \centering\scriptsize
       \begin{tabular}{@{}lrrr@{}}
         \toprule
         model & 90\,\% & 95\,\% & 99\,\% \\
@@ -312,48 +317,44 @@
         d4t500          & 91.5 & 86.1 & \textbf{65.8} \\
         d6t500          & 13.4 & 10.3 &  5.8 \\
         \bottomrule
-      \end{tabular}
+      \end{tabular}\\[2pt]
+      \src{signal efficiency [\%] at fixed noise rejection;
+           $^*$too few distinct scores at depth one}
 
-      signal efficiency [\%] at fixed noise rejection.  $^*$depth-1 gives too
-      few distinct scores -- a coarse staircase that drops to 0 beyond
-      99.5\,\%.
-
-      \medskip
-      \footnotesize\raggedright
-      \textbf{Best: 65.8\,\% at 99\,\% rejection.}  The target is
-      $\sim$96\,\%.
+      \bigskip
+      \raggedright\footnotesize
+      \cross~\textbf{the note's target is out of reach}
 
       \medskip
-      \tick~Training is \emph{deterministic} -- the same configuration twice
-      gives bit-identical scores, so there is nothing to average over.
+      \tick~training is deterministic
 
       \medskip
-      \cross~The KS $p$-value is \textbf{useless} as an overtraining test
-      here: it flagged the best model ($p=0.002$) and cleared the worst
-      ($p=0.98$).  We use the train/test efficiency \emph{gap} instead.
+      \cross~the KS $p$-value is useless here -- we use the train/test
+      efficiency \emph{gap}
     \end{column}
   \end{columns}
-  \note{Be honest about the framing: the pybdt hyperparameters were
-  hand-picked, not tuned to the same effort as Table 10.  So this is not
-  "AdaBoost is a worse algorithm" -- it is "our pybdt setup costs us a lot".}
+  \note{Be honest about the framing: these hyperparameters were hand-picked,
+  not tuned to the same effort as the note's.  So this is not "AdaBoost is a
+  worse algorithm" -- it is "our pybdt setup costs us a lot".  On the KS test:
+  it flagged the best model and cleared the worst one.}
 \end{frame}
 
 % =========================================================== 8  LIGHTGBM ==
-\setlength{\plotht}{0.30\textheight}
+\setlength{\plotht}{0.34\textheight}
 \begin{frame}{Training with LightGBM}
-  \framesubtitle{the note's own method, Table 10 hyperparameters}
+  \framesubtitle{the note's own method and hyperparameters (Table 10)}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.54\textwidth}
+    \begin{column}{0.58\textwidth}
       \centering
       \plot{adaboost_vs_lightgbm.png}
-      \figcap{same events, same variables, same split -- only the trainer differs}
+      \figcap{same events, same variables, same split}
 
       \medskip
       \plot{lightgbm_score_dist.png}
       \figcap{train and test lie on top of each other}
     \end{column}
-    \begin{column}{0.44\textwidth}
-      \scriptsize
+    \begin{column}{0.40\textwidth}
+      \centering\scriptsize
       \begin{tabular}{@{}lrr@{}}
         \toprule
         rejection & AdaBoost & \textbf{LightGBM} \\
@@ -362,39 +363,40 @@
         95\,\% & 91.7 & \textbf{98.5} \\
         99\,\% & 65.8 & \textbf{95.9} \\
         \bottomrule
-      \end{tabular}
+      \end{tabular}\\[2pt]
+      \src{signal efficiency [\%], test set, event counts}
 
-      signal efficiency [\%], test set, event counts
-
-      \medskip
-      \footnotesize\raggedright
-      \tick~\textbf{95.9\,\% at 99\,\% rejection}, consistent with the
-      $\sim$96\,\% of Table 13.
+      \bigskip
+      \raggedright\footnotesize
+      \tick~\textbf{the note's target is reached}
 
       \medskip
-      \tick~No overtraining: the train/test efficiency gap is $+0.1$ points,
-      and the score distributions coincide.
+      \tick~no overtraining -- train and test coincide
 
       \medskip
-      \tick~Reached while \emph{handicapped}:
-      \texttt{min\_data\_in\_leaf}$=500$ over 828 fitted background events,
-      and it stopped early at 122 of 2000 trees.
+      \tick~reached while \emph{handicapped} by the note's leaf-size floor
     \end{column}
   \end{columns}
-  \note{The handicap point is worth making explicitly -- Table 10's leaf-size
-  floor was tuned on much larger statistics than ours, so the model met the
-  target despite a setting that does not fit our sample.}
+  \note{The handicap is worth making explicit: the note's leaf-size floor was
+  tuned on far larger noise statistics than ours, and training stopped early
+  well short of the tree budget.  The model met the target anyway.}
 \end{frame}
 
 % =========================================================== 9  MC LIMIT ==
-\setlength{\plotht}{0.64\textheight}
+\setlength{\plotht}{0.74\textheight}
 \begin{frame}{The limit: noise MC statistics}
-  \framesubtitle{why nothing right of 99\,\% rejection is a measurement}
+  \framesubtitle{why the far tail is not a measurement}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.46\textwidth}
-      \footnotesize
-      100 L3 files give \textbf{2\,051} noise events -- 1\,035 train, 1\,016
-      test -- against \textbf{329\,545} signal.  A ratio of \textbf{159:1}.
+    \begin{column}{0.36\textwidth}
+      \centering\scriptsize
+      \begin{tabular}{@{}lrr@{}}
+        \toprule
+        test set & events & ratio \\
+        \midrule
+        signal & 329\,545 & \\
+        noise  & 2\,051   & 159:1 \\
+        \bottomrule
+      \end{tabular}
 
       \medskip
       \begin{tabular}{@{}lr@{}}
@@ -409,52 +411,44 @@
         \bottomrule
       \end{tabular}
 
-      \medskip
-      The Table 13 target sits at \textbf{99.2\,\%} rejection, which our test
-      set defines with \textbf{8 events}.
+      \bigskip
+      \raggedright\footnotesize
+      \textbf{Not the bottleneck it looked like.}
 
-      \medskip
-      Table 10's \texttt{min\_data\_in\_leaf}$=500$ is itself evidence the
-      reference had far more: with 1\,035 training events that setting allows
-      two leaves.
+      \smallskip
+      Enough to \emph{reach} the target -- not enough to \emph{measure} the
+      far tail.
     \end{column}
-    \begin{column}{0.52\textwidth}
+    \begin{column}{0.62\textwidth}
       \centering
       % swap for mc_scaling.png if the background-scaling scan gets produced
       \plot{lightgbm_cuts.png}
-      \figcap{grey lines: where 100 / 10 / 1 background events remain}
+      \figcap{grey lines: where the background statistics runs out}
 
       \medskip
       \raggedright\footnotesize
-      \textbf{It is not the bottleneck it looked like.}  An earlier conclusion
-      held that the background statistics limited the model; the LightGBM
-      measurement retracted that -- 1\,035 events are enough to reach the
-      target.
-
-      \smallskip
-      What they are \emph{not} enough for is \textbf{measuring} the region
-      beyond 99\,\%.  More vuvuzela MC is valuable, but it is not blocking.
+      More vuvuzela MC is valuable, but it is \textbf{not blocking}.
     \end{column}
   \end{columns}
-  \note{Be precise: more MC is needed to measure the high-rejection region,
-  not to reach the target.  The other way round would overstate the request.}
+  \note{An earlier conclusion held that background statistics limited the
+  model; the LightGBM measurement retracted it.  Be precise in the ask: more
+  MC is needed to measure the high-rejection region, not to reach the target.
+  The other way round would overstate it.  The note's own leaf-size setting is
+  itself evidence the reference had far more noise MC than we do.}
 \end{frame}
 
 % =========================================================== 10 TO DO =====
-\setlength{\plotht}{0.30\textheight}
+\setlength{\plotht}{0.36\textheight}
 \begin{frame}{Status and next steps}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.47\textwidth}
+    \begin{column}{0.44\textwidth}
       \footnotesize
       \textbf{Done}
       \begin{itemize}\footnotesize
-        \item L3 $\to$ L4 rebuilt for pass3, robust against the corrupt input
-              files in the production
-        \item 14/14 BDT inputs located, column names pinned down
-        \item Validated line by line against the note and the original pass2
-              code; four bugs found and fixed
-        \item Noise classifier trained:
-              \textbf{95.9\,\% at 99\,\% rejection}
+        \item L3 $\to$ L4 rebuilt for pass3, robust against corrupt files
+        \item all BDT inputs located
+        \item validated against the note and the original segment
+        \item noise classifier trained, target reached
       \end{itemize}
 
       \medskip
@@ -462,32 +456,28 @@
       \plot{feature_importance.png}
       \figcap{gain split -- the case for item 2}
     \end{column}
-    \begin{column}{0.51\textwidth}
+    \begin{column}{0.54\textwidth}
       \footnotesize
       \textbf{Next}
       \begin{enumerate}\footnotesize
-        \item \textbf{Cross-check against pass2 L4 files} -- the only way to
-              validate the five rewritten variables, and to test a
-              pass2-trained model on pass3 and the reverse
-        \item \textbf{Re-tune \texttt{SphericalRadiusMean}} for
-              \texttt{fill\_ratio}: it carries 61\,\% of the gain and was
-              never tuned for oscNext
-        \item \textbf{Train the muon classifier} -- CORSIKA background, with
-              the shower-level train/test split already in place
-        \item \textbf{More vuvuzela MC}, to measure beyond 99\,\% rejection
-        \item Reprocess $\nu_\mu$ and noise
+        \item \textbf{Cross-check against pass2 L4 files} -- validates the
+              rewritten variables; tests each model on the other pass
+        \item \textbf{Re-tune the \texttt{fill\_ratio} radius} -- carries most
+              of the gain, never re-optimised for oscNext
+        \item \textbf{Muon classifier} -- CORSIKA background
+        \item \textbf{More vuvuzela MC} -- to measure the far tail
+        \item Reprocess the remaining samples
       \end{enumerate}
 
       \medskip
       \scriptsize
-      \textbf{Known limitations:} no $\nu_\tau$ set ($\sim$3\,\% of the
-      signal); the muon background is CORSIKA rather than real data, so there
-      is no data/MC check yet.
+      \textbf{Limitations:} no $\nu_\tau$ set; the muon background is CORSIKA,
+      so no data/MC check yet.
     \end{column}
   \end{columns}
   \note{End on item 1 -- the pass2 cross-check closes the remaining validation
   gap, and it is the natural ask if anyone can point at where those files
-  live.}
+  live.  Item 2 comes straight off the plot on this slide.}
 \end{frame}
 
 \end{document}
