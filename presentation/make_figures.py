@@ -11,7 +11,8 @@ Reads
 
 Writes into presentation/figures/
     feature_importance.png      gain split                       (slide 10)
-    input_correlation.png       rank correlation of the 5 inputs  (slide 5/8)
+    input_correlation_signal.png      rank correlation of the 5 inputs,
+    input_correlation_background.png  one file per class               (slide 7)
     lightgbm_cuts.png           copied from noise_cuts.png        (slide 9)
     lightgbm_score_dist.png     copied from noise_dist.png        (slide 8)
 
@@ -115,13 +116,17 @@ def _spearman(X):
     return np.corrcoef(R.T)
 
 
-def input_correlation(npz_path, out_path):
-    '''Rank correlation of the BDT inputs, signal and background separately.
+def input_correlation(npz_path, out_dir):
+    """Rank correlation of the BDT inputs, one PNG per class.
 
     Separately, because a pair can be correlated in one class and not the
     other -- and the question this plot answers (is a low-gain variable
     redundant, or just weak?) is about the training data as the model sees it.
-    '''
+
+    One file per class rather than two panels in one figure: side by side the
+    tick labels are longer than the axis they sit on, and `FullTimeLengthRatio`
+    ran into its neighbour.  Alone, each panel has room for readable labels.
+    """
     z = np.load(npz_path, allow_pickle=False)
     names = [str(f) for f in z["features"]]
     X = np.column_stack([np.asarray(z[n], dtype=float) for n in names])
@@ -133,37 +138,38 @@ def input_correlation(npz_path, out_path):
         print("  (%d of %d events dropped: a non-finite input)"
               % (n_drop, len(y)))
 
-    panels = [("signal", finite & (y == 1)), ("background", finite & (y == 0))]
-    fig, axes = plt.subplots(1, 2, figsize=(9.2, 4.0))
-    im = None
-    for ax, (label, mask) in zip(axes, panels):
+    made = []
+    for label, mask in (("signal", finite & (y == 1)),
+                        ("background", finite & (y == 0))):
+        out_path = os.path.join(out_dir, "input_correlation_%s.png" % label)
         if mask.sum() < 10:
-            ax.set_title("%s: too few events" % label, fontsize=9)
-            ax.axis("off")
+            print("  [!] %s: only %d events, skipped" % (label, int(mask.sum())))
             continue
         C = _spearman(X[mask])
+
+        fig, ax = plt.subplots(figsize=(5.2, 4.6))
         im = ax.imshow(C, vmin=-1, vmax=1, cmap="RdBu_r")
         ax.set_xticks(range(len(names)))
-        ax.set_xticklabels(names, rotation=40, ha="right", fontsize=7)
+        ax.set_xticklabels(names, rotation=35, ha="right",
+                           rotation_mode="anchor", fontsize=9)
         ax.set_yticks(range(len(names)))
-        ax.set_yticklabels(names, fontsize=7)
-        ax.set_title("%s  (%d events)" % (label, int(mask.sum())), fontsize=9)
+        ax.set_yticklabels(names, fontsize=9)
+        ax.set_title("%s  (%d events)" % (label, int(mask.sum())), fontsize=11)
         for i in range(len(names)):
             for j in range(len(names)):
                 ax.text(j, i, "%.2f" % C[i, j], ha="center", va="center",
-                        fontsize=6,
+                        fontsize=8.5,
                         color="white" if abs(C[i, j]) > 0.55 else "black")
-    if im is not None:
-        cb = fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02)
-        cb.set_label("Spearman rank correlation", fontsize=8)
-        cb.ax.tick_params(labelsize=7)
-    fig.savefig(out_path, dpi=180, bbox_inches="tight")
-    plt.close(fig)
-    print("  -> %s" % out_path)
-    return True
+        cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.03)
+        cb.set_label("Spearman rank correlation", fontsize=9)
+        cb.ax.tick_params(labelsize=8)
+        fig.tight_layout()
+        fig.savefig(out_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        print("  -> %s" % out_path)
+        made.append(out_path)
+    return len(made)
 
-
-# ---------------------------------------------------------------------------
 
 def copy_as(src, dst):
     if not os.path.exists(src):
@@ -209,8 +215,7 @@ def main():
 
     print("\n2. input correlation")
     if os.path.exists(ds):
-        ok += input_correlation(ds, os.path.join(args.figures,
-                                                 "input_correlation.png"))
+        ok += input_correlation(ds, args.figures)
     else:
         print("  [!] not found: %s" % ds)
         print("      section 6 of the notebook writes it")
@@ -221,8 +226,8 @@ def main():
     ok += copy_as(os.path.join(models, "%s_dist.png" % args.tag),
                   os.path.join(args.figures, "lightgbm_score_dist.png"))
 
-    print("\n%d of 4 figures produced." % ok)
-    if ok < 4:
+    print("\n%d of 5 figures produced." % ok)
+    if ok < 5:
         print("The deck compiles either way -- a missing figure becomes a box "
               "naming the file.")
     return 0

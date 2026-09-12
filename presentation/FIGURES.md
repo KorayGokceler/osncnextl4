@@ -11,10 +11,10 @@ stage.
 | `rates_pass2_pass3.png` | oscNext Event Rates: pass2 vs pass3 | 3 | **fix before use** — see below |
 | `nue_spectrum_pass2_pass3.png` | NuE_CC energy spectrum (Level2) | 3 | **fix labels** |
 | `noise_inputs.png` | L4_noise inputs, rate vs variable | 6 | ready -- it has a full page of its own |
-| `pybdt_model_comparison.png` | six-model efficiency vs rejection | 9 | **re-export** — see below |
+| `pybdt_model_comparison.png` | six-model efficiency vs rejection | 10 | **re-export** — see below |
 | `pybdt_score_dist.png` | BDT score distribution | -- | **not used** -- dropped when the pybdt slide went to a single full-width figure |
-| `adaboost_vs_lightgbm.png` | the green/dashed overlay (re-exported version) | 10 | ready |
-| `lightgbm_score_dist.png` | LightGBM score, train/test, signal/background | 10 | ready -- train and test overlap, which is the overtraining evidence |
+| `adaboost_vs_lightgbm.png` | the green/dashed overlay (re-exported version) | 11 | ready |
+| `lightgbm_score_dist.png` | LightGBM score, train/test, signal/background | 12 | a page of its own -- ready -- train and test overlap, which is the overtraining evidence |
 
 ### Fixes needed
 
@@ -62,10 +62,11 @@ find, so it is safe to run before the training has been redone:
 
 | figure | from | slide |
 |---|---|---|
-| `feature_importance.png` | `L4_noise_model.json` → `importance_gain` | 7 |
-| `input_correlation.png` | `L4_noise_dataset.npz` | 7 |
-| `lightgbm_cuts.png` | copied from `noise_cuts.png` | 11 |
-| `lightgbm_score_dist.png` | copied from `noise_dist.png` | 10 |
+| `feature_importance.png` | `L4_noise_model.json` → `importance_gain` | 8 |
+| `input_correlation_signal.png` | `L4_noise_dataset.npz` | 7 |
+| `input_correlation_background.png` | `L4_noise_dataset.npz` | 7 |
+| `lightgbm_cuts.png` | copied from `noise_cuts.png` | 13 |
+| `lightgbm_score_dist.png` | copied from `noise_dist.png` | 12 |
 
 The last two are written by the training, so if they are reported missing:
 
@@ -92,7 +93,7 @@ conclusions and only this plot separates them.
 
 ### Tier 2 — an hour, and each answers a question you will be asked
 
-**`mc_scaling.png` — slide 11.  The highest-value missing plot.**
+**`mc_scaling.png` — slide 13.  The highest-value missing plot.**
 Efficiency at fixed rejection versus the fraction of background used.  This is
 what turns "we need more vuvuzela MC" from an assertion into a measurement: if
 the curve is still rising at 100% of the sample the request is justified, and if
@@ -100,7 +101,7 @@ it has flattened it is not.  `pybdt_diagnose.py` on branch
 `claude/lightgbm-compare` already does this scan (with pybdt -- say so in the
 caption, or swap `learner.train` for `lgb.train`).
 
-**`incremental_features.png` — slide 7, beside the gain plot.**
+**`incremental_features.png` — slide 8, beside the gain plot.**
 Train with 1, 2, 3, 4, 5 variables (adding them in order of gain) and plot
 efficiency at fixed rejection against the number of inputs.  It answers "do you
 actually need all five" and, together with the gain plot, tells you whether
@@ -133,7 +134,7 @@ order as your own plot, so the eye can move between them.
 | `oscnext_levels.png` | the oscNext selection chain, or DeepCore geometry | screenshot from the technical note |
 | `bdt_schematic.png` | trees in sequence, outputs summed into a sigmoid | any standard boosting schematic |
 
-Both are optional.  Slide 2 works with its table alone, and slide 8 can lose
+Both are optional.  Slide 2 works with its table alone, and slide 9 can lose
 its figure — delete the `\plot` line and widen the left column.
 
 ## One plot you could add if the L4 result needs a closing image

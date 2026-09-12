@@ -265,20 +265,20 @@
   note: this is the plot to hold beside Figure 13.}
 \end{frame}
 
-% =========================================== 7  INPUTS 2 ====================
+% =========================================== 7  CORRELATION ==================
 \setlength{\plotht}{0.74\textheight}
-\begin{frame}[c]{Input correlations and feature importance}
-  \framesubtitle{do the five inputs overlap, and which one does the work?}
+\begin{frame}[c]{Input correlations}
+  \framesubtitle{does any pair of the five inputs say the same thing?}
   \begin{columns}[c,onlytextwidth]
     \begin{column}{0.49\textwidth}
       \centering
-      \plot{input_correlation.png}
-      \figcap{Spearman rank correlation, signal and background}
+      \plot{input_correlation_signal.png}
+      \figcap{Spearman rank correlation, signal}
     \end{column}
     \begin{column}{0.49\textwidth}
       \centering
-      \plot{feature_importance.png}
-      \figcap{gain split of the trained noise model}
+      \plot{input_correlation_background.png}
+      \figcap{Spearman rank correlation, background}
     \end{column}
   \end{columns}
   \note{Two readings, both off the plots.  Left: the inputs are largely
@@ -294,7 +294,26 @@
   here because it belongs with the inputs it is about.}
 \end{frame}
 
-% =========================================== 8  BDT ==========================
+% =========================================== 8  IMPORTANCE ===================
+\setlength{\plotht}{0.78\textheight}
+\begin{frame}[c]{Feature importance}
+  \framesubtitle{which input does the work?}
+  \begin{center}
+    \plot{feature_importance.png}
+    \figcap{gain split of the trained noise model}
+  \end{center}
+  \note{This is the argument for next step 2.  fill_ratio carries about sixty
+  percent of the gain and iLineFit_speed about one percent -- nearly dead.
+  The variable the model leans on hardest is the one whose only free
+  parameter, the spherical radius, is inherited from GRECO: the original code
+  says so itself, "was optimised for GRECO but has not been re-optimised for
+  oscNext".  Re-tuning it is the single highest-value knob we have.  If asked
+  about the ordering: the importance comes from the trained model, so strictly
+  it is a result of the next two slides; it sits here because it belongs with
+  the inputs it is about.}
+\end{frame}
+
+% =========================================== 9  BDT ==========================
 \setlength{\plotht}{0.56\textheight}
 \begin{frame}[c]{How a boosted decision tree works}
   \begin{columns}[T,onlytextwidth]
@@ -334,7 +353,7 @@
   value can be reused or has to be recalibrated.}
 \end{frame}
 
-% =========================================== 9  PYBDT ========================
+% =========================================== 10 PYBDT ========================
 \setlength{\plotht}{0.42\textheight}
 \begin{frame}[c]{Training with pybdt (AdaBoost)}
   \framesubtitle{a deliberate deviation from the note -- and its cost}
@@ -382,19 +401,15 @@
   it flagged the best model and cleared the worst one.}
 \end{frame}
 
-% =========================================== 10 LIGHTGBM =====================
-\setlength{\plotht}{0.34\textheight}
-\begin{frame}{Training with LightGBM}
+% =========================================== 11 LIGHTGBM =====================
+\setlength{\plotht}{0.70\textheight}
+\begin{frame}[c]{Training with LightGBM}
   \framesubtitle{the note's own method and hyperparameters (Table 10)}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.58\textwidth}
       \centering
       \plot{adaboost_vs_lightgbm.png}
       \figcap{same events, same variables, same split}
-
-      \medskip
-      \plot{lightgbm_score_dist.png}
-      \figcap{train and test lie on top of each other}
     \end{column}
     \begin{column}{0.40\textwidth}
       \centering\scriptsize
@@ -425,7 +440,25 @@
   well short of the tree budget.  The model met the target anyway.}
 \end{frame}
 
-% =========================================== 11 MC LIMIT =====================
+% =========================================== 12 SCORE DIST ===================
+\setlength{\plotht}{0.78\textheight}
+\begin{frame}[c]{LightGBM score distribution}
+  \framesubtitle{the overtraining check}
+  \begin{center}
+    \plot{lightgbm_score_dist.png}
+    \figcap{train and test lie on top of each other}
+  \end{center}
+  \note{Left panel linear, right panel the same histogram on a log scale --
+  the tail between the two peaks is invisible without it, and that tail is
+  where the overtraining would show.  Train and test coincide in both.  The
+  y axis is the training weight summed per bin: each class is normalised to
+  the same total, so the two areas are equal by construction -- do not read
+  it as "there is as much background as signal".  For noise the weights are
+  uniform, so the background curves are effectively event counts.  Background
+  stops around 0.85: no background event scores higher than that.}
+\end{frame}
+
+% =========================================== 13 MC LIMIT =====================
 \setlength{\plotht}{0.60\textheight}
 \begin{frame}[c]{The limit: noise MC statistics}
   \framesubtitle{why the far tail is not a measurement}
@@ -480,7 +513,7 @@
   itself evidence the reference had far more noise MC than we do.}
 \end{frame}
 
-% =========================================== 12 TO DO ========================
+% =========================================== 14 TO DO ========================
 \begin{frame}[c]{Status and next steps}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.44\textwidth}
