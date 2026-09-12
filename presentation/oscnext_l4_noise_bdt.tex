@@ -75,42 +75,36 @@
 
 % =========================================== 2  LEVELS =======================
 \begin{frame}[c]{The oscNext selection chain}
-  \framesubtitle{what each level is for -- section 3 of the technical note}
+  \framesubtitle{the stages, as the technical note lists them (sec.\ 1.3)}
   \centering\scriptsize
-  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.7cm}%
-                    >{\raggedright\arraybackslash}p{11.9cm}@{}}
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.1cm}%
+                    >{\raggedright\arraybackslash}p{12.5cm}@{}}
     \toprule
-    \textbf{Level} & \textbf{Objective, as the note states it} \\
+    \textbf{Stage} & \textbf{Objective, quoted} \\
     \midrule
-    \textbf{L2}\newline\scriptsize DeepCore Filter &
-      The chain starts from the collaboration-wide Level 2.  For the low-energy
-      working group ``the only filter which matters for the event selection is
-      the DeepCore Filter''.  It splits the SRT-cleaned pulses into a DeepCore
-      fiducial and a DeepCore veto series, and discards veto hits that could be
-      causally related to a muon crossing the detector. \\[3pt]
-    \textbf{L3} &
-      ``The objective of Level3 is to use simple, fast cuts to remove regions
-      of data-MC disagreement that result from event types for which we do not
-      have MC'' -- muon bundles, coincident events, SLOP triggers.  Rewritten
-      for oscNext to avoid any dependence on PMT charge. \\[3pt]
+    \textbf{L2} & ``common collaboration filter level (we use the
+                   DeepCoreFilter)'' \\[2pt]
+    \textbf{L3} & ``simple cuts to remove `easy' noise, muon and unsimulated
+                   events and achieve good data-MC agreement before machine
+                   learning'' \\[2pt]
     \textbf{\textcolor{bad}{L4}} &
-      ``After the Level 3 selection, the event rate is under 1\,Hz.  Crucially,
-      the data-MC agreement of the sample is much improved, allowing machine
-      learning methods to be applied for efficient background rejection.''
-      \textbf{Two classifiers: noise and muon.} \\[3pt]
-    \textbf{L5} &
-      The main goal of Level 5 is ``to further reduce the remaining muon
-      background, achieving a neutrino dominated sample'' -- starting
-      containment cuts, and corridor cuts against muons that sneak between the
-      IceCube strings. \\
+                  ``\textbf{machine learning (BDT ensembles) to remove noise
+                   and muons}'' \\[2pt]
+    \textbf{L5} & ``removal of muons entering DeepCore via lightly-instrumented
+                   `corridors' in the IceCube veto'' \\[2pt]
+    \textbf{L6} & ``final level neutrino reconstruction (starting
+                   track$+$cascade hypothesis)'' \\[2pt]
+    \textbf{L7} & ``final level muon and noise rejection cuts using final level
+                   reconstructions'' \\
     \bottomrule
   \end{tabular}\\[3pt]
-  \src{quoted from sections 3.4--3.7; reconstruction and PID follow in
-       section 4.  The note's selection chapter stops at L5.}
+  \src{quoted verbatim from sec.\ 1.3.  The sample splits in two at L6 -- a
+       verification sample and a high-statistics sample -- so there are two
+       distinct L6 and L7 stages.}
 
   \medskip
   \begin{columns}[c,onlytextwidth]
-    \begin{column}{0.42\textwidth}
+    \begin{column}{0.40\textwidth}
       \centering\scriptsize
       \begin{tabular}{@{}lr@{}}
         \toprule
@@ -123,17 +117,19 @@
       \end{tabular}\\[2pt]
       \src{technical note, Table 13}
     \end{column}
-    \begin{column}{0.54\textwidth}
+    \begin{column}{0.56\textwidth}
       \footnotesize
-      \textbf{L4 inverts this ratio} -- and has to do it before the
-      reconstruction, which only starts at L5.
+      \textbf{L4 inverts this ratio} -- with machine learning, and before any
+      reconstruction, which the chain only pays for from L6.
     \end{column}
   \end{columns}
-  \note{The design principle is in section 3.1: the first levels use simple
-  and fast algorithms to bring the rate down to where more expensive ones can
-  be applied.  That is why L4 may not reconstruct: reconstruction is what L5
-  onward pays for.  Note there is no Level 6 or 7 in this document -- the
-  selection chapter ends at L5 and reconstruction/PID is a separate chapter.}
+  \note{The framing is in sec. 1.3: muon and noise rates dominate at filter
+  level, and the chain suppresses them by a factor of order ten to the five to
+  reach a neutrino-dominated final sample.  Each level is cheaper than the one
+  after it -- that is why L4 may not reconstruct: reconstruction is what L6
+  pays for, and L7 then cuts on it.  The split at L6 is into a verification
+  sample, lower statistics but high-quality up-going events with a simple
+  reconstruction, and a high-statistics sample.}
 \end{frame}
 
 % =========================================== 3  L4 ===========================
