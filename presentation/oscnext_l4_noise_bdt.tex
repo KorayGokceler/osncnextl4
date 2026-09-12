@@ -73,24 +73,45 @@
   \end{center}
 \end{frame}
 
-% =========================================== 2  oscNEXT ======================
-\setlength{\plotht}{0.72\textheight}
-\begin{frame}{oscNext and where L4 sits}
-  \framesubtitle{low-energy neutrino selection in DeepCore}
-  \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.36\textwidth}
-      \footnotesize
-      \begin{itemize}\footnotesize
-        \item the sample behind the DeepCore oscillation measurements
-        \item selected by a chain of levels
-        \item \textbf{L4 rejects background} -- before any reconstruction
-      \end{itemize}
+% =========================================== 2  LEVELS =======================
+\begin{frame}[c]{The oscNext selection chain}
+  \framesubtitle{what each level is for -- section 3 of the technical note}
+  \centering\scriptsize
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.7cm}%
+                    >{\raggedright\arraybackslash}p{11.9cm}@{}}
+    \toprule
+    \textbf{Level} & \textbf{Objective, as the note states it} \\
+    \midrule
+    \textbf{L2}\newline\scriptsize DeepCore Filter &
+      The chain starts from the collaboration-wide Level 2.  For the low-energy
+      working group ``the only filter which matters for the event selection is
+      the DeepCore Filter''.  It splits the SRT-cleaned pulses into a DeepCore
+      fiducial and a DeepCore veto series, and discards veto hits that could be
+      causally related to a muon crossing the detector. \\[3pt]
+    \textbf{L3} &
+      ``The objective of Level3 is to use simple, fast cuts to remove regions
+      of data-MC disagreement that result from event types for which we do not
+      have MC'' -- muon bundles, coincident events, SLOP triggers.  Rewritten
+      for oscNext to avoid any dependence on PMT charge. \\[3pt]
+    \textbf{\textcolor{bad}{L4}} &
+      ``After the Level 3 selection, the event rate is under 1\,Hz.  Crucially,
+      the data-MC agreement of the sample is much improved, allowing machine
+      learning methods to be applied for efficient background rejection.''
+      \textbf{Two classifiers: noise and muon.} \\[3pt]
+    \textbf{L5} &
+      The main goal of Level 5 is ``to further reduce the remaining muon
+      background, achieving a neutrino dominated sample'' -- starting
+      containment cuts, and corridor cuts against muons that sneak between the
+      IceCube strings. \\
+    \bottomrule
+  \end{tabular}\\[3pt]
+  \src{quoted from sections 3.4--3.7; reconstruction and PID follow in
+       section 4.  The note's selection chapter stops at L5.}
 
-      \medskip
-      At L3, background still dominates:
-
-      \smallskip
-      \centering
+  \medskip
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.42\textwidth}
+      \centering\scriptsize
       \begin{tabular}{@{}lr@{}}
         \toprule
         at L3 & rate [mHz] \\
@@ -101,51 +122,21 @@
         \bottomrule
       \end{tabular}\\[2pt]
       \src{technical note, Table 13}
-
-      \medskip
-      \raggedright
-      \textbf{L4 inverts this ratio.}
     \end{column}
-    \begin{column}{0.62\textwidth}
-      \centering
-      \plot{oscnext_levels.png}
-      \figcap{oscNext selection chain / DeepCore geometry}
+    \begin{column}{0.54\textwidth}
+      \footnotesize
+      \textbf{L4 inverts this ratio} -- and has to do it before the
+      reconstruction, which only starts at L5.
     \end{column}
   \end{columns}
-  \note{L4 is background rejection, not reconstruction, and it has to be cheap
-  because reconstruction only starts at L5.  Each level is cheaper than the
-  one that follows it -- that is the whole design of the chain.}
+  \note{The design principle is in section 3.1: the first levels use simple
+  and fast algorithms to bring the rate down to where more expensive ones can
+  be applied.  That is why L4 may not reconstruct: reconstruction is what L5
+  onward pays for.  Note there is no Level 6 or 7 in this document -- the
+  selection chapter ends at L5 and reconstruction/PID is a separate chapter.}
 \end{frame}
 
-% =========================================== 3  RATES ========================
-\setlength{\plotht}{0.74\textheight}
-\begin{frame}[c]{pass3 rates}
-  \framesubtitle{our processing against the reference values in the note}
-  \begin{columns}[c,onlytextwidth]
-    \begin{column}{0.50\textwidth}
-      \centering
-      \plot{rates_pass2_pass3.png}
-      \figcap{component rates through NoCut / L2 / L3}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \centering
-      \plot{nue_spectrum_pass2_pass3.png}
-      \figcap{$\nu_e$ CC at L2}
-    \end{column}
-  \end{columns}
-  \note{Say the comparison, do not put it on the slide.  At L3 the note's
-  Table 13 gives noise 36.6 mHz and signal 5.25 mHz; we get 41.4 and 7.97.
-  Noise agrees to 13 percent, which is what validates the unit of the
-  vuvuzela weight in pass3.  The signal sits a factor 1.5 high because our
-  flux is an invented power law rather than a real one with oscillations --
-  expected, not a problem.  The pass2 side of both plots is the note's;
-  nothing here reprocesses pass2.  This rate table is the single best test of
-  the whole weighting chain, and it already caught one bug: the weights were
-  divided by the number of HDF5 files instead of the number of L3 files, a
-  factor of one hundred.}
-\end{frame}
-
-% =========================================== 4  L4 ===========================
+% =========================================== 3  L4 ===========================
 \begin{frame}[c]{What L4 does, and what had to be rebuilt}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.48\textwidth}
@@ -200,7 +191,7 @@
   is inherited from the original pass2 code, not introduced by us.}
 \end{frame}
 
-% =========================================== 5  VARIABLES ====================
+% =========================================== 4  VARIABLES ====================
 \begin{frame}[c]{Noise BDT inputs, as the note defines them}
   \framesubtitle{Table 11 of the technical note, quoted}
   \centering\scriptsize
@@ -244,12 +235,12 @@
   which runs 0 to 1 -- so it is cleaned over uncleaned.}
 \end{frame}
 
-% =========================================== 6  INPUT PLOT ===================
+% =========================================== 5  INPUT PLOT ===================
 \setlength{\plotht}{0.80\textheight}
 \begin{frame}[c]{Noise BDT inputs, signal vs.\ noise}
   \framesubtitle{pass3, our own processing}
   \begin{center}
-    \plot{noise_inputs.png}
+    \plot{4.png}
     \figcap{rate vs.\ variable for the five inputs}
   \end{center}
 
@@ -265,7 +256,7 @@
   note: this is the plot to hold beside Figure 13.}
 \end{frame}
 
-% =========================================== 7  CORRELATION ==================
+% =========================================== 6  CORRELATION ==================
 \setlength{\plotht}{0.74\textheight}
 \begin{frame}[c]{Input correlations}
   \framesubtitle{does any pair of the five inputs say the same thing?}
@@ -294,14 +285,20 @@
   here because it belongs with the inputs it is about.}
 \end{frame}
 
-% =========================================== 8  IMPORTANCE ===================
+% =========================================== 7  IMPORTANCE ===================
 \setlength{\plotht}{0.78\textheight}
 \begin{frame}[c]{Feature importance}
   \framesubtitle{which input does the work?}
-  \begin{center}
-    \plot{feature_importance.png}
-    \figcap{gain split of the trained noise model}
-  \end{center}
+  % Nudged left of centre: the long tick labels hang off the left of the bars,
+  % so a centred figure reads as sitting too far right.  Centred would be an
+  % indent of 0.06\textwidth; 0.03 puts it half that.
+  \noindent\makebox[\textwidth][l]{%
+    \hspace*{0.03\textwidth}%
+    \begin{minipage}{0.88\textwidth}
+      \centering
+      \plot{feature_importance.png}
+      \figcap{gain split of the trained noise model}
+    \end{minipage}}
   \note{This is the argument for next step 2.  fill_ratio carries about sixty
   percent of the gain and iLineFit_speed about one percent -- nearly dead.
   The variable the model leans on hardest is the one whose only free
@@ -313,7 +310,7 @@
   the inputs it is about.}
 \end{frame}
 
-% =========================================== 9  BDT ==========================
+% =========================================== 8  BDT ==========================
 \setlength{\plotht}{0.56\textheight}
 \begin{frame}[c]{How a boosted decision tree works}
   \begin{columns}[T,onlytextwidth]
@@ -339,7 +336,7 @@
     \end{column}
     \begin{column}{0.56\textwidth}
       \centering
-      \plot{bdt_schematic.png}
+      \plot{5.png}
       \figcap{trees in sequence, leaf values summed}
 
       \bigskip
@@ -353,7 +350,7 @@
   value can be reused or has to be recalibrated.}
 \end{frame}
 
-% =========================================== 10 PYBDT ========================
+% =========================================== 9  PYBDT ========================
 \setlength{\plotht}{0.42\textheight}
 \begin{frame}[c]{Training with pybdt (AdaBoost)}
   \framesubtitle{a deliberate deviation from the note -- and its cost}
@@ -361,7 +358,7 @@
   % it collapsed into an unreadable strip, so it gets the full frame width
   % and the table sits underneath it.
   \begin{center}
-    \plot{pybdt_model_comparison.png}
+    \plot{2.png}
     \figcap{six configurations, efficiency vs.\ rejection, test set}
   \end{center}
 
@@ -401,14 +398,14 @@
   it flagged the best model and cleared the worst one.}
 \end{frame}
 
-% =========================================== 11 LIGHTGBM =====================
+% =========================================== 10 LIGHTGBM =====================
 \setlength{\plotht}{0.70\textheight}
 \begin{frame}[c]{Training with LightGBM}
   \framesubtitle{the note's own method and hyperparameters (Table 10)}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.58\textwidth}
       \centering
-      \plot{adaboost_vs_lightgbm.png}
+      \plot{3.png}
       \figcap{same events, same variables, same split}
     \end{column}
     \begin{column}{0.40\textwidth}
@@ -440,7 +437,7 @@
   well short of the tree budget.  The model met the target anyway.}
 \end{frame}
 
-% =========================================== 12 SCORE DIST ===================
+% =========================================== 11 SCORE DIST ===================
 \setlength{\plotht}{0.78\textheight}
 \begin{frame}[c]{LightGBM score distribution}
   \framesubtitle{the overtraining check}
@@ -458,62 +455,28 @@
   stops around 0.85: no background event scores higher than that.}
 \end{frame}
 
-% =========================================== 13 MC LIMIT =====================
-\setlength{\plotht}{0.60\textheight}
+% =========================================== 12 MC LIMIT =====================
+\setlength{\plotht}{0.78\textheight}
 \begin{frame}[c]{The limit: noise MC statistics}
   \framesubtitle{why the far tail is not a measurement}
-  \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.32\textwidth}
-      \centering\scriptsize
-      \begin{tabular}{@{}lrr@{}}
-        \toprule
-        test set & events & ratio \\
-        \midrule
-        signal & 329\,545 & \\
-        noise  & 2\,051   & 159:1 \\
-        \bottomrule
-      \end{tabular}
-
-      \medskip
-      \begin{tabular}{@{}lr@{}}
-        \toprule
-        rejection & bg events left \\
-        \midrule
-        90.0\,\% & 101 \\
-        95.0\,\% & 50 \\
-        99.0\,\% & \textcolor{warn}{10} \\
-        99.5\,\% & \textcolor{bad}{5} \\
-        99.9\,\% & \textcolor{bad}{1} \\
-        \bottomrule
-      \end{tabular}
-
-      \bigskip
-      \raggedright\footnotesize
-      \textbf{Not the bottleneck it looked like.}
-
-      \smallskip
-      Enough to \emph{reach} the target -- not enough to \emph{measure} the
-      far tail.
-    \end{column}
-    \begin{column}{0.66\textwidth}
-      \centering
-      % swap for mc_scaling.png if the background-scaling scan gets produced
-      \plot{lightgbm_cuts.png}
-      \figcap{grey lines: where the background statistics runs out}
-
-      \medskip
-      \raggedright\footnotesize
-      More vuvuzela MC is valuable, but it is \textbf{not blocking}.
-    \end{column}
-  \end{columns}
-  \note{An earlier conclusion held that background statistics limited the
-  model; the LightGBM measurement retracted it.  Be precise in the ask: more
-  MC is needed to measure the high-rejection region, not to reach the target.
-  The other way round would overstate it.  The note's own leaf-size setting is
-  itself evidence the reference had far more noise MC than we do.}
+  \begin{center}
+    % swap for mc_scaling.png if the background-scaling scan gets produced
+    \plot{lightgbm_cuts.png}
+    \figcap{grey lines: where the background statistics runs out}
+  \end{center}
+  \note{The numbers, if anyone asks.  The test set holds 329,545 signal events
+  against 2,051 noise -- a ratio of 159 to 1.  Above the cut there are about
+  100 background events left at 90 percent rejection, 50 at 95, ten at 99,
+  five at 99.5 and one at 99.9.  The note's target sits at 99.2 percent
+  rejection, which our test set defines with eight events.  So: not the
+  bottleneck it looked like -- an earlier conclusion held that background
+  statistics limited the model and the LightGBM measurement retracted it.
+  What we have is enough to REACH the target, not enough to MEASURE the far
+  tail.  More vuvuzela MC is valuable but not blocking, and stating it the
+  other way round would overstate the request.}
 \end{frame}
 
-% =========================================== 14 TO DO ========================
+% =========================================== 13 TO DO ========================
 \begin{frame}[c]{Status and next steps}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.44\textwidth}

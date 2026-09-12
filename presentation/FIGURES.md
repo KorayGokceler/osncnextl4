@@ -4,17 +4,35 @@ Drop files into `presentation/figures/` under **exactly** these names.  A
 missing figure is replaced by a box naming it, so the deck compiles at every
 stage.
 
-## You already have these four
+## Which figure goes where
 
-| name to save as | your plot | slide | note |
-|---|---|---|---|
-| `rates_pass2_pass3.png` | oscNext Event Rates: pass2 vs pass3 | 3 | **fix before use** — see below |
-| `nue_spectrum_pass2_pass3.png` | NuE_CC energy spectrum (Level2) | 3 | **fix labels** |
-| `noise_inputs.png` | L4_noise inputs, rate vs variable | 6 | ready -- it has a full page of its own |
-| `pybdt_model_comparison.png` | six-model efficiency vs rejection | 10 | **re-export** — see below |
-| `pybdt_score_dist.png` | BDT score distribution | -- | **not used** -- dropped when the pybdt slide went to a single full-width figure |
-| `adaboost_vs_lightgbm.png` | the green/dashed overlay (re-exported version) | 11 | ready |
-| `lightgbm_score_dist.png` | LightGBM score, train/test, signal/background | 12 | a page of its own -- ready -- train and test overlap, which is the overtraining evidence |
+Generated from the deck, so it cannot drift.  A file that is not in
+`figures/` is replaced by a box naming it, and the deck still compiles.
+
+| file in `figures/` | slide | frame |
+|---|---|---|
+| `4.png` | 5 | Noise BDT inputs, signal vs.\ noise |
+| `input_correlation_signal.png` | 6 | Input correlations |
+| `input_correlation_background.png` | 6 | Input correlations |
+| `feature_importance.png` | 7 | Feature importance |
+| `5.png` | 8 | How a boosted decision tree works |
+| `2.png` | 9 | Training with pybdt (AdaBoost) |
+| `3.png` | 10 | Training with LightGBM |
+| `lightgbm_score_dist.png` | 11 | LightGBM score distribution |
+| `lightgbm_cuts.png` | 12 | The limit: noise MC statistics |
+
+**The numeric names are yours.** `1.png` ... `5.png` were renamed by hand from
+`oscnext_levels`, `pybdt_model_comparison`, `adaboost_vs_lightgbm`,
+`noise_inputs` and `bdt_schematic`.  They carry no meaning, so if a figure is
+ever replaced, check the slide it lands on rather than trusting the number.
+`make_figures.py` still writes its own outputs under their descriptive names.
+
+**No longer used:**
+
+- oscnext_levels.png (slide 2 has no figure any more)
+- rates_pass2_pass3.png, nue_spectrum_pass2_pass3.png (the rates slide was removed)
+- pybdt_score_dist.png (the pybdt slide went to one full-width figure)
+- input_correlation.png (replaced by the _signal / _background pair)
 
 ### Fixes needed
 
