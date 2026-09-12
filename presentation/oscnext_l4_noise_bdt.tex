@@ -29,6 +29,7 @@
 \usepackage[T1]{fontenc}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{array}        % >{\raggedright\arraybackslash}p{} columns
 \usepackage{amsmath}
 \usepackage{amssymb}      % \checkmark
 \usepackage{xcolor}
@@ -48,7 +49,7 @@
   \IfFileExists{figures/#1}%
     {\includegraphics[height=\plotht,width=\linewidth,keepaspectratio]{figures/#1}}%
     {\fbox{\parbox[c][\plotht][c]{0.93\linewidth}{%
-        \centering\ttfamily\scriptsize figures/#1\\[2pt]
+        \centering\ttfamily\scriptsize \detokenize{figures/#1}\\[2pt]
         \normalfont\itshape\scriptsize(not present yet)}}}}
 
 \newcommand{\figcap}[1]{\\[1pt]{\scriptsize #1}}
@@ -117,7 +118,7 @@
 \end{frame}
 
 % =========================================================== 3  RATES ======
-\setlength{\plotht}{0.46\textheight}
+\setlength{\plotht}{0.42\textheight}
 \begin{frame}{pass3 rates}
   \framesubtitle{our processing against the reference values in the note}
   \begin{columns}[T,onlytextwidth]
@@ -133,7 +134,7 @@
     \end{column}
   \end{columns}
 
-  \vspace{4pt}
+  \vspace{10pt}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.40\textwidth}
       \centering\scriptsize
@@ -165,7 +166,7 @@
 \end{frame}
 
 % =========================================================== 4  L4 ========
-\begin{frame}{What L4 does, and what had to be rebuilt}
+\begin{frame}[c]{What L4 does, and what had to be rebuilt}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.48\textwidth}
       \footnotesize
@@ -181,6 +182,7 @@
       \textbf{Why rebuild?}  The original segment is commented out and needs
       missing projects:
       \begin{itemize}\footnotesize
+        \itemsep2pt
         \item \texttt{icecube.oscNext} -- \texttt{I3Classifier}
         \item \texttt{tau\_bdt} -- VICH
         \item \texttt{analysis.event\_selection} -- Dunkman variables
@@ -192,7 +194,7 @@
     \begin{column}{0.50\textwidth}
       \centering\footnotesize
       \textbf{Where the BDT inputs come from}\\[5pt]
-      \begin{tabular}{@{}clp{2.9cm}@{}}
+      \begin{tabular}{@{}cl>{\raggedright\arraybackslash}p{2.9cm}@{}}
         \toprule
         n & source & status \\
         \midrule
@@ -225,13 +227,14 @@
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.32\textwidth}
       \scriptsize
-      \begin{tabular}{@{}p{1.6cm}p{2.9cm}@{}}
+      \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.9cm}%
+                        >{\raggedright\arraybackslash}p{2.7cm}@{}}
         \toprule
-        \textbf{NchCleaned} & hit DOMs, cleaned series \\[3pt]
-        \textbf{micro\_count} & DOMs in the densest time window \\[3pt]
-        \textbf{iLineFit\_speed} & speed from the improved LineFit \\[3pt]
-        \textbf{fill\_ratio} & filling of a sphere about the first HLC hit \\[3pt]
-        \textbf{FullTime\-LengthRatio} & cleaned / uncleaned duration \\
+        \texttt{NchCleaned} & hit DOMs, cleaned series \\[3pt]
+        \texttt{micro\_count} & DOMs in the densest time window \\[3pt]
+        \texttt{iLineFit\_speed} & speed from the improved LineFit \\[3pt]
+        \texttt{fill\_ratio} & filling of a sphere about the first HLC hit \\[3pt]
+        \texttt{FullTime\-LengthRatio} & cleaned / uncleaned duration \\
         \bottomrule
       \end{tabular}
 
@@ -269,7 +272,8 @@
 
       \smallskip
       \centering
-      \begin{tabular}{@{}p{1.9cm}p{3.2cm}@{}}
+      \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.9cm}%
+                        >{\raggedright\arraybackslash}p{3.2cm}@{}}
         \toprule
         \textbf{AdaBoost}\newline(pybdt) &
         re-weights the \emph{events} it gets wrong \\[4pt]
@@ -383,7 +387,7 @@
 \end{frame}
 
 % =========================================================== 9  MC LIMIT ==
-\setlength{\plotht}{0.74\textheight}
+\setlength{\plotht}{0.60\textheight}
 \begin{frame}{The limit: noise MC statistics}
   \framesubtitle{why the far tail is not a measurement}
   \begin{columns}[T,onlytextwidth]
@@ -438,7 +442,7 @@
 \end{frame}
 
 % =========================================================== 10 TO DO =====
-\setlength{\plotht}{0.36\textheight}
+\setlength{\plotht}{0.42\textheight}
 \begin{frame}{Status and next steps}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.44\textwidth}
@@ -468,13 +472,13 @@
         \item \textbf{More vuvuzela MC} -- to measure the far tail
         \item Reprocess the remaining samples
       \end{enumerate}
-
-      \medskip
-      \scriptsize
-      \textbf{Limitations:} no $\nu_\tau$ set; the muon background is CORSIKA,
-      so no data/MC check yet.
     \end{column}
   \end{columns}
+
+  \vfill
+  {\scriptsize
+   \textbf{Limitations:} no $\nu_\tau$ set; the muon background is CORSIKA,
+   so no data/MC check yet.}
   \note{End on item 1 -- the pass2 cross-check closes the remaining validation
   gap, and it is the natural ask if anyone can point at where those files
   live.  Item 2 comes straight off the plot on this slide.}
