@@ -46,53 +46,49 @@ reprocessing.
 you did not save can be reproduced exactly by re-running the same command.  The
 numbers behind them are all in `CLAUDE.md`.
 
-### Tier 1 — minutes of work
+### Tier 1 — one command
 
-**`feature_importance.png` — slide 10.**  Horizontal bar chart of the gain
-split.  The numbers are already in `L4_output/models/L4_noise_model.json` under
-`importance_gain`.
+`presentation/make_figures.py` produces all of these.  It needs only numpy and
+matplotlib -- no lightgbm, no icetray -- so it runs in a plain python as well
+as inside env-shell:
 
-```python
-import json, matplotlib.pyplot as plt
-imp = json.load(open("L4_output/models/L4_noise_model.json"))["importance_gain"]
-tot = sum(imp.values())
-k, v = zip(*sorted(imp.items(), key=lambda x: x[1]))
-fig, ax = plt.subplots(figsize=(5, 2.4))
-ax.barh(k, [100*x/tot for x in v], color="tab:green")
-ax.set_xlabel("gain [%]"); fig.tight_layout()
-fig.savefig("feature_importance.png", dpi=160)
+```bash
+cd ~/l4/osncnextl4
+python presentation/make_figures.py
 ```
 
-**`lightgbm_cuts.png` — slide 9.**  Already written by the training script:
+It writes into `presentation/figures/` and reports what it could and could not
+find, so it is safe to run before the training has been redone:
+
+| figure | from | slide |
+|---|---|---|
+| `feature_importance.png` | `L4_noise_model.json` → `importance_gain` | 10 |
+| `input_correlation.png` | `L4_noise_dataset.npz` | 5 or 8 |
+| `lightgbm_cuts.png` | copied from `noise_cuts.png` | 9 |
+| `lightgbm_score_dist.png` | copied from `noise_dist.png` | 8 |
+
+The last two are written by the training, so if they are reported missing:
 
 ```bash
 python scripts/train_L4_classifier.py --tag noise \
     --dataset L4_output/ds/L4_noise_dataset.npz --outdir L4_output/models
-# -> L4_output/models/noise_cuts.png
+python presentation/make_figures.py          # then copy them across
 ```
 
-**`input_correlation.png` — optional, slide 5 or 8.**  Correlation matrix of the
-five noise inputs, straight from the `.npz`.  It is the natural companion to the
-gain plot: if `iLineFit_speed` only gets 1.1% of the gain because it is
-correlated with something else, this shows it, and that is a different
-conclusion from "the variable is useless".
+Options: `--tag muon` once the muon classifier exists, `--out-root` if
+`OSCNEXT_OUT_ROOT` is not set, `--figures` to write somewhere else.
 
-```python
-import numpy as np, matplotlib.pyplot as plt
-z = np.load("L4_output/ds/L4_noise_dataset.npz")
-f = [str(x) for x in z["features"]]
-X = np.column_stack([z[n] for n in f])
-ok = np.isfinite(X).all(axis=1)
-C = np.corrcoef(X[ok].T)
-fig, ax = plt.subplots(figsize=(4.2, 3.6))
-im = ax.imshow(C, vmin=-1, vmax=1, cmap="RdBu_r")
-ax.set_xticks(range(len(f))); ax.set_xticklabels(f, rotation=45, ha="right", fontsize=7)
-ax.set_yticks(range(len(f))); ax.set_yticklabels(f, fontsize=7)
-for i in range(len(f)):
-    for j in range(len(f)):
-        ax.text(j, i, "%.2f" % C[i, j], ha="center", va="center", fontsize=6)
-fig.colorbar(im); fig.tight_layout(); fig.savefig("input_correlation.png", dpi=160)
-```
+**On the correlation matrix.**  It uses a **Spearman rank** correlation, not
+Pearson, and plots signal and background in separate panels.  Both choices
+matter for the question it answers.  Pearson would be misleading here --
+`iLineFit_speed` spans three decades, `micro_count` and `NchCleaned` are small
+integers, `fill_ratio` piles up near zero -- and a pair can be correlated in one
+class while being independent in the other.
+
+Read it next to the gain plot: if `iLineFit_speed` is strongly correlated with a
+variable that took most of the gain, its 1.1\% means *redundant*.  If it is
+uncorrelated with everything, 1.1\% means *weak*.  Those are different
+conclusions and only this plot separates them.
 
 ### Tier 2 — an hour, and each answers a question you will be asked
 
