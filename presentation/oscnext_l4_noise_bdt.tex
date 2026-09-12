@@ -118,10 +118,10 @@
 \end{frame}
 
 % =========================================== 3  RATES ========================
-\setlength{\plotht}{0.42\textheight}
-\begin{frame}{pass3 rates}
+\setlength{\plotht}{0.74\textheight}
+\begin{frame}[c]{pass3 rates}
   \framesubtitle{our processing against the reference values in the note}
-  \begin{columns}[T,onlytextwidth]
+  \begin{columns}[c,onlytextwidth]
     \begin{column}{0.50\textwidth}
       \centering
       \plot{rates_pass2_pass3.png}
@@ -133,36 +133,16 @@
       \figcap{$\nu_e$ CC at L2}
     \end{column}
   \end{columns}
-
-  \vspace{10pt}
-  \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.40\textwidth}
-      \centering\scriptsize
-      \begin{tabular}{@{}lrr@{}}
-        \toprule
-        at L3 [mHz] & note & ours \\
-        \midrule
-        noise  & 36.6 & \textbf{41.4} \\
-        signal & 5.25 & 7.97 \\
-        \bottomrule
-      \end{tabular}
-    \end{column}
-    \begin{column}{0.58\textwidth}
-      \footnotesize
-      \tick~noise agrees -- this validates the vuvuzela weight unit
-
-      \smallskip
-      \cross~signal high -- our flux is a plain power law
-
-      \smallskip
-      \src{pass2 side is the note's, Table 13.  Nothing here reprocesses pass2.}
-    \end{column}
-  \end{columns}
-  \note{The rate table is the single best test of the whole weighting chain.
-  It already caught one bug: the weights were divided by the number of HDF5
-  files instead of the number of L3 files, a factor of one hundred.  The
-  signal excess is expected -- an invented power law instead of a real flux
-  with oscillations.}
+  \note{Say the comparison, do not put it on the slide.  At L3 the note's
+  Table 13 gives noise 36.6 mHz and signal 5.25 mHz; we get 41.4 and 7.97.
+  Noise agrees to 13 percent, which is what validates the unit of the
+  vuvuzela weight in pass3.  The signal sits a factor 1.5 high because our
+  flux is an invented power law rather than a real one with oscillations --
+  expected, not a problem.  The pass2 side of both plots is the note's;
+  nothing here reprocesses pass2.  This rate table is the single best test of
+  the whole weighting chain, and it already caught one bug: the weights were
+  divided by the number of HDF5 files instead of the number of L3 files, a
+  factor of one hundred.}
 \end{frame}
 
 % =========================================== 4  L4 ===========================
@@ -285,11 +265,11 @@
   note: this is the plot to hold beside Figure 13.}
 \end{frame}
 
-% =========================================== 7  INPUTS 2 =====================
-\setlength{\plotht}{0.56\textheight}
+% =========================================== 7  INPUTS 2 ====================
+\setlength{\plotht}{0.74\textheight}
 \begin{frame}[c]{Input correlations and feature importance}
   \framesubtitle{do the five inputs overlap, and which one does the work?}
-  \begin{columns}[T,onlytextwidth]
+  \begin{columns}[c,onlytextwidth]
     \begin{column}{0.49\textwidth}
       \centering
       \plot{input_correlation.png}
@@ -301,29 +281,17 @@
       \figcap{gain split of the trained noise model}
     \end{column}
   \end{columns}
-
-  \vspace{6pt}
-  \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.49\textwidth}
-      \footnotesize
-      \tick~the inputs are largely independent -- each one carries its own
-      information, none is redundant
-    \end{column}
-    \begin{column}{0.49\textwidth}
-      \footnotesize
-      \cross~\texttt{fill\_ratio} carries most of the gain -- and its radius
-      was never re-optimised for oscNext
-
-      \smallskip
-      \cross~\texttt{iLineFit\_speed} is nearly dead
-    \end{column}
-  \end{columns}
-  \note{This is the argument for next step 2.  The variable the model leans on
-  hardest is the one whose only free parameter is inherited from GRECO -- the
-  original code says so itself.  Re-tuning it is the single highest-value knob
-  we have.  Note the importance comes from the trained model, so strictly it
-  is a result of the next two slides; it sits here because it belongs with the
-  discussion of the inputs.}
+  \note{Two readings, both off the plots.  Left: the inputs are largely
+  independent, so each one carries its own information and none is redundant.
+  Right: fill_ratio carries about sixty percent of the gain and
+  iLineFit_speed about one percent -- nearly dead.  That is the argument for
+  next step 2: the variable the model leans on hardest is the one whose only
+  free parameter, the spherical radius, is inherited from GRECO.  The
+  original code says so itself -- "was optimised for GRECO but has not been
+  re-optimised for oscNext".  Re-tuning it is the single highest-value knob
+  we have.  If asked about the ordering: the importance comes from the
+  trained model, so strictly it is a result of the next two slides; it sits
+  here because it belongs with the inputs it is about.}
 \end{frame}
 
 % =========================================== 8  BDT ==========================
