@@ -374,10 +374,10 @@
 
       \medskip
       \centering
-      \plot[width=\linewidth]{feature_importance.png}
+      \plot[width=\linewidth]{lightgbm_score_dist.png}
       \\[1pt]
-      {\scriptsize gain: \texttt{fill\_ratio} 60.9\,\%, \texttt{NchCleaned} 26.0\,\%,
-       rest $<$10\,\%}
+      {\scriptsize train and test lie on top of each other -- the gap is
+       $+0.1$ points}
     \end{column}
   \end{columns}
   \note{The gain distribution is a new finding worth flagging: the model leans
@@ -480,6 +480,13 @@
       \end{enumerate}
 
       \medskip
+      \centering
+      \plot[width=0.86\linewidth]{feature_importance.png}
+      \\[1pt]
+      {\scriptsize gain split -- the case for item 2}
+
+      \medskip
+      \raggedright\scriptsize
       \textbf{Known limitations:} no $\nu_\tau$ set ($\sim$3\,\% of signal);
       muon background is CORSIKA rather than real data, so no data/MC check
       yet.
