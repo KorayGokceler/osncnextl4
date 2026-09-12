@@ -335,6 +335,29 @@ def have_lightgbm():
         return False
 
 
+# ---------------------------------------------------------------------------
+# Libraries needed for deserialisation
+# ---------------------------------------------------------------------------
+
+# They are never used directly in the code, but importing them is MANDATORY --
+# without it you get "Deserialization failed for object at frame key 'X'".
+_DESERIALIZE_LIBS = ("simclasses", "recclasses", "genie_icetray",
+                     "genie_reader", "sim_services", "phys_services")
+
+
+def load_deserialization_libs():
+    '''Import the projects a frame object needs in order to be unpacked.'''
+    require_icetray()
+    loaded = []
+    for lib in _DESERIALIZE_LIBS:
+        try:
+            importlib.import_module("icecube." + lib)
+            loaded.append(lib)
+        except ImportError:
+            pass
+    return loaded
+
+
 def find_env_shells():
     '''
     Return the env-shell.sh candidates found on this system.
