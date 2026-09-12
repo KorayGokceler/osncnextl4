@@ -221,45 +221,71 @@
 \end{frame}
 
 % =========================================== 5  VARIABLES ====================
-\setlength{\plotht}{0.78\textheight}
-\begin{frame}[c]{Noise BDT input variables (pass3)}
-  \framesubtitle{definitions from Table 11 of the technical note}
-  \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.34\textwidth}
-      \scriptsize
-      \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.9cm}%
-                        >{\raggedright\arraybackslash}p{2.4cm}@{}}
-        \toprule
-        \texttt{NchCleaned} & hit DOMs, cleaned series \\[3pt]
-        \texttt{micro\_count} & DOMs in the densest time window \\[3pt]
-        \texttt{iLineFit\_speed} & speed from the improved LineFit \\[3pt]
-        \texttt{fill\_ratio} & filling of a sphere about the first HLC hit \\[3pt]
-        \texttt{FullTime\-LengthRatio} & cleaned / uncleaned duration \\
-        \bottomrule
-      \end{tabular}
+\begin{frame}[c]{Noise BDT inputs, as the note defines them}
+  \framesubtitle{Table 11 of the technical note, quoted}
+  \centering\scriptsize
+  \begin{tabular}{@{}>{\ttfamily\raggedright\arraybackslash}p{4.8cm}%
+                    >{\raggedright\arraybackslash}p{8.7cm}@{}}
+    \toprule
+    \normalfont\textbf{Variable} & \textbf{Description} \\
+    \midrule
+    IC2018\_LE\_L3\_Vars.NchCleaned &
+      ``See description in section 3.5.1'' --- there:
+      ``A number of hit DOMs in the cleaned pulse series.'' \\[4pt]
+    L4\_micro\_count.\-STW\_m3500p4000\_DTW200 &
+      ``Start with the cleaned pulse series.  Look at pulses occurring within
+      [$-3.5\,\mu$s, $+4\,\mu$s] from the trigger time.  Slide a time window
+      of 200\,ns that maximizes the number of triggered DOMs in it.  Get the
+      number of triggered DOMs in that sliding time window'' \\[4pt]
+    L4\_iLineFit.speed &
+      ``Speed fitted by the improved LineFit algorithm'' \\[4pt]
+    L4\_fill\_ratio.\-fill\_ratio\_from\_mean &
+      ``Measure of the geometrical spread of the hits about some vertex
+      \textcolor{bad}{(details here)}'' \\[4pt]
+    IC2018\_LE\_L3\_Vars.\-FullTimeLengthRatio &
+      ``Measure the total duration of an event in both the cleaned and
+      uncleaned pulse series (duration $=$ max pulse time $-$ min pulse
+      time).  Calculate the ratio between the two.'' \\
+    \bottomrule
+  \end{tabular}\\[3pt]
+  \src{descriptions quoted verbatim from Table 11; the NchCleaned line points
+       at sec.\ 3.5.1, quoted beside it}
 
-      \bigskip
-      \raggedright\footnotesize
-      \textbf{Measured, not assumed.}
+  \medskip
+  \footnotesize\raggedright
+  Two of these are \textbf{not definitions}: \texttt{fill\_ratio}'s vertex is
+  an unfilled cross-reference, and the ratio's direction is never stated.
+  Both were recovered from the original pass2 code and from Figure 13.
+  \note{The red "(details here)" is in the note itself -- an unfilled
+  cross-reference.  It matters because fill\_ratio turns out to carry most of
+  the model's gain, so the one variable we lean on hardest is the one the note
+  does not define.  We took the vertex from the original code: the position of
+  the first HLC hit.  The ratio's direction came from the x axis of Figure 13,
+  which runs 0 to 1 -- so it is cleaned over uncleaned.}
+\end{frame}
 
-      \smallskip
-      \texttt{FullTimeLengthRatio} separates the \emph{opposite} way to the
-      expectation.
-    \end{column}
-    \begin{column}{0.64\textwidth}
-      \centering
-      \plot{noise_inputs.png}
-      \figcap{signal vs.\ noise for the five inputs}
-    \end{column}
-  \end{columns}
+% =========================================== 6  INPUT PLOT ===================
+\setlength{\plotht}{0.80\textheight}
+\begin{frame}[c]{Noise BDT inputs, signal vs.\ noise}
+  \framesubtitle{pass3, our own processing}
+  \begin{center}
+    \plot{noise_inputs.png}
+    \figcap{rate vs.\ variable for the five inputs}
+  \end{center}
+
+  \vspace{2pt}
+  {\footnotesize
+   \textbf{Measured, not assumed.}  \texttt{FullTimeLengthRatio} separates the
+   \emph{opposite} way to the expectation.}
   \note{The docstring used to claim the ratio is near one for a real event and
   near zero for noise.  Wrong: the uncleaned series spans the whole readout
   window in every event, so the variable is effectively the cleaned duration
   over a constant.  It does separate -- but because a low-energy cascade is
-  compact in time, not because noise is.}
+  compact in time, not because noise is.  If asked for the comparison with the
+  note: this is the plot to hold beside Figure 13.}
 \end{frame}
 
-% =========================================== 6  INPUTS 2 =====================
+% =========================================== 7  INPUTS 2 =====================
 \setlength{\plotht}{0.56\textheight}
 \begin{frame}[c]{Input correlations and feature importance}
   \framesubtitle{do the five inputs overlap, and which one does the work?}
@@ -300,7 +326,7 @@
   discussion of the inputs.}
 \end{frame}
 
-% =========================================== 7  BDT ==========================
+% =========================================== 8  BDT ==========================
 \setlength{\plotht}{0.56\textheight}
 \begin{frame}[c]{How a boosted decision tree works}
   \begin{columns}[T,onlytextwidth]
@@ -340,7 +366,7 @@
   value can be reused or has to be recalibrated.}
 \end{frame}
 
-% =========================================== 8  PYBDT ========================
+% =========================================== 9  PYBDT ========================
 \setlength{\plotht}{0.42\textheight}
 \begin{frame}[c]{Training with pybdt (AdaBoost)}
   \framesubtitle{a deliberate deviation from the note -- and its cost}
@@ -388,7 +414,7 @@
   it flagged the best model and cleared the worst one.}
 \end{frame}
 
-% =========================================== 9  LIGHTGBM =====================
+% =========================================== 10 LIGHTGBM =====================
 \setlength{\plotht}{0.34\textheight}
 \begin{frame}{Training with LightGBM}
   \framesubtitle{the note's own method and hyperparameters (Table 10)}
@@ -431,7 +457,7 @@
   well short of the tree budget.  The model met the target anyway.}
 \end{frame}
 
-% =========================================== 10 MC LIMIT =====================
+% =========================================== 11 MC LIMIT =====================
 \setlength{\plotht}{0.60\textheight}
 \begin{frame}[c]{The limit: noise MC statistics}
   \framesubtitle{why the far tail is not a measurement}
@@ -486,7 +512,7 @@
   itself evidence the reference had far more noise MC than we do.}
 \end{frame}
 
-% =========================================== 11 TO DO ========================
+% =========================================== 12 TO DO ========================
 \begin{frame}[c]{Status and next steps}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.44\textwidth}
