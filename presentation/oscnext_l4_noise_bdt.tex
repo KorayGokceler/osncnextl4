@@ -222,13 +222,13 @@
 
 % =========================================================== 5  VARIABLES ==
 \setlength{\plotht}{0.78\textheight}
-\begin{frame}{Noise BDT input variables (pass3)}
+\begin{frame}[c]{Noise BDT input variables (pass3)}
   \framesubtitle{definitions from Table 11 of the technical note}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.32\textwidth}
+    \begin{column}{0.34\textwidth}
       \scriptsize
       \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.9cm}%
-                        >{\raggedright\arraybackslash}p{2.7cm}@{}}
+                        >{\raggedright\arraybackslash}p{2.4cm}@{}}
         \toprule
         \texttt{NchCleaned} & hit DOMs, cleaned series \\[3pt]
         \texttt{micro\_count} & DOMs in the densest time window \\[3pt]
@@ -246,7 +246,7 @@
       \texttt{FullTimeLengthRatio} separates the \emph{opposite} way to the
       expectation.
     \end{column}
-    \begin{column}{0.66\textwidth}
+    \begin{column}{0.64\textwidth}
       \centering
       \plot{noise_inputs.png}
       \figcap{signal vs.\ noise for the five inputs}
@@ -261,7 +261,7 @@
 
 % =========================================================== 6  BDT =======
 \setlength{\plotht}{0.56\textheight}
-\begin{frame}{How a boosted decision tree works}
+\begin{frame}[c]{How a boosted decision tree works}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.42\textwidth}
       \footnotesize
@@ -300,16 +300,20 @@
 \end{frame}
 
 % =========================================================== 7  PYBDT =====
-\setlength{\plotht}{0.76\textheight}
-\begin{frame}{Training with pybdt (AdaBoost)}
+\setlength{\plotht}{0.42\textheight}
+\begin{frame}[c]{Training with pybdt (AdaBoost)}
   \framesubtitle{a deliberate deviation from the note -- and its cost}
+  % This figure is about five times wider than it is tall.  In a side column
+  % it collapsed into an unreadable strip, so it gets the full frame width
+  % and the table sits underneath it.
+  \begin{center}
+    \plot{pybdt_model_comparison.png}
+    \figcap{six configurations, efficiency vs.\ rejection, test set}
+  \end{center}
+
+  \vspace{2pt}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.58\textwidth}
-      \centering
-      \plot{pybdt_model_comparison.png}
-      \figcap{six configurations, efficiency vs.\ rejection, test set}
-    \end{column}
-    \begin{column}{0.40\textwidth}
+    \begin{column}{0.44\textwidth}
       \centering\scriptsize
       \begin{tabular}{@{}lrrr@{}}
         \toprule
@@ -324,15 +328,15 @@
       \end{tabular}\\[2pt]
       \src{signal efficiency [\%] at fixed noise rejection;
            $^*$too few distinct scores at depth one}
-
-      \bigskip
-      \raggedright\footnotesize
+    \end{column}
+    \begin{column}{0.54\textwidth}
+      \footnotesize
       \cross~\textbf{the note's target is out of reach}
 
-      \medskip
+      \smallskip
       \tick~training is deterministic
 
-      \medskip
+      \smallskip
       \cross~the KS $p$-value is useless here -- we use the train/test
       efficiency \emph{gap}
     \end{column}
@@ -388,10 +392,10 @@
 
 % =========================================================== 9  MC LIMIT ==
 \setlength{\plotht}{0.60\textheight}
-\begin{frame}{The limit: noise MC statistics}
+\begin{frame}[c]{The limit: noise MC statistics}
   \framesubtitle{why the far tail is not a measurement}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.36\textwidth}
+    \begin{column}{0.32\textwidth}
       \centering\scriptsize
       \begin{tabular}{@{}lrr@{}}
         \toprule
@@ -423,7 +427,7 @@
       Enough to \emph{reach} the target -- not enough to \emph{measure} the
       far tail.
     \end{column}
-    \begin{column}{0.62\textwidth}
+    \begin{column}{0.66\textwidth}
       \centering
       % swap for mc_scaling.png if the background-scaling scan gets produced
       \plot{lightgbm_cuts.png}
