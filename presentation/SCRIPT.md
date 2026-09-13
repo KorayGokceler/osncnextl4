@@ -29,7 +29,7 @@ The English is simple on purpose.  Short sentences, one idea each.
 
 ---
 
-## Slide 1 — Title  ·  0:00–0:28
+## Slide 1 — Title  ·  0:00–0:30
 
 I have been working on Level 4 of the oscNext selection for a while now.  I am
 rebuilding it for pass3.
@@ -43,14 +43,15 @@ mean that document.  I did not process pass2 myself.
 
 ---
 
-## Slide 2 — The oscNext selection chain  ·  0:28–1:19
+## Slide 2 — The oscNext selection chain  ·  0:30–1:19
 
 This table shows the selection chain.
 
-Level 2 is the collaboration-wide filter.  Level 3 uses simple, fast cuts.  Its
-job is to make the data and the MC agree.  They must agree before machine
-learning works.  Level 4 is that machine learning.  Level 5 removes muons from
-the corridors.  Level 6 reconstructs, and Level 7 cuts on the reconstruction.
+Level 2 is the collaboration-wide filter.  For us that is the DeepCore Filter.
+Level 3 uses simple, fast cuts.  Its job is to make the data and the MC agree.
+They must agree before machine learning works.  Level 4 is that machine
+learning.  Level 5 removes muons from the corridors.  Level 6 reconstructs, and
+Level 7 cuts on the reconstruction.
 
 Each level is cheaper than the next one.  So **Level 4 may not reconstruct
 anything.**  Reconstruction is expensive, and Level 6 pays for it.  Level 4 gets
