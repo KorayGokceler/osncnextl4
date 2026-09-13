@@ -1,11 +1,11 @@
 # Speaking script — oscNext Level 4: rebuilding the noise classifier
 
-Thirteen slides.  About 2,100 spoken words.  That is roughly 15 minutes at a
-normal pace, which leaves time for questions.  The times are cumulative.
+Thirteen slides.  About 2,000 spoken words.  That is around 15 minutes at a
+normal speed, so there is time for questions.  The times add up from the start.
 
-The English is kept simple on purpose: short sentences, one idea each.  Every
-number is already on a slide or in a plot, so you do not need to memorise
-anything.  Point at the plot and say the line.
+The English here is simple on purpose.  Short sentences.  One idea in each one.
+No difficult grammar.  Every number is already on a slide or in a plot, so you
+do not need to learn anything by heart.  Point at the plot and say the line.
 
 ---
 
@@ -13,292 +13,291 @@ anything.  Point at the plot and say the line.
 
 Thank you.  I have been rebuilding Level 4 of the oscNext selection for pass3.
 
-I want to show you three things today.  First, that my processing gives the
-same rates as the reference document.  Second, that the noise classifier now
-reaches the performance the reference reports.  Third, what is still not
-verified.
+I want to show you three things today.  First, my processing gives the same
+rates as the reference document.  Second, the noise classifier now works as well
+as the reference says it should.  Third, some parts are still not checked.
 
 One note before I start.  When I say "the reference", I mean the oscNext note,
-*Simulations and sample*, version 00.07.  I did not reprocess pass2.  Every
-pass2 number you see is quoted from that document.
+*Simulations and sample*, version 00.07.  I did not process pass2 myself.  Every
+pass2 number here comes from that document.
 
 ---
 
 ## Slide 2 — The oscNext selection chain  ·  0:45–2:15
 
-This is the selection chain.  These are the reference's own words, from
+This is the selection chain.  These are the words of the reference, from
 section 1.3.
 
 Look at the shape of it.  Level 2 is the collaboration filter.  Level 3 uses
-simple, fast cuts.  Its job is to make the data and MC agree well enough that
-machine learning can be used at all.  Level 4 is that machine learning.  Level 5
-removes muons that come in through the corridors in the veto.  Level 6 is the
-final reconstruction.  Level 7 cuts on it.
+simple, fast cuts.  Its job is to make the data and the MC agree.  They have to
+agree before we can use machine learning at all.  Level 4 is that machine
+learning.  Level 5 removes muons that come in through the corridors in the veto.
+Level 6 does the final reconstruction.  Level 7 cuts on it.
 
-So each level is cheaper than the next one.  That is the design.  And that is
-why Level 4 cannot reconstruct anything.  Reconstruction is what Level 6 pays
-for.  Level 4 has to separate signal from background using only fast variables.
+So each level is cheaper than the next one.  That is the design.  And this is the
+reason Level 4 cannot reconstruct anything.  Reconstruction costs too much, and
+Level 6 pays for it.  Level 4 can only use fast variables.
 
-It has a lot of separating to do.  This table is Table 13.  At Level 3 the muon
+Level 4 has a lot of work to do.  This table is Table 13.  At Level 3 the muon
 rate is about 505 millihertz.  The noise rate is about 37.  The neutrino rate is
-about 5.  Background is a hundred times larger than signal.  Level 4 is the level
-that turns this around.
+about 5.  So background is a hundred times larger than signal.  Level 4 turns
+this around.
 
-*(Only if asked: the sample splits in two at Level 6, a verification sample and
-a high-statistics sample.  So there are really two L6 and L7 stages.)*
+*(Only if someone asks: the sample splits in two at Level 6.  One is a
+verification sample, the other has higher statistics.  So there are really two
+L6 stages and two L7 stages.)*
 
 ---
 
 ## Slide 3 — What L4 does, and what had to be rebuilt  ·  2:15–4:00
 
-Level 4 is two classifiers.  One removes pure noise.  One removes atmospheric
-muons.  An event passes if the noise score is at least 0.70 and the muon score
-is at least 0.65.  Those two cut values come from the reference, section 3.5.
+Level 4 uses two classifiers.  One removes pure noise.  One removes atmospheric
+muons.  An event passes if the noise score is 0.70 or higher, and the muon score
+is 0.65 or higher.  Both cut values come from the reference, section 3.5.
 
-So why rebuild it?  The original Level 4 code exists, but the whole body is
-commented out.  And it needs three projects that are not in our meta-project.
-`icecube.oscNext` applies the classifier.  `tau_bdt` gives VICH.
-`analysis.event_selection` gives the Dunkman variables.  We have none of them.
-So we cannot just switch the old code on.
+So why did I rebuild it?  The original Level 4 code is still there, but somebody
+commented out the whole body.  It also needs three projects, and our
+meta-project does not have them.  `icecube.oscNext` applies the classifier.
+`tau_bdt` gives VICH.  `analysis.event_selection` gives the Dunkman variables.
+We have none of these.  So we cannot simply turn the old code on.
 
-That means the variables had to be made again.  There are fourteen of them.
-Four come ready from Level 3, so there is no work.  Five come from IceTray
-projects that we do have.  And five had to be written again, in plain Python,
-from the descriptions in the reference.
+This means I had to make the variables again.  There are fourteen of them.  Four
+come ready from Level 3, so there is no work there.  Five come from IceTray
+projects that we do have.  And I had to write five of them again, in plain
+Python, from the descriptions in the reference.
 
-All the risk is in that last row.  Those five could be wrong.  And they would be
-wrong quietly.  A variable computed the wrong way does not raise an error.  It
-just gives you a number.
+All the risk sits in that last group.  Those five can be wrong.  And they can be
+wrong quietly.  If you compute a variable the wrong way, you do not get an
+error.  You just get a number.
 
-So I compared my code line by line against the reference, and against the
-original pass2 code.  We do have that file, even though it does not run.
+So I compared my code with the reference, line by line.  I also compared it with
+the original pass2 code.  We do have that file, even if it does not run.
 
-The comparison found bugs.  Every one of them gave wrong numbers with no error.
-That is the kind of bug you only find by looking.
+The comparison found bugs.  All of them gave wrong numbers, and none of them
+gave an error.  You only find bugs like this if you look for them.
 
-*(Only if asked, and do not list them unprompted: an index table that was
-overwriting the data it indexed; event IDs that are not unique between files,
-so rows were matched to the wrong events; a flux event count that was read once
-and then reused for ten files; and a noise cleaning step in `micro_count` that
-was skipped.  That last one comes from the original pass2 code, not from us.
-The original author's own comment asks whether that series is used at all.)*
+*(Only if someone asks.  Do not list them first.  An index table was writing
+over the data.  Event IDs are not unique between files, so some rows went to the
+wrong event.  A flux event count was read once and then used for ten files.  And
+one noise cleaning step in `micro_count` was skipped.  That last bug comes from
+the original pass2 code, not from us.  The original author even wrote a comment
+there and asked if that series is used at all.)*
 
 ---
 
 ## Slide 4 — Noise BDT inputs, as the reference defines them  ·  4:00–5:30
 
-These are the five inputs of the noise classifier.  The descriptions are Table 11
-of the reference, word for word.
+These are the five inputs of the noise classifier.  The descriptions come from
+Table 11 of the reference, word for word.
 
-I show them as quotes on purpose.  Two of them are not really definitions.
+I show them as quotes for a reason.  Two of them are not really definitions.
 
 Look at `fill_ratio`.  It says "measure of the geometrical spread of the hits
 about some vertex".  Then it says "details here".  That is an empty
-cross-reference in the document.  The vertex is never given.  Remember this.  I
-come back to it in three slides.
+cross-reference in the document.  It never tells us where the vertex is.  Please
+remember this.  I come back to it in three slides.
 
-Now look at `FullTimeLengthRatio`.  It tells you it is a ratio of the cleaned and
-the uncleaned duration.  It does not tell you which one is on top.
+Now look at `FullTimeLengthRatio`.  It says this is a ratio of the cleaned and
+the uncleaned duration.  But it does not say which one goes on top.
 
-I closed both gaps from outside the document.  The vertex came from the original
-pass2 code.  It uses the position of the first HLC hit.  The direction of the
-ratio came from Figure 13.  Its axis goes from zero to one.  Only cleaned over
-uncleaned can do that.
+I found both answers outside the document.  The vertex comes from the original
+pass2 code.  That code uses the position of the first HLC hit.  The direction of
+the ratio comes from Figure 13.  Its axis goes from zero to one.  Only cleaned
+over uncleaned can give you that.
 
-I want to be open about this.  This is the weakest part of the chain.  I got
-these from a code file and from a figure axis, not from a specification.
+I want to be open here.  This is the weakest part of the chain.  I took these
+answers from a code file and from a figure.  Nobody wrote them down properly.
 
 ---
 
 ## Slide 5 — Noise BDT inputs, signal vs. noise  ·  5:30–7:00
 
-These are the five inputs, computed on our own pass3 files.  Signal is blue,
-noise is red.  This is rate against the variable.
+These are the five inputs on our own pass3 files.  Signal is blue and noise is
+red.  This is rate against the variable.
 
 They separate.  That is the first thing you want to see.  But one of them
-separates in the opposite direction from what we expected.  I think that is worth
-a minute.
+separates in the opposite direction.  I think this is worth a minute.
 
-Our docstring used to say that `FullTimeLengthRatio` is close to one for a real
-event and close to zero for noise.  That is simply wrong.  Measuring it showed
-why.
+Our own docstring used to say something about `FullTimeLengthRatio`.  It said the
+value is close to one for a real event and close to zero for noise.  That is
+simply wrong.  We measured it, and now we know why.
 
 The uncleaned series is `SplitInIcePulses`.  It covers the whole readout window.
-That is about ten microseconds, in every event, signal or noise.  So the bottom
-of the ratio is almost a constant.  The variable is really just the cleaned
-duration divided by ten microseconds.
+That is about ten microseconds.  It is the same in every event, signal or noise.
+So the bottom of the ratio is almost a constant number.  The variable is really
+just the cleaned duration, divided by ten microseconds.
 
-The median is about 0.16 for electron neutrinos and about 0.27 for noise.  So the
-noise events have the longer cleaned series, not the shorter one.  The variable
-separates well.  But it works because a low-energy cascade is short in time, not
-because noise is long.  It was doing the right thing for the wrong reason.  If we
-had trusted the docstring, we would have read this plot backwards.
+The median is about 0.16 for electron neutrinos.  For noise it is about 0.27.  So
+the noise events have the longer cleaned series, not the shorter one.  The
+variable still separates well.  But the reason is different.  A low-energy cascade
+is short in time.  Noise is not long.  The variable did the right thing for the
+wrong reason.  If we had trusted the docstring, we would have read this plot
+backwards.
 
 ---
 
 ## Slide 6 — Input correlations  ·  7:00–8:00
 
-Before training, there is an obvious question.  Are these five variables saying
-the same thing five times?
+Before training, there is one obvious question.  Do these five variables say the
+same thing five times?
 
 These are Spearman rank correlations.  Signal on the left, background on the
-right.  I compute them separately, because a pair can be correlated in one class
-and not in the other.
+right.  I compute them separately.  A pair can be correlated in one class and not
+in the other one.
 
-The answer is no.  They are mostly independent.  Nothing here is a duplicate.
-Every input carries something the others do not.
+The answer is no.  They are mostly independent.  Nothing here is a copy of
+something else.  Every input brings something new.
 
-So if one of them turns out to add almost nothing, that means the variable is
-weak.  It does not mean another variable already covers it.  Keep that in mind
-for the next slide.
+So if one of them adds almost nothing, we know what that means.  The variable is
+weak.  It does not mean that another variable already covers it.  Please keep
+this in mind for the next slide.
 
 ---
 
 ## Slide 7 — Feature importance  ·  8:00–9:15
 
-This is the gain split of the trained noise model.  For what we do next, this is
+This is the gain split of the trained noise model.  For our next steps, this is
 the most important plot in the talk.
 
-`fill_ratio` carries about sixty percent of the gain.  `NchCleaned` about
+`fill_ratio` carries about sixty percent of the gain.  `NchCleaned` carries about
 twenty-six percent.  `FullTimeLengthRatio` about eight.  `micro_count` about
 four.  And `iLineFit_speed` about one percent.  That last one is almost dead.
 
-Now put this together with slide 4.  The variable the model uses most is the one
-whose vertex the reference never defines.  And it has one free parameter, the
-spherical radius, set to 1.6.  That value comes from the original code.  The
-comment next to it says it was tuned for GRECO and was never re-tuned for
-oscNext.
+Now put this together with slide 4.  The model uses `fill_ratio` more than
+anything else.  But the reference never tells us where its vertex is.  And it has
+one free parameter, the spherical radius.  Its value is 1.6, and it comes from
+the original code.  The comment next to it says something important.  Somebody
+tuned this value for GRECO, and nobody tuned it again for oscNext.
 
-So the model leans hardest on a parameter that was tuned for a different
-selection.  Re-tuning it is the best single thing we can do next.  And it is
-cheap.  It is one number and a scan.
+So the model leans on a parameter from a different selection.  Re-tuning it is
+the best next step we have.  And it is cheap.  It is one number and one scan.
 
 ---
 
 ## Slide 8 — How a boosted decision tree works  ·  9:15–10:00
 
-Very short, because you all know this.  One shallow tree is a weak classifier.
-Boosting trains many trees in a row.  Each one corrects what the earlier trees
-got wrong.
+This will be short, because you all know it.  One shallow tree is a weak
+classifier.  Boosting trains many trees, one after the other.  Each new tree
+corrects the mistakes of the earlier ones.
 
-The two engines I compare choose the next tree differently.  AdaBoost gives more
-weight to the events it is getting wrong.  Gradient boosting fits the next tree
-to the gradient of the loss.  The reference uses LightGBM, section 3.6.1, which
-is gradient boosting.
+The two engines choose the next tree in different ways.  AdaBoost gives more
+weight to the events it gets wrong.  Gradient boosting fits the next tree to the
+gradient of the loss.  The reference uses LightGBM, in section 3.6.1, and that is
+gradient boosting.
 
-One detail matters later: the output scale.  LightGBM returns a probability,
-between zero and one.  So the reference cut of 0.70 works on our model directly.
-A pybdt score is not on that scale.  With pybdt you have to find a new threshold
-yourself.
+One detail matters later.  It is the output scale.  LightGBM gives you a
+probability, between zero and one.  So the cut value 0.70 from the reference
+works on our model directly.  A pybdt score is not on that scale.  With pybdt you
+have to find a new threshold yourself.
 
 ---
 
 ## Slide 9 — Training with pybdt (AdaBoost)  ·  10:00–11:45
 
-We first trained with pybdt.  That is IceCube's own BDT library, and it uses
-AdaBoost.  This was a choice against the reference.  The argument was that pybdt
-is the in-house tool.
+We trained with pybdt first.  That is IceCube's own BDT library, and it uses
+AdaBoost.  We chose it instead of the reference method.  The argument was simple:
+pybdt is our in-house tool.
 
-This plot shows six configurations.  Signal efficiency against background
-rejection, on the test set.  The table gives the numbers at three working points.
+This plot shows six configurations.  It is signal efficiency against background
+rejection, on the test set.  The table gives you three working points.
 
 The best one keeps about 94 percent of the signal at 90 percent rejection.  But
 at 99 percent rejection it keeps only 66 percent.  The reference target is about
-96 percent.  So at the working point that matters, we were thirty points short.
+96 percent.  So at the important working point, we were thirty points too low.
 
-Two remarks.
+Two remarks here.
 
-First, one good property.  Training is deterministic.  Run the same setup twice
-and you get exactly the same scores.  So there is nothing to average and no seed
-to worry about.
+First, one good property.  The training is deterministic.  Run the same setup
+twice, and you get exactly the same scores.  So we do not need to average
+anything, and we do not need to worry about a seed.
 
 Second, a warning about method.  We used the Kolmogorov–Smirnov p-value to test
-for overtraining.  On this data it does not work.  It marked our best model as
-overtrained, with p equal to 0.002.  And it passed the worst model, with p equal
-to 0.98.  The reason is simple.  We have about a hundred thousand signal events.
-With that many events, KS finds differences that are statistically real but
-physically meaningless.  We now use something that answers the real question:
-the difference between train and test efficiency at the same rejection.
+for overtraining.  On this data it does not work.  It said our best model was
+overtrained, with p equal to 0.002.  And it said the worst model was fine, with p
+equal to 0.98.  The reason is simple.  We have about a hundred thousand signal
+events.  With so many events, KS finds differences that are real in statistics
+but mean nothing in physics.  Now we use a better test.  We look at the
+efficiency on the train set and on the test set, at the same rejection, and we
+take the difference.
 
-I should also be fair here.  These hyperparameters were chosen by hand.  They
-were not tuned as carefully as the reference's.  So the honest statement is not
-"AdaBoost is a worse algorithm".  It is "our pybdt setup was costing us a lot".
+I should also be fair here.  We chose these hyperparameters by hand.  We did not
+tune them as carefully as the reference did.  So I will not say "AdaBoost is a
+worse algorithm".  I will say "our pybdt setup was costing us a lot".
 
 ---
 
 ## Slide 10 — Training with LightGBM  ·  11:45–13:15
 
-So we went back to the reference's own method.  LightGBM, with the Table 10
-hyperparameters.
+So we went back to the method of the reference.  LightGBM, with the
+hyperparameters from Table 10.
 
 Same events.  Same five variables.  Same train and test split.  Same weights.
-Scored with the same code.  Only the trainer changed.
+Same code for the scoring.  Only the trainer is different.
 
 At 90 percent rejection, 94 becomes 99.  At 95 percent, 91.7 becomes 98.5.  And
 at 99 percent rejection, 65.8 becomes 95.9.
 
-That reaches the reference target.
+This reaches the target of the reference.
 
 Two things make me believe it.
 
-First, there is no overtraining.  The gap between train and test efficiency is
-one tenth of a point.  And the score distributions sit on top of each other.
-That is the next slide.
+First, there is no overtraining.  The train and test efficiency differ by one
+tenth of a point.  And the two score distributions sit on top of each other.  You
+will see that on the next slide.
 
-Second, it reached the target with a handicap.  The reference asks for at least
-500 events in a leaf.  That number was tuned on much more noise simulation than
-we have.  We only had about 830 background events in the fit.  So that setting
-strongly limits what any tree can do.  Training also stopped early, at 122 trees
-out of 2,000.  It still met the target.
+Second, the model reached the target with a handicap.  The reference asks for at
+least 500 events in one leaf.  Somebody tuned that number on much more noise
+simulation than we have.  We only had about 830 background events in the fit.  So
+this setting limits the trees a lot.  The training also stopped early, at 122
+trees out of 2,000.  The model still reached the target.
 
-I want to flag one thing this changed.  We used to think our background
-statistics were the bottleneck.  We thought the model could not do better because
-there was not enough noise MC.  This measurement showed that was wrong.  The
-bottleneck was the engine.
+I want to be clear about one thing.  This result changed our minds.  Before, we
+thought our background statistics were the problem.  We thought the model could
+not do better, because we did not have enough noise MC.  This measurement showed
+that we were wrong.  The problem was the engine.
 
 ---
 
 ## Slide 11 — LightGBM score distribution  ·  13:15–14:00
 
-This is the overtraining check.  The left panel is linear.  The right panel is
+This is the overtraining check.  The left panel is linear.  The right panel shows
 the same histogram on a log scale.
 
-You need the log panel.  The tail between the two peaks is where overtraining
-would show, and you cannot see it on a linear axis.
+We need the log panel.  Overtraining would show up in the tail between the two
+peaks, and you cannot see that tail on a linear axis.
 
-Train and test lie on top of each other in both panels.
+Train and test sit on top of each other in both panels.
 
-One thing to read carefully.  The y axis is the training weight, summed per bin.
-Each class is normalised to the same total.  So the two areas are equal by
-construction.  Please do not read this as "there is as much background as
-signal".  For noise the weights happen to be uniform, so the background curves
-are really event counts.
+Please read the y axis carefully.  It is the training weight, added up in each
+bin.  We normalise each class to the same total.  So the two areas are the same
+by definition.  Please do not read this as "we have as much background as
+signal".  For noise the weights are all equal, so the background curves are
+really event counts.
 
-And look at where the background stops.  It stops around 0.85.  No background
-event in the test set scores higher than that.
+And look at the background.  It stops around 0.85.  No background event in the
+test set gets a higher score than that.
 
 ---
 
 ## Slide 12 — The limit: noise MC statistics  ·  14:00–15:15
 
-If the engine was the bottleneck, what is the limit now?
+If the engine was the problem, what is the limit now?
 
 The test set has about 330,000 signal events and 2,051 noise events.  That is 159
-to one.  And the cut removes the noise very fast.  At 90 percent rejection about
-100 background events are left above the cut.  At 95 percent, 50.  At 99 percent,
-ten.  At 99.5 percent, five.  At 99.9 percent, one.
+to one.  And the cut removes the noise very fast.  At 90 percent rejection, about
+100 background events stay above the cut.  At 95 percent, 50 stay.  At 99
+percent, ten.  At 99.5 percent, five.  At 99.9 percent, one.
 
-The reference target sits at 99.2 percent rejection.  Our test set defines that
-point with eight events.
+The target of the reference is at 99.2 percent rejection.  Only eight events in
+our test set define that point.
 
-So I want to be careful about what I ask for.  What we have is enough to reach
-the target.  That is what the last slides showed.  What it is not enough for is to
-measure anything above about 99 percent rejection.  The 95 percent row rests on
-fifty events, so it is solid.  The 99 percent row rests on ten, so it is at the
-edge.
+So I want to be careful with my request.  We have enough MC to reach the target.
+The last slides showed that.  But we do not have enough MC to measure anything
+above 99 percent rejection.  Fifty events support the 95 percent row, so that row
+is solid.  Ten events support the 99 percent row, so that row is at the edge.
 
-More vuvuzela simulation is useful, and I would like it.  But it is for measuring
-the far tail.  It is not blocking the classifier.
+More vuvuzela simulation is useful, and I would like to have it.  But we need it
+to measure the far tail.  It does not block the classifier.
 
 ---
 
@@ -307,89 +306,90 @@ the far tail.  It is not blocking the classifier.
 Let me summarise.
 
 Level 3 to Level 4 is rebuilt for pass3, and it runs reliably.  The pass3
-production has some half-written files, and one of them kills a whole job.  So
-the processing now scans the files first and skips the bad ones.  All fourteen
-inputs are found and their column names are fixed.  The rewritten variables were
-checked against the reference and against the original code.  And the noise
-classifier is trained and reaches the target.
+production has some half-written files, and one bad file can kill a whole job.
+So the code scans the files first and skips the bad ones.  We found all fourteen
+inputs and fixed their column names.  We checked the rewritten variables against
+the reference and against the original code.  And the noise classifier is trained
+and reaches the target.
 
-Now what comes next, in order of value.
+Now the next steps, in order of value.
 
-First, and this is where I would like help.  We should cross-check against the
-pass2 Level 4 files.  Those files already contain these variables, computed by
-the original code.  Comparing mine against theirs, event by event, is the only
-real way to check the five I rewrote.  Everything I said about them today comes
-from reading code and reading a figure.  It would also let us train on one pass
-and test on the other.  That is a much stronger test than either one alone.  If
-anyone knows where those files are, please tell me after the talk.
+The first one is where I need help.  We should compare our variables with the
+pass2 Level 4 files.  Those files already have these variables, and the original
+code computed them.  We can compare mine with theirs, event by event.  This is
+the only real way to check the five variables I rewrote.  Everything I said about
+them today comes from reading code and reading a figure.  We could also train on
+one pass and test on the other one.  That test is much stronger.  So if you know
+where those files are, please tell me after the talk.
 
-Second, re-tune the `fill_ratio` radius, for the reason on slide 7.
+The second step is the `fill_ratio` radius, for the reason on slide 7.
 
-Third, train the muon classifier.  The CORSIKA background is already processed.
-And the train and test split is already done by shower, so copies of the same
-air shower cannot end up on both sides.
+The third step is the muon classifier.  The CORSIKA background is ready.  And we
+already split train and test by shower, so copies of the same air shower cannot
+go to both sides.
 
-Fourth, more vuvuzela simulation, to measure the far tail.
+The fourth step is more vuvuzela simulation, to measure the far tail.
 
-Fifth, reprocess the remaining samples.  The muon-neutrino and noise jobs were
-stopped early by corrupt input files.
+The fifth step is to process the rest of the samples.  Corrupt input files
+stopped the muon-neutrino and noise jobs early.
 
-Two limits I should say clearly.  There is no tau neutrino set here, which is a
-few percent of the signal.  And the muon background is CORSIKA, not real data, so
-there is no data/MC check yet.
+Two limits, and I want to say them clearly.  We have no tau neutrino set here,
+and that is a few percent of the signal.  And our muon background is CORSIKA, not
+real data.  So we cannot compare data and MC yet.
 
 Thank you.  I am happy to take questions.
 
 ---
 
-# If asked
+# If someone asks
 
 **"Why not just use the original Level 4 code?"**
-The whole body is commented out, and it needs three projects we do not have.  We
-keep the file, and it was very useful for parameter values.  But it does not run.
+Somebody commented out the whole body, and it needs three projects that we do not
+have.  We keep the file, and it helped us a lot with parameter values.  But it
+does not run.
 
 **"How do you know your rewritten variables are correct?"**
-I do not know it fully.  That is why it is the first item on the next-steps list.
-What I can say is this.  They were compared line by line with the reference and
-with the original code.  That comparison found four real bugs.  And the rates
-agree with Table 13.  An event-by-event comparison with pass2 L4 files is what
-would settle it.
+I do not know it completely.  That is why it is the first item on my list.  But I
+can say three things.  I compared them with the reference, line by line.  I
+compared them with the original code, and that found four real bugs.  And the
+rates agree with Table 13.  A direct comparison with pass2 L4 files would give us
+the real answer.
 
 **"Is 95.9 percent meaningful with only ten background events?"**
-That is a fair question.  The 99 percent point is defined by ten test-set
-background events, so its uncertainty is large.  The 95 percent row has fifty
-events and is much more solid.  There LightGBM gives 98.5 against 91.7.  So the
-ordering is clear.  The exact value at 99 percent is not.
+That is a fair question.  Ten test-set background events define the 99 percent
+point, so the uncertainty there is large.  The 95 percent row has fifty events,
+so it is much better.  There LightGBM gives 98.5 and AdaBoost gives 91.7.  So the
+order is clear.  The exact value at 99 percent is not.
 
 **"Why is your signal rate higher than Table 13?"**
-Because our flux is a simple power law, not a real atmospheric flux with
-oscillations.  A factor of about 1.5 is what that should give.  The noise rate
-does not depend on that choice, and it agrees to 13 percent.  That agreement is
-what tells us the vuvuzela weight unit in pass3 is right.
+Our flux is a simple power law.  It is not a real atmospheric flux with
+oscillations.  A factor of about 1.5 is normal for that.  The noise rate does not
+depend on this choice, and it agrees to 13 percent.  That tells us the vuvuzela
+weight unit in pass3 is correct.
 
 **"What was the weighting bug?"**
-The weights were divided by the number of output HDF5 files instead of the number
-of input Level 3 files.  We put ten input files in one output file.  So the
-absolute rate was off by a factor of a hundred.  The comparison with Table 13 is
-what caught it.  That is the argument for always doing that comparison.
+We divided the weights by the number of output HDF5 files.  We should have
+divided by the number of input Level 3 files.  We put ten input files into one
+output file, so the rate was wrong by a factor of a hundred.  The comparison with
+Table 13 found it.  This is why we always do that comparison.
 
 **"Which pulse series does `micro_count` start from?"**
 The reference says the cleaned series.  The original pass2 code starts from the
 uncleaned one.  We follow the reference.  We also measured the difference, and it
 is very small.  The two chains give the same count in about ninety percent of
-events.  The 200 nanosecond window is what decides, and noise hits are spread over
-ten microseconds either way.
+events.  The 200 nanosecond window decides the result, and noise hits are spread
+over ten microseconds anyway.
 
 **"Is the 0.70 cut yours or the reference's?"**
-The reference's.  It transfers directly because LightGBM returns a probability.
-We have not re-optimised it.  And we should not, until the muon classifier
-exists, because the Level 4 cut is the two classifiers together.
+It comes from the reference.  We can use it directly, because LightGBM gives a
+probability.  We did not change it.  And we should not change it yet.  The Level 4
+cut uses both classifiers together, and the muon one does not exist yet.
 
 ---
 
-# Speaker's note, not part of the talk
+# Note for the speaker, not part of the talk
 
-The HDF5 files behind these numbers were made before the `micro_count` cleaning
-fix.  The measured effect of that fix is small: the same count in about ninety
-percent of events.  But if you reprocess before the talk, check the numbers on
-slides 10 and 12 again instead of assuming they stay the same.
+We made the HDF5 files for these numbers before the `micro_count` cleaning fix.
+The effect of that fix is small.  The count is the same in about ninety percent
+of events.  But if you process the files again before the talk, please check the
+numbers on slides 10 and 12 again.  Do not assume they stay the same.
