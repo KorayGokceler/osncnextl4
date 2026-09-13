@@ -77,7 +77,10 @@
 \makeatletter
 \setbeamertemplate{frametitle}{%
   \vskip\titledrop
-  \hb@xt@\paperwidth{\hss
+  % \hb@xt@\textwidth, NOT \paperwidth: the template already starts at the
+  % left edge of the text block, so a paperwidth-wide box pushes the title
+  % right by half the page margin (28pt at this paper size).
+  \hb@xt@\textwidth{\hss
     \vbox{\hsize=\textwidth \centering
       \usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}%
       \MakeUppercase{\insertframetitle}\par
