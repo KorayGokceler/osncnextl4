@@ -359,7 +359,7 @@ def main():
                     help="comma separated; defaults to the 'features' array "
                          "stored in the .npz")
     ap.add_argument("--target-rejection", type=float, default=None,
-                    help="rejection the headline number is quoted at "
+                    help="rejection the headline number is reported at "
                          "(default 0.99 for noise, 0.94 for muon)")
     ap.add_argument("--gap-at", type=float, default=0.90,
                     help="rejection the train/test efficiency gap is measured "

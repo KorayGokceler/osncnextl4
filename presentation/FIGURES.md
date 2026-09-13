@@ -143,7 +143,7 @@ only" -- the muon BDT is not trained.
 | **Figure 12** | note p.36 | the remaining input distributions, same purpose |
 | the L4 noise score distribution / cut figure | note §3.6.2 | compare with your `lightgbm_score_dist.png` |
 | DeepCore geometry, or the selection-chain diagram | note §2-3 | `oscnext_levels.png`, slide 2 context |
-| **Table 13** | note p.48 | you already quote the numbers; a screenshot is only worth it if someone challenges the rate comparison |
+| **Table 13** | note p.48 | the numbers are already on your slide; a screenshot is only worth it if someone challenges the rate comparison |
 
 Figure 13 is worth doing properly: crop it to the same five panels in the same
 order as your own plot, so the eye can move between them.

@@ -120,7 +120,8 @@ Here is the second problem.  To check my code against the reference, the
 reference has to define the variables.  For two of them, it does not.
 
 This table has the five noise inputs.  The descriptions come from Table 11, word
-for word.  I quote them on purpose, so you can see the gaps yourself.
+for word.  I show their exact wording on purpose, so you can see the gaps
+yourself.
 
 Look at the fourth row, `fill_ratio`.  It says "measure of the geometrical
 spread of the hits about some vertex".  Then it says "details here", in red.
