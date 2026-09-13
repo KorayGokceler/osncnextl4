@@ -513,13 +513,31 @@ def main():
               % (100 * (s_te >= c).mean(), 100 * (1 - (b_te >= c).mean()),
                  int((b_te >= c).sum())))
 
-    print("\n--- Feature importance (gain) ---")
+    # Two importance types, because they answer different questions and the
+    # reference reports the other one.
+    #
+    #   gain  -- total loss reduction the feature bought.  Strongly skewed: a
+    #            variable can hold most of the gain.
+    #   split -- how many times the feature was used in a split.  Bounded by
+    #            the tree budget, so it always looks flat across features.
+    #
+    # Figure 14 and Figure 21 of the reference have values in the hundreds for
+    # five and ten features, which is the shape of a SPLIT count, not gain.
+    # Comparing our gain percentages against those bars is not a like-for-like
+    # comparison -- compare importance_split against them instead.
     imp = booster.feature_importance(importance_type="gain", iteration=best)
+    imp_split = booster.feature_importance(importance_type="split",
+                                           iteration=best)
+    print("\n--- Feature importance ---")
     tot = imp.sum() or 1.0
     importance = {}
-    for f, v in sorted(zip(features, imp), key=lambda x: -x[1]):
+    importance_split = {}
+    order = sorted(zip(features, imp, imp_split), key=lambda x: -x[1])
+    print("  %-22s %8s %8s %8s" % ("variable", "gain", "share", "splits"))
+    for f, v, vs in order:
         importance[f] = float(v)
-        print("  %-22s %8.1f  (%.1f%%)" % (f, v, 100 * v / tot))
+        importance_split[f] = int(vs)
+        print("  %-22s %8.1f %7.1f%% %8d" % (f, v, 100 * v / tot, vs))
 
     # --- outputs -----------------------------------------------------------
     os.makedirs(args.outdir, exist_ok=True)
@@ -567,6 +585,9 @@ def main():
             table=rows,
         ),
         importance_gain=importance,
+        # The reference's Figure 14 / Figure 21 report split counts, so this is
+        # the one to hold beside them.
+        importance_split=importance_split,
         default_cut=DEFAULT_CUT.get(args.tag),
         plots=plots,
     )
