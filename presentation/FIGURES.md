@@ -132,7 +132,10 @@ shows the noise rate falling from 41.4\,mHz toward the note's target of
 $<$0.3\,mHz **on axes the audience has already read**.  Label it "noise cut
 only" -- the muon BDT is not trained.
 
-### From the technical note — for the comparison you asked about
+### From the reference document — for the comparison you asked about
+
+*oscNext — Simulations and sample* (v00.07), oscNext team, 13 October 2022
+(`reference/OscNext_v00.074_pass2_technical_note.pdf`).
 
 | what | where | why |
 |---|---|---|
@@ -149,7 +152,7 @@ order as your own plot, so the eye can move between them.
 
 | name | what it should show | how |
 |---|---|---|
-| `oscnext_levels.png` | the oscNext selection chain, or DeepCore geometry | screenshot from the technical note |
+| `oscnext_levels.png` | the oscNext selection chain, or DeepCore geometry | screenshot from the reference document (unused: slide 2 has no figure) |
 | `bdt_schematic.png` | trees in sequence, outputs summed into a sigmoid | any standard boosting schematic |
 
 Both are optional.  Slide 2 works with its table alone, and slide 9 can lose

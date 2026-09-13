@@ -12,8 +12,14 @@
 %    * plots carry the talk; text is a frame around them, never a paragraph
 %    * NO numbers in running prose.  Every number lives in a tabular or in a
 %      plot, where it can be read off and pointed at.
-%    * anything about pass2 is sourced from the technical note and says so.
-%      Nothing here reprocesses pass2.
+%    * anything about pass2 is sourced from the reference document and says
+%      so.  Nothing here reprocesses pass2.
+%    * the reference is cited by its own title, never as "the technical note":
+%      oscNext -- Simulations and sample (v00.07), oscNext team, 13 Oct 2022.
+%      Use \notecite{Table 13} so the name is written in one place only.
+%    * frame titles are upper-cased by the frametitle template -- type them
+%      in normal case.  \titleindent and \titledrop set how far off the top
+%      left corner they sit.
 % ===========================================================================
 \documentclass[aspectratio=169,10pt]{beamer}
 
@@ -57,6 +63,32 @@
 \newcommand{\cross}{\textcolor{bad}{\textbf{$\times$}}}
 \newcommand{\src}[1]{{\scriptsize\itshape\color{gray}#1}}
 
+% --- the reference document, cited by its real name -----------------------
+% The PDF's own title page, not "the technical note".
+\newcommand{\notetitle}{\emph{oscNext -- Simulations and sample} (v00.07)}
+\newcommand{\notecite}[1]{\src{\notetitle, #1}}
+
+% --- frame titles: upper case, and off the very corner ---------------------
+% The default template puts the title hard against the top left.  This moves
+% it in and down, and keeps the subtitle with it.
+\newlength{\titleindent}\setlength{\titleindent}{12pt}
+\newlength{\titledrop}\setlength{\titledrop}{10pt}
+\makeatletter
+\setbeamertemplate{frametitle}{%
+  \vskip\titledrop
+  \hbox{\hspace*{\titleindent}%
+    \vbox{\hsize=\dimexpr\textwidth-\titleindent\relax \raggedright
+      \usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}%
+      \MakeUppercase{\insertframetitle}\par
+      \ifx\insertframesubtitle\@empty\else
+        \vskip2pt
+        {\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}%
+         \insertframesubtitle\par}%
+      \fi}}%
+  \vskip6pt
+}
+\makeatother
+
 \title{oscNext Level 4: rebuilding the noise classifier}
 \subtitle{pass3 processing, variable validation, and the choice of BDT}
 \author{Koray Gökçeler}
@@ -69,13 +101,18 @@
   \begin{center}\small
   L3 $\to$ L4 rebuilt for pass3 \quad$\cdot$\quad
   noise BDT trained \quad$\cdot$\quad
-  the note's target reached
+  the reference target reached
+  \end{center}
+  \vfill
+  \begin{center}\scriptsize\color{gray}
+  Reference throughout: \emph{oscNext -- Simulations and sample} (v00.07),\\
+  oscNext team, 13 October 2022.
   \end{center}
 \end{frame}
 
 % =========================================== 2  LEVELS =======================
 \begin{frame}[c]{The oscNext selection chain}
-  \framesubtitle{the stages, as the technical note lists them (sec.\ 1.3)}
+  \framesubtitle{the stages, as the reference document lists them}
   \centering\scriptsize
   \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.1cm}%
                     >{\raggedright\arraybackslash}p{12.5cm}@{}}
@@ -98,7 +135,7 @@
                    reconstructions'' \\
     \bottomrule
   \end{tabular}\\[3pt]
-  \src{quoted verbatim from sec.\ 1.3.  The sample splits in two at L6 -- a
+  \notecite{sec.\ 1.3, quoted verbatim.  The sample splits in two at L6 -- a
        verification sample and a high-statistics sample -- so there are two
        distinct L6 and L7 stages.}
 
@@ -115,7 +152,7 @@
         neutrinos         & 5.25 \\
         \bottomrule
       \end{tabular}\\[2pt]
-      \src{technical note, Table 13}
+      \notecite{Table 13}
     \end{column}
     \begin{column}{0.56\textwidth}
       \footnotesize
@@ -142,7 +179,7 @@
         \;\wedge\;
         P_{\nu}^{\text{muon}} \ge 0.65
       \]
-      \centering\src{thresholds: technical note, sec.\ 3.5}
+      \centering\notecite{sec.\ 3.5}
 
       \bigskip
       \raggedright
@@ -156,7 +193,8 @@
       \end{itemize}
 
       \medskip
-      Part of the inputs were \textbf{rewritten in pure Python}, from the note.
+      Part of the inputs were \textbf{rewritten in pure Python}, from the
+      reference document.
     \end{column}
     \begin{column}{0.50\textwidth}
       \centering\footnotesize
@@ -170,14 +208,15 @@
         \textbf{5} & \textbf{our rewrite} & \textcolor{bad}{unverified} \\
         \bottomrule
       \end{tabular}\\[2pt]
-      \src{definitions: note, Tables 11--12}
+      \notecite{Tables 11--12}
 
       \bigskip
       \raggedright
       \textbf{All the risk is in the last row.}
 
       \medskip
-      Compared line by line against the note and the original pass2 segment --
+      Compared line by line against the reference and the original pass2
+      segment --
       which found bugs that \textbf{raise no error}.
     \end{column}
   \end{columns}
@@ -188,8 +227,8 @@
 \end{frame}
 
 % =========================================== 4  VARIABLES ====================
-\begin{frame}[c]{Noise BDT inputs, as the note defines them}
-  \framesubtitle{Table 11 of the technical note, quoted}
+\begin{frame}[c]{Noise BDT inputs, as the reference defines them}
+  \framesubtitle{Table 11 of the reference document, quoted}
   \centering\scriptsize
   \begin{tabular}{@{}>{\ttfamily\raggedright\arraybackslash}p{4.8cm}%
                     >{\raggedright\arraybackslash}p{8.7cm}@{}}
@@ -215,8 +254,8 @@
       time).  Calculate the ratio between the two.'' \\
     \bottomrule
   \end{tabular}\\[3pt]
-  \src{descriptions quoted verbatim from Table 11; the NchCleaned line points
-       at sec.\ 3.5.1, quoted beside it}
+  \notecite{Table 11, quoted verbatim; the NchCleaned row points at
+            sec.\ 3.5.1, quoted beside it}
 
   \medskip
   \footnotesize\raggedright
@@ -328,7 +367,7 @@
         fits the \emph{gradient} of the loss \\
         \bottomrule
       \end{tabular}\\[2pt]
-      \src{the note uses LightGBM, sec.\ 3.6.1}
+      \notecite{sec.\ 3.6.1 -- the reference uses LightGBM}
     \end{column}
     \begin{column}{0.56\textwidth}
       \centering
@@ -337,8 +376,8 @@
 
       \bigskip
       \raggedright\footnotesize
-      \textbf{Output scale.}  LightGBM returns a probability, so the note's
-      cut transfers to our model directly.  A pybdt score does not.
+      \textbf{Output scale.}  LightGBM returns a probability, so the
+      reference cut transfers to our model directly.  A pybdt score does not.
     \end{column}
   \end{columns}
   \note{Keep this short, the audience knows what a BDT is.  The one point that
@@ -349,7 +388,7 @@
 % =========================================== 9  PYBDT ========================
 \setlength{\plotht}{0.42\textheight}
 \begin{frame}[c]{Training with pybdt (AdaBoost)}
-  \framesubtitle{a deliberate deviation from the note -- and its cost}
+  \framesubtitle{a deliberate deviation from the reference -- and its cost}
   % This figure is about five times wider than it is tall.  In a side column
   % it collapsed into an unreadable strip, so it gets the full frame width
   % and the table sits underneath it.
@@ -378,7 +417,7 @@
     \end{column}
     \begin{column}{0.54\textwidth}
       \footnotesize
-      \cross~\textbf{the note's target is out of reach}
+      \cross~\textbf{the reference target is out of reach}
 
       \smallskip
       \tick~training is deterministic
@@ -397,7 +436,7 @@
 % =========================================== 10 LIGHTGBM =====================
 \setlength{\plotht}{0.70\textheight}
 \begin{frame}[c]{Training with LightGBM}
-  \framesubtitle{the note's own method and hyperparameters (Table 10)}
+  \framesubtitle{the reference's own method and hyperparameters, Table 10}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.58\textwidth}
       \centering
@@ -419,13 +458,13 @@
 
       \bigskip
       \raggedright\footnotesize
-      \tick~\textbf{the note's target is reached}
+      \tick~\textbf{the reference target is reached}
 
       \medskip
       \tick~no overtraining -- train and test coincide
 
       \medskip
-      \tick~reached while \emph{handicapped} by the note's leaf-size floor
+      \tick~reached while \emph{handicapped} by the reference leaf-size floor
     \end{column}
   \end{columns}
   \note{The handicap is worth making explicit: the note's leaf-size floor was
@@ -439,7 +478,6 @@
   \framesubtitle{the overtraining check}
   \begin{center}
     \plot{lightgbm_score_dist.png}
-    \figcap{train and test lie on top of each other}
   \end{center}
   \note{Left panel linear, right panel the same histogram on a log scale --
   the tail between the two peaks is invisible without it, and that tail is
@@ -458,7 +496,6 @@
   \begin{center}
     % swap for mc_scaling.png if the background-scaling scan gets produced
     \plot{lightgbm_cuts.png}
-    \figcap{grey lines: where the background statistics runs out}
   \end{center}
   \note{The numbers, if anyone asks.  The test set holds 329,545 signal events
   against 2,051 noise -- a ratio of 159 to 1.  Above the cut there are about
@@ -481,7 +518,7 @@
       \begin{itemize}\footnotesize
         \item L3 $\to$ L4 rebuilt for pass3, robust against corrupt files
         \item all BDT inputs located
-        \item validated against the note and the original segment
+        \item validated against the reference and the original segment
         \item noise classifier trained, target reached
       \end{itemize}
     \end{column}
@@ -501,11 +538,9 @@
     \end{column}
   \end{columns}
 
-  \vfill
-  {\scriptsize
-   \textbf{Limitations:} no $\nu_\tau$ set; the muon background is CORSIKA,
-   so no data/MC check yet.}
-  \note{End on item 1 -- the pass2 cross-check closes the remaining validation
+  \note{Limitations, if asked: there is no nu-tau set, and the muon background
+  is CORSIKA rather than real data, so there is no data/MC check yet.
+  End on item 1 -- the pass2 cross-check closes the remaining validation
   gap, and it is the natural ask if anyone can point at where those files
   live.  Item 2 comes straight off the plot on this slide.}
 \end{frame}
