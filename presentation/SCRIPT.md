@@ -12,9 +12,9 @@ somebody asks for it.
 Four rules I followed while writing this.
 
 **One thread.**  Level 4 must separate signal from background with cheap
-variables only.  I wrote five of those variables myself.  So the talk has two
-open points: my variables may be wrong, and my classifier may not be good
-enough.  Each slide moves one of them forward.
+variables only.  I wrote five of those variables myself, and they may be wrong.
+That risk is stated on slide 3, carried through slides 4 to 7, and paid off on
+slide 13.
 
 **The same pattern for every plot.**  What the plot shows, then the axes and the
 colours, then what can be seen in it, then what it means.  Always in that order,
@@ -29,23 +29,21 @@ The English is simple on purpose.  Short sentences, one idea each.
 
 ---
 
-## Slide 1 — Title  ·  0:00–0:40
+## Slide 1 — Title  ·  0:00–0:28
 
-Thank you.  I have been rebuilding Level 4 of the oscNext selection for pass3.
+I have been working on Level 4 of the oscNext selection for a while now.  I am
+rebuilding it for pass3.
 
 Level 4 removes noise and atmospheric muons.  I had to write part of it again
-from scratch, so this talk has two open points.  The first one is my five
-rewritten variables.  The second one is the classifier itself.
+from scratch.
 
-The short answer to both comes now.  The classifier is good enough.  The
-variables are probably correct, but I cannot prove it yet.
-
-One note on sources.  "The reference" means the oscNext note, *Simulations and
-sample*, version 00.07.  I did not process pass2 myself.
+One note on sources before I start.  Jana gave me a document about oscNext, on
+the pass2 calibration.  When I say "the reference" in this talk, I mean that
+document.  I did not process pass2 myself.
 
 ---
 
-## Slide 2 — The oscNext selection chain  ·  0:40–1:50
+## Slide 2 — The oscNext selection chain  ·  0:28–1:19
 
 This table is the selection chain, in the reference's own words.
 
@@ -65,7 +63,7 @@ hundred times larger than signal, and Level 4 turns that around.
 
 ---
 
-## Slide 3 — What L4 does, and what had to be rebuilt  ·  1:50–3:20
+## Slide 3 — What L4 does, and what had to be rebuilt  ·  1:19–2:42
 
 Level 4 uses two classifiers.  One removes noise, one removes muons.  An event
 passes with a noise score of 0.70 or higher **and** a muon score of 0.65 or
@@ -93,7 +91,7 @@ That comparison also raised a second problem, and it takes us to the next slide.
 
 ---
 
-## Slide 4 — Noise BDT inputs, as the reference defines them  ·  3:20–4:30
+## Slide 4 — Noise BDT inputs, as the reference defines them  ·  2:42–3:50
 
 A line-by-line comparison needs a definition to compare against.  For two of
 these five variables, the reference does not give one.
@@ -118,7 +116,7 @@ from a figure axis.
 
 ---
 
-## Slide 5 — Noise BDT inputs, signal vs. noise  ·  4:30–6:10
+## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:50–5:14
 
 This plot shows the five noise inputs on our own pass3 files.
 
@@ -146,7 +144,7 @@ wrong story.
 
 ---
 
-## Slide 6 — Input correlations  ·  6:10–7:00
+## Slide 6 — Input correlations  ·  5:14–6:03
 
 This plot shows how much the five inputs overlap with each other.
 
@@ -165,7 +163,7 @@ another variable already covers it.
 
 ---
 
-## Slide 7 — Feature importance  ·  7:00–8:20
+## Slide 7 — Feature importance  ·  6:03–7:21
 
 This plot shows how much each input contributed to the trained model.
 
@@ -195,7 +193,7 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  8:20–8:55
+## Slide 8 — How a boosted decision tree works  ·  7:21–7:59
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -208,7 +206,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  8:55–10:35
+## Slide 9 — Training with pybdt (AdaBoost)  ·  7:59–9:24
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -237,7 +235,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  10:35–12:05
+## Slide 10 — Training with LightGBM  ·  9:24–10:49
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -268,7 +266,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  12:05–13:00
+## Slide 11 — LightGBM score distribution  ·  10:49–12:04
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -293,7 +291,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  13:00–14:10
+## Slide 12 — The limit: noise MC statistics  ·  12:04–13:32
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -321,16 +319,16 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  14:10–15:20
+## Slide 13 — Status and next steps  ·  13:32–14:59
 
-The two open points come back together here.
+Two things to take away from this.
 
-On the classifier, the answer is yes.  Level 3 to Level 4 is rebuilt for pass3
-and runs reliably.  All fourteen inputs are found.  And the noise classifier
-reaches the target.
+The classifier works.  Level 3 to Level 4 is rebuilt for pass3 and runs
+reliably.  All fourteen inputs are found.  And the noise classifier reaches the
+target.
 
-On the variables, the answer is "probably, but not proven".  That is the first
-item here.
+The five rewritten variables are probably correct, but not proven.  That is the
+first item here.
 
 We should compare our variables with the pass2 Level 4 files.  Those files
 already contain these variables, produced by the original code.  So we can
