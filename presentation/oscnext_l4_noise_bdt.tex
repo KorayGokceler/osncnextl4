@@ -93,7 +93,7 @@
 }
 \makeatother
 
-\title{oscNext Level 4: rebuilding the noise classifier}
+\title{oscNext Level 4: Rebuilding the noise classifier}
 \subtitle{pass3 processing, variable validation, and the choice of BDT}
 \author{Koray Gökçeler}
 \date{\today}
@@ -116,7 +116,7 @@
 
 % =========================================== 2  LEVELS =======================
 \begin{frame}{The oscNext selection chain}
-  \framesubtitle{the stages, as the reference document lists them}
+  \framesubtitle{The stages, as the reference document lists them}
   \centering\scriptsize
   \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.1cm}%
                     >{\raggedright\arraybackslash}p{12.5cm}@{}}
@@ -159,7 +159,7 @@
     \begin{column}{0.56\textwidth}
       \footnotesize
       \textbf{L4 inverts this ratio} -- with machine learning, and before any
-      reconstruction, which the chain only pays for from L6.
+      reconstruction, which the chain pays for only from L6 onward.
     \end{column}
   \end{columns}
   \note{The sample splits in two at L6 -- a verification sample and a
@@ -197,7 +197,7 @@
       \end{itemize}
 
       \medskip
-      Part of the inputs were \textbf{rewritten in pure Python}, from the
+      Some of the inputs were \textbf{rewritten in pure Python}, from the
       reference document.
     \end{column}
     \begin{column}{0.50\textwidth}
@@ -220,8 +220,7 @@
 
       \medskip
       Compared line by line against the reference and the original pass2
-      segment --
-      which found bugs that \textbf{raise no error}.
+      segment.  That comparison found bugs that \textbf{raise no error}.
     \end{column}
   \end{columns}
   \note{Do not enumerate the bugs.  If asked: the index table overwriting
@@ -232,7 +231,6 @@
 
 % =========================================== 4  VARIABLES ====================
 \begin{frame}{Noise BDT inputs, as the reference defines them}
-  \framesubtitle{quoted}
   \centering\scriptsize
   \begin{tabular}{@{}>{\ttfamily\raggedright\arraybackslash}p{4.8cm}%
                     >{\raggedright\arraybackslash}p{8.7cm}@{}}
@@ -242,17 +240,17 @@
     IC2018\_LE\_L3\_Vars.NchCleaned &
       ``See description in section 3.5.1'' --- there:
       ``A number of hit DOMs in the cleaned pulse series.'' \\[4pt]
-    L4\_micro\_count.\-STW\_m3500p4000\_DTW200 &
+    L4\_micro\_count.\allowbreak STW\_m3500p4000\_DTW200 &
       ``Start with the cleaned pulse series.  Look at pulses occurring within
       [$-3.5\,\mu$s, $+4\,\mu$s] from the trigger time.  Slide a time window
       of 200\,ns that maximizes the number of triggered DOMs in it.  Get the
       number of triggered DOMs in that sliding time window'' \\[4pt]
     L4\_iLineFit.speed &
       ``Speed fitted by the improved LineFit algorithm'' \\[4pt]
-    L4\_fill\_ratio.\-fill\_ratio\_from\_mean &
+    L4\_fill\_ratio.\allowbreak fill\_ratio\_from\_mean &
       ``Measure of the geometrical spread of the hits about some vertex
       \textcolor{bad}{(details here)}'' \\[4pt]
-    IC2018\_LE\_L3\_Vars.\-FullTimeLengthRatio &
+    IC2018\_LE\_L3\_Vars.\allowbreak FullTimeLengthRatio &
       ``Measure the total duration of an event in both the cleaned and
       uncleaned pulse series (duration $=$ max pulse time $-$ min pulse
       time).  Calculate the ratio between the two.'' \\
@@ -278,7 +276,7 @@
 % =========================================== 5  INPUT PLOT ===================
 \setlength{\plotht}{0.64\textheight}
 \begin{frame}[c]{Noise BDT inputs, signal vs.\ noise}
-  \framesubtitle{pass3, our own processing}
+  \framesubtitle{Our own pass3 processing}
   \begin{center}
     \plot{4.png}
     \figcap{rate vs.\ variable for the five inputs}
@@ -299,7 +297,7 @@
 % =========================================== 6  CORRELATION ==================
 \setlength{\plotht}{0.74\textheight}
 \begin{frame}[c]{Input correlations}
-  \framesubtitle{does any pair of the five inputs say the same thing?}
+  \framesubtitle{Does any pair of the five inputs say the same thing?}
   \begin{columns}[c,onlytextwidth]
     \begin{column}{0.49\textwidth}
       \centering
@@ -328,7 +326,7 @@
 % =========================================== 7  IMPORTANCE ===================
 \setlength{\plotht}{0.78\textheight}
 \begin{frame}[c]{Feature importance}
-  \framesubtitle{which input does the work?}
+  \framesubtitle{Which input does the work?}
   % Nudged left of centre: the long tick labels hang off the left of the bars,
   % so a centred figure reads as sitting too far right.  Centred would be an
   % indent of 0.03\textwidth; 0.015 puts it half that.
@@ -393,7 +391,6 @@
 % =========================================== 9  PYBDT ========================
 \setlength{\plotht}{0.42\textheight}
 \begin{frame}[c]{Training with pybdt (AdaBoost)}
-  \framesubtitle{a deliberate deviation from the reference -- and its cost}
   % This figure is about five times wider than it is tall.  In a side column
   % it collapsed into an unreadable strip, so it gets the full frame width
   % and the table sits underneath it.
@@ -441,7 +438,6 @@
 % =========================================== 10 LIGHTGBM =====================
 \setlength{\plotht}{0.70\textheight}
 \begin{frame}[c]{Training with LightGBM}
-  \framesubtitle{the reference's own method and hyperparameters, Table 10}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.58\textwidth}
       \centering
@@ -480,7 +476,7 @@
 % =========================================== 11 SCORE DIST ===================
 \setlength{\plotht}{0.78\textheight}
 \begin{frame}[c]{LightGBM score distribution}
-  \framesubtitle{the overtraining check}
+  \framesubtitle{The overtraining check}
   \begin{center}
     \plot{lightgbm_score_dist.png}
   \end{center}
@@ -497,7 +493,6 @@
 % =========================================== 12 MC LIMIT =====================
 \setlength{\plotht}{0.78\textheight}
 \begin{frame}[c]{The limit: noise MC statistics}
-  \framesubtitle{why the far tail is not a measurement}
   \begin{center}
     % swap for mc_scaling.png if the background-scaling scan gets produced
     \plot{lightgbm_cuts.png}
