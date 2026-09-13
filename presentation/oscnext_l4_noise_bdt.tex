@@ -17,9 +17,8 @@
 %    * the reference is cited by its own title, never as "the technical note":
 %      oscNext -- Simulations and sample (v00.07), oscNext team, 13 Oct 2022.
 %      Use \notecite{Table 13} so the name is written in one place only.
-%    * frame titles are upper-cased by the frametitle template -- type them
-%      in normal case.  \titleindent and \titledrop set how far off the top
-%      left corner they sit.
+%    * frame titles are centred and upper-cased by the frametitle template --
+%      type them in normal case.  \titledrop sets how far down they sit.
 % ===========================================================================
 \documentclass[aspectratio=169,10pt]{beamer}
 
@@ -70,24 +69,24 @@
 % of WHAT was taken belongs in \note{}, not in the citation.
 \newcommand{\notecite}[1]{{\tiny\color{gray}\textit{\notetitle}, #1}}
 
-% --- frame titles: upper case, and off the very corner ---------------------
-% The default template puts the title hard against the top left.  This moves
-% it in and down, and keeps the subtitle with it.
-\newlength{\titleindent}\setlength{\titleindent}{12pt}
-\newlength{\titledrop}\setlength{\titledrop}{8pt}
+% --- frame titles: centred, upper case, set down from the top -------------
+% The default template puts the title hard against the top left corner.  This
+% centres it across the text width and drops it by \titledrop, keeping the
+% subtitle with it.  Titles are written in normal case in the frames.
+\newlength{\titledrop}\setlength{\titledrop}{16pt}
 \makeatletter
 \setbeamertemplate{frametitle}{%
   \vskip\titledrop
-  \hbox{\hspace*{\titleindent}%
-    \vbox{\hsize=\dimexpr\textwidth-\titleindent\relax \raggedright
+  \hb@xt@\paperwidth{\hss
+    \vbox{\hsize=\textwidth \centering
       \usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}%
       \MakeUppercase{\insertframetitle}\par
       \ifx\insertframesubtitle\@empty\else
         \vskip2pt
         {\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}%
          \insertframesubtitle\par}%
-      \fi}}%
-  \vskip4pt
+      \fi}\hss}%
+  \vskip6pt
 }
 \makeatother
 
