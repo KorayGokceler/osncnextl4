@@ -37,9 +37,9 @@ rebuilding it for pass3.
 Level 4 removes noise and atmospheric muons.  I had to write part of it again
 from scratch.
 
-One note on sources before I start.  Jana gave me a document about oscNext, on
-the pass2 calibration.  When I say "the reference" in this talk, I mean that
-document.  I did not process pass2 myself.
+One note on sources before I start.  Jana gave me a document about the oscNext
+selection.  It is written for pass2.  When I say "the reference" in this talk, I
+mean that document.  I did not process pass2 myself.
 
 ---
 
