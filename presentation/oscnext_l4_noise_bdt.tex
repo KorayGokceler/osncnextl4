@@ -65,14 +65,16 @@
 
 % --- the reference document, cited by its real name -----------------------
 % The PDF's own title page, not "the technical note".
-\newcommand{\notetitle}{\emph{oscNext -- Simulations and sample} (v00.07)}
-\newcommand{\notecite}[1]{\src{\notetitle, #1}}
+\newcommand{\notetitle}{oscNext -- Simulations and sample (v00.07)}
+% Name of the document and what it points at, nothing else.  Any explanation
+% of WHAT was taken belongs in \note{}, not in the citation.
+\newcommand{\notecite}[1]{{\tiny\color{gray}\textit{\notetitle}, #1}}
 
 % --- frame titles: upper case, and off the very corner ---------------------
 % The default template puts the title hard against the top left.  This moves
 % it in and down, and keeps the subtitle with it.
 \newlength{\titleindent}\setlength{\titleindent}{12pt}
-\newlength{\titledrop}\setlength{\titledrop}{10pt}
+\newlength{\titledrop}\setlength{\titledrop}{8pt}
 \makeatletter
 \setbeamertemplate{frametitle}{%
   \vskip\titledrop
@@ -85,7 +87,7 @@
         {\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}%
          \insertframesubtitle\par}%
       \fi}}%
-  \vskip6pt
+  \vskip4pt
 }
 \makeatother
 
@@ -111,7 +113,7 @@
 \end{frame}
 
 % =========================================== 2  LEVELS =======================
-\begin{frame}[c]{The oscNext selection chain}
+\begin{frame}{The oscNext selection chain}
   \framesubtitle{the stages, as the reference document lists them}
   \centering\scriptsize
   \begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.1cm}%
@@ -135,9 +137,7 @@
                    reconstructions'' \\
     \bottomrule
   \end{tabular}\\[3pt]
-  \notecite{sec.\ 1.3, quoted verbatim.  The sample splits in two at L6 -- a
-       verification sample and a high-statistics sample -- so there are two
-       distinct L6 and L7 stages.}
+  \notecite{sec.\ 1.3}
 
   \medskip
   \begin{columns}[c,onlytextwidth]
@@ -160,7 +160,9 @@
       reconstruction, which the chain only pays for from L6.
     \end{column}
   \end{columns}
-  \note{The framing is in sec. 1.3: muon and noise rates dominate at filter
+  \note{The sample splits in two at L6 -- a verification sample and a
+  high-statistics sample -- so there are two distinct L6 and L7 stages.
+  The framing is in sec. 1.3: muon and noise rates dominate at filter
   level, and the chain suppresses them by a factor of order ten to the five to
   reach a neutrino-dominated final sample.  Each level is cheaper than the one
   after it -- that is why L4 may not reconstruct: reconstruction is what L6
@@ -170,7 +172,7 @@
 \end{frame}
 
 % =========================================== 3  L4 ===========================
-\begin{frame}[c]{What L4 does, and what had to be rebuilt}
+\begin{frame}{What L4 does, and what had to be rebuilt}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.48\textwidth}
       \footnotesize
@@ -227,8 +229,8 @@
 \end{frame}
 
 % =========================================== 4  VARIABLES ====================
-\begin{frame}[c]{Noise BDT inputs, as the reference defines them}
-  \framesubtitle{Table 11 of the reference document, quoted}
+\begin{frame}{Noise BDT inputs, as the reference defines them}
+  \framesubtitle{quoted}
   \centering\scriptsize
   \begin{tabular}{@{}>{\ttfamily\raggedright\arraybackslash}p{4.8cm}%
                     >{\raggedright\arraybackslash}p{8.7cm}@{}}
@@ -254,15 +256,16 @@
       time).  Calculate the ratio between the two.'' \\
     \bottomrule
   \end{tabular}\\[3pt]
-  \notecite{Table 11, quoted verbatim; the NchCleaned row points at
-            sec.\ 3.5.1, quoted beside it}
+  \notecite{Table 11}
 
   \medskip
   \footnotesize\raggedright
   Two of these are \textbf{not definitions}: \texttt{fill\_ratio}'s vertex is
   an unfilled cross-reference, and the ratio's direction is never stated.
   Both were recovered from the original pass2 code and from Figure 13.
-  \note{The red "(details here)" is in the note itself -- an unfilled
+  \note{Everything in the Description column is quoted word for word, and
+  the NchCleaned row points at sec. 3.5.1, which is quoted beside it.
+  The red "(details here)" is in the document itself -- an unfilled
   cross-reference.  It matters because fill\_ratio turns out to carry most of
   the model's gain, so the one variable we lean on hardest is the one the note
   does not define.  We took the vertex from the original code: the position of
@@ -271,7 +274,7 @@
 \end{frame}
 
 % =========================================== 5  INPUT PLOT ===================
-\setlength{\plotht}{0.80\textheight}
+\setlength{\plotht}{0.64\textheight}
 \begin{frame}[c]{Noise BDT inputs, signal vs.\ noise}
   \framesubtitle{pass3, our own processing}
   \begin{center}
@@ -326,10 +329,10 @@
   \framesubtitle{which input does the work?}
   % Nudged left of centre: the long tick labels hang off the left of the bars,
   % so a centred figure reads as sitting too far right.  Centred would be an
-  % indent of 0.06\textwidth; 0.03 puts it half that.
+  % indent of 0.03\textwidth; 0.015 puts it half that.
   \noindent\makebox[\textwidth][l]{%
-    \hspace*{0.03\textwidth}%
-    \begin{minipage}{0.88\textwidth}
+    \hspace*{0.015\textwidth}%
+    \begin{minipage}{0.94\textwidth}
       \centering
       \plot{feature_importance.png}
       \figcap{gain split of the trained noise model}
@@ -367,7 +370,7 @@
         fits the \emph{gradient} of the loss \\
         \bottomrule
       \end{tabular}\\[2pt]
-      \notecite{sec.\ 3.6.1 -- the reference uses LightGBM}
+      \notecite{sec.\ 3.6.1}
     \end{column}
     \begin{column}{0.56\textwidth}
       \centering
@@ -510,7 +513,7 @@
 \end{frame}
 
 % =========================================== 13 TO DO ========================
-\begin{frame}[c]{Status and next steps}
+\begin{frame}{Status and next steps}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.44\textwidth}
       \footnotesize
