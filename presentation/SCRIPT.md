@@ -63,7 +63,7 @@ hundred times larger than signal, and Level 4 turns that around.
 
 ---
 
-## Slide 3 — What L4 does, and what had to be rebuilt  ·  1:19–2:42
+## Slide 3 — What L4 does, and what had to be rebuilt  ·  1:19–2:24
 
 Level 4 uses two classifiers.  One removes noise, one removes muons.  An event
 passes with a noise score of 0.70 or higher **and** a muon score of 0.65 or
@@ -73,25 +73,27 @@ The original Level 4 code still exists, but somebody commented out the whole
 body.  It also needs three projects that we do not have.  So I built the
 variables again.
 
-The table on the right splits them into three groups.  Fourteen variables in
-total.  Four come ready from Level 3.  Five come from IceTray projects that we do
-have.  And I wrote five of them myself, in plain Python, from the descriptions in
-the reference.
+The table on the right splits them into three groups.  Fourteen in total.  Four
+come ready from Level 3.  Five come from IceTray projects.  And I wrote five
+myself, from the descriptions in the reference.
 
-The red row is the point of this slide.  All the risk sits in those five.  A
-variable computed the wrong way does not raise an error.  It gives you a number.
-The job runs, the plots look fine, and the classifier trains happily on wrong
-data.
+The red row is the point of this slide.  A variable computed the wrong way does
+not raise an error.  It just gives you a number.  So I compared my code against
+the reference line by line, and against the original pass2 code.  That found
+four bugs, all of them silent.
 
-So I compared my code with the reference line by line, and with the original
-pass2 code as well.  The comparison found four bugs.  Every one of them gave
-wrong numbers, and none of them gave an error.
+That comparison raised a second problem, and it takes us to the next slide.
 
-That comparison also raised a second problem, and it takes us to the next slide.
+*(Only if someone asks.  An index table was writing over the data.  Event IDs
+are not unique between files, so some rows went to the wrong event.  A flux
+event count was read once and then reused for ten files.  And one noise
+cleaning step in `micro_count` was skipped.  That last bug comes from the
+original pass2 code, not from us.  The original author even left a comment
+there, asking whether that series is used at all.)*
 
 ---
 
-## Slide 4 — Noise BDT inputs, as the reference defines them  ·  2:42–3:50
+## Slide 4 — Noise BDT inputs, as the reference defines them  ·  2:24–3:32
 
 A line-by-line comparison needs a definition to compare against.  For two of
 these five variables, the reference does not give one.
@@ -116,7 +118,7 @@ from a figure axis.
 
 ---
 
-## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:50–5:14
+## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:32–4:56
 
 This plot shows the five noise inputs on our own pass3 files.
 
@@ -144,7 +146,7 @@ wrong story.
 
 ---
 
-## Slide 6 — Input correlations  ·  5:14–6:03
+## Slide 6 — Input correlations  ·  4:56–5:45
 
 This plot shows how much the five inputs overlap with each other.
 
@@ -163,7 +165,7 @@ another variable already covers it.
 
 ---
 
-## Slide 7 — Feature importance  ·  6:03–7:21
+## Slide 7 — Feature importance  ·  5:45–7:03
 
 This plot shows how much each input contributed to the trained model.
 
@@ -193,7 +195,7 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  7:21–7:59
+## Slide 8 — How a boosted decision tree works  ·  7:03–7:41
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -206,7 +208,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  7:59–9:24
+## Slide 9 — Training with pybdt (AdaBoost)  ·  7:41–9:06
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -235,7 +237,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  9:24–10:49
+## Slide 10 — Training with LightGBM  ·  9:06–10:31
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -266,7 +268,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  10:49–12:04
+## Slide 11 — LightGBM score distribution  ·  10:31–11:46
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -291,7 +293,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  12:04–13:32
+## Slide 12 — The limit: noise MC statistics  ·  11:46–13:14
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -319,7 +321,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  13:32–14:59
+## Slide 13 — Status and next steps  ·  13:14–14:41
 
 Two things to take away from this.
 
