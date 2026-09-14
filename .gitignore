@@ -27,6 +27,8 @@ L4_*_report.json
 !docs/*.png
 # teknik notlar / referans belgeler istisna
 !reference/*.pdf
+# derlenmis sunum istisna
+!presentation/oscnext_l4_noise_bdt.pdf
 
 # Job listeleri / loglar
 L4_jobs.txt
