@@ -158,36 +158,25 @@ gradient of the loss.  The reference uses LightGBM.  That is gradient boosting.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  4:51–6:16
+## Slide 9 — Training with pybdt (AdaBoost)  ·  4:51–5:35
 
-This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
-the same axes.
+This plot shows six pybdt configurations on the test set.  pybdt is IceCube's
+own library, and it comes with AdaBoost ready to use.
 
-The x axis is background rejection in percent, from 80 to 100, and good is to the
-right.  The y axis is signal efficiency, and good is up.  So the best place is
-the top right corner.  Each coloured curve is one configuration, and the black
-star is the target from the reference.
+The x axis is background rejection, the y axis is signal efficiency, and the
+black star is the target from the reference.  None of the six curves reaches the
+star.
 
-All the curves sit high on the left, near 95.  They hold that level, and then
-after about 97 percent they fall off a cliff.  The star sits above every curve,
-in empty space.
+The best configuration keeps 94 percent of the signal at 90 percent rejection,
+but only 66 percent at 99.  The target is about 96.  So pybdt did not reach it.
 
-That gap is the story of this slide.  The best configuration keeps 94 percent of
-the signal at 90 percent rejection, but only 66 percent at 99.  The target is
-about 96.  So we were thirty points short at the point that matters.
-
-One warning about method.  We used the Kolmogorov–Smirnov p-value to test for
-overtraining.  On this data it does not work.  It called our best model
-overtrained and passed the worst one.  We now compare the train and test
+pybdt also gives a Kolmogorov-Smirnov p-value to check for overtraining.  I
+tried it, and on this data it does not work.  We compare the train and test
 efficiency at the same rejection instead.
-
-And I should be fair.  We chose these hyperparameters by hand, so the honest
-statement is not that AdaBoost is a worse algorithm.  Our pybdt setup was costing
-us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  6:16–7:40
+## Slide 10 — Training with LightGBM  ·  5:35–7:00
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -218,7 +207,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  7:40–8:56
+## Slide 11 — LightGBM score distribution  ·  7:00–8:16
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -243,7 +232,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  8:56–10:25
+## Slide 12 — The limit: noise MC statistics  ·  8:16–9:44
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -271,7 +260,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  10:25–11:52
+## Slide 13 — Status and next steps  ·  9:44–11:12
 
 Two things to take away from this.
 
