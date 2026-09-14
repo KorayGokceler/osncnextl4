@@ -104,7 +104,7 @@ Level 3 writes both of them, but not the ratio, so we divide them at Level 4.
 
 ---
 
-## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:04–4:28
+## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:04–4:02
 
 This plot shows the five noise inputs on our own pass3 files.
 
@@ -116,23 +116,14 @@ right.  The blue curve runs out to a hundred and forty.  So small events are
 noise and large events are neutrinos, as we expect.  In the top right panel the
 two curves sit almost on top of each other.  That one comes back on slide 7.
 
-The bottom right panel surprised us.  Our docstring used to describe
-`FullTimeLengthRatio` as close to one for signal and close to zero for noise.
-That is simply wrong.
-
-The uncleaned series covers the whole readout window in every event, about ten
-microseconds.  So the bottom of the ratio is almost a constant.  The variable is
-really the cleaned duration divided by ten microseconds.  The median is 0.16 for
-electron neutrinos and 0.27 for noise.  The noise events have the **longer**
-cleaned series.
-
-The variable still separates well, but for the opposite reason.  A low-energy
-cascade is short in time.  Noise is not long.  We had the right variable and the
-wrong story.
+The reference shows the same five distributions, in Figures 12 and 13.  I built
+this plot in that style, with the same axis ranges where the document let me
+read them.  The panel titles say which figure each one matches.  And the shapes
+agree with the reference.
 
 ---
 
-## Slide 6 — Input correlations  ·  4:28–5:17
+## Slide 6 — Input correlations  ·  4:02–4:52
 
 This plot shows how much the five inputs overlap with each other.
 
@@ -151,7 +142,7 @@ another variable already covers it.
 
 ---
 
-## Slide 7 — Feature importance  ·  5:17–6:47
+## Slide 7 — Feature importance  ·  4:52–6:21
 
 This plot shows how much each input contributed to the trained model.
 
@@ -183,7 +174,7 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  6:47–7:25
+## Slide 8 — How a boosted decision tree works  ·  6:21–6:59
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -196,7 +187,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  7:25–8:50
+## Slide 9 — Training with pybdt (AdaBoost)  ·  6:59–8:24
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -225,7 +216,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  8:50–10:15
+## Slide 10 — Training with LightGBM  ·  8:24–9:49
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -256,7 +247,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  10:15–11:30
+## Slide 11 — LightGBM score distribution  ·  9:49–11:04
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -281,7 +272,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  11:30–12:59
+## Slide 12 — The limit: noise MC statistics  ·  11:04–12:33
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -309,7 +300,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  12:59–14:26
+## Slide 13 — Status and next steps  ·  12:33–14:00
 
 Two things to take away from this.
 
@@ -365,6 +356,15 @@ with parameter values, but it does not run.
 I do not know it completely, and that is the first item on my list.  But I
 compared them with the reference line by line, I compared them with the original
 code and found four real bugs, and the rates agree with Table 13.
+
+**On FullTimeLengthRatio separating the opposite way.**
+Our own docstring used to describe it as close to one for signal and close to
+zero for noise.  That is wrong.  The uncleaned series covers the whole readout
+window in every event, about ten microseconds.  So the denominator is nearly
+constant, and the variable is really the cleaned duration over ten
+microseconds.  The median is 0.16 for electron neutrinos and 0.27 for noise, so
+the noise events have the longer cleaned series.  It separates well, but for the
+opposite reason: a low-energy cascade is short in time.
 
 **On 95.9 percent resting on ten background events.**
 That is a fair point.  Ten test-set background events define the 99 percent
