@@ -122,19 +122,19 @@ The reference shows the same five distributions, in Figures 12 and 13.
 
 This plot shows how strongly the five inputs are related to each other.
 
-The strongest pair on the signal side is `NchCleaned` with `micro_count`, at
-0.71, and both of them count hit DOMs.  On the background side that pair drops
-to 0.10.
+The strongest pair is `NchCleaned` with `micro_count`, at 0.71 on the signal
+side.  Both of them count hit DOMs.  On the background side that pair drops to
+0.10.
 
-So these are five genuinely different variables.  None of them is a copy of
-another one.
+So these five variables are different from each other.  None of them is a copy
+of another one.
 
 That matters for the next slide.  If one of them adds almost nothing there, the
 variable itself is weak.  No other input is covering for it.
 
 ---
 
-## Slide 7 — Feature importance  ·  4:05–5:34
+## Slide 7 — Feature importance  ·  4:05–5:35
 
 This plot shows how much each input contributed to the trained model.
 
@@ -166,7 +166,7 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  5:34–6:12
+## Slide 8 — How a boosted decision tree works  ·  5:35–6:13
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -179,7 +179,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  6:12–7:37
+## Slide 9 — Training with pybdt (AdaBoost)  ·  6:13–7:38
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -208,7 +208,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  7:37–9:02
+## Slide 10 — Training with LightGBM  ·  7:38–9:02
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -264,7 +264,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  10:18–11:46
+## Slide 12 — The limit: noise MC statistics  ·  10:18–11:47
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -292,7 +292,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  11:46–13:14
+## Slide 13 — Status and next steps  ·  11:47–13:14
 
 Two things to take away from this.
 
