@@ -149,20 +149,16 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  4:30–5:08
+## Slide 8 — How a boosted decision tree works  ·  4:30–4:51
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
 weight to the events it gets wrong.  Gradient boosting fits the next tree to the
 gradient of the loss.  The reference uses LightGBM.  That is gradient boosting.
 
-The detail I need is the output scale.  LightGBM gives a probability between zero
-and one, so the reference cut of 0.70 works on our model directly.  A pybdt score
-is not on that scale, so with pybdt the reference threshold means nothing.
-
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  5:08–6:33
+## Slide 9 — Training with pybdt (AdaBoost)  ·  4:51–6:16
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -191,7 +187,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  6:33–7:58
+## Slide 10 — Training with LightGBM  ·  6:16–7:40
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -222,7 +218,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  7:58–9:13
+## Slide 11 — LightGBM score distribution  ·  7:40–8:56
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -247,7 +243,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  9:13–10:42
+## Slide 12 — The limit: noise MC statistics  ·  8:56–10:25
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -275,7 +271,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  10:42–12:09
+## Slide 13 — Status and next steps  ·  10:25–11:52
 
 Two things to take away from this.
 
