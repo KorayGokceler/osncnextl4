@@ -79,7 +79,7 @@ descriptions in the reference.
 
 ---
 
-## Slide 4 — Noise BDT inputs, as the reference defines them  ·  1:59–3:47
+## Slide 4 — Noise BDT inputs, as the reference defines them  ·  1:59–3:04
 
 These are the five inputs of the noise classifier.  The descriptions come from
 Table 11, word for word.
@@ -96,27 +96,15 @@ then a count.
 standard IceTray segment, run on the cleaned series.
 
 `fill_ratio` is how full a sphere around the event is.  The IceTray module does
-the work, and we give it the centre of the sphere.
+the work, and we give it the centre of the sphere.  The centre is the position
+of the first HLC hit.
 
 `FullTimeLengthRatio` is the cleaned duration over the uncleaned duration.
 Level 3 writes both of them, but not the ratio, so we divide them at Level 4.
 
-Two of these are not really definitions.  For `fill_ratio` the reference says
-the spread of the hits about some vertex, and then it says "details here", in
-red.  That is an empty cross-reference.  So it never tells us which vertex to
-use.  This row comes back on slide 7.  And for `FullTimeLengthRatio` the
-document does not say which duration goes on top.
-
-I found both answers outside the document.  The vertex came from the original
-pass2 code.  That code uses the first HLC hit.  The direction came from
-Figure 13, because its axis runs from zero to one.
-
-This is the weakest part of the chain.  I took these answers from a code file
-and from a figure axis.
-
 ---
 
-## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:47–5:11
+## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:04–4:28
 
 This plot shows the five noise inputs on our own pass3 files.
 
@@ -144,7 +132,7 @@ wrong story.
 
 ---
 
-## Slide 6 — Input correlations  ·  5:11–6:00
+## Slide 6 — Input correlations  ·  4:28–5:17
 
 This plot shows how much the five inputs overlap with each other.
 
@@ -163,7 +151,7 @@ another variable already covers it.
 
 ---
 
-## Slide 7 — Feature importance  ·  6:00–7:18
+## Slide 7 — Feature importance  ·  5:17–6:47
 
 This plot shows how much each input contributed to the trained model.
 
@@ -178,8 +166,10 @@ how to read that.  It is not hidden inside another variable.  It simply does not
 separate, and slide 5 already showed it.
 
 The top bar is the important one.  The model leans on `fill_ratio` more than on
-everything else together.  And `fill_ratio` is the variable from slide 4, with
-the empty cross-reference.
+everything else together.  And `fill_ratio` is the one variable the reference
+does not really define.  Table 11 describes the spread of the hits about some
+vertex, and then it says "details here".  That cross-reference is empty.  We
+took the vertex from the original pass2 code.
 
 There is a second layer to that.  `fill_ratio` has one free parameter, the
 spherical radius, set to 1.6 in the original code.  The comment next to that
@@ -193,7 +183,7 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  7:18–7:56
+## Slide 8 — How a boosted decision tree works  ·  6:47–7:25
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -206,7 +196,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  7:56–9:21
+## Slide 9 — Training with pybdt (AdaBoost)  ·  7:25–8:50
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -235,7 +225,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  9:21–10:45
+## Slide 10 — Training with LightGBM  ·  8:50–10:15
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -266,7 +256,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  10:45–12:01
+## Slide 11 — LightGBM score distribution  ·  10:15–11:30
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -291,7 +281,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  12:01–13:30
+## Slide 12 — The limit: noise MC statistics  ·  11:30–12:59
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -319,7 +309,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  13:30–14:57
+## Slide 13 — Status and next steps  ·  12:59–14:26
 
 Two things to take away from this.
 
