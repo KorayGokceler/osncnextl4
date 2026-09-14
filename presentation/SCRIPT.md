@@ -133,39 +133,23 @@ is simply weak.
 
 ---
 
-## Slide 7 — Feature importance  ·  3:59–5:28
+## Slide 7 — Feature importance  ·  3:59–4:30
 
 This plot shows how much each input contributed to the trained model.
 
-The y axis lists the five inputs, sorted.  The x axis is gain in percent.  Gain
-means how much each variable improved the splits during training.
+`fill_ratio` takes about sixty percent.  `NchCleaned` takes twenty-six.  The
+last three take eight, four and one.
 
-`fill_ratio` takes about sixty percent.  `NchCleaned` takes twenty-six.  The last
-three take eight, four and one.
-
-`iLineFit_speed`, at the bottom, is almost dead.  After the last slide we know
-how to read that.  It is not hidden inside another variable.  It simply does not
-separate, and slide 5 already showed it.
-
-The top bar is the important one.  The model leans on `fill_ratio` more than on
-everything else together.  And `fill_ratio` is the one variable the reference
-does not really define.  Table 11 describes the spread of the hits about some
-vertex, and then it says "details here".  That cross-reference is empty.  We
-took the vertex from the original pass2 code.
-
-There is a second layer to that.  `fill_ratio` has one free parameter, the
-spherical radius, set to 1.6 in the original code.  The comment next to that
-value says somebody tuned it for GRECO.  Nobody tuned it again for oscNext.
-
-So our model depends most on a parameter from a different event selection.  That
-is a risk, and it is also the cheapest improvement we have: one parameter and one
-scan.
+So the model leans on `fill_ratio` more than on everything else together.  That
+variable has one free parameter, the spherical radius.  It is set to 1.6, and
+that value was optimised for GRECO, not for oscNext.  Tuning it for oscNext
+could help a lot.
 
 That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  5:28–6:06
+## Slide 8 — How a boosted decision tree works  ·  4:30–5:08
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -178,7 +162,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  6:06–7:31
+## Slide 9 — Training with pybdt (AdaBoost)  ·  5:08–6:33
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -207,7 +191,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  7:31–8:56
+## Slide 10 — Training with LightGBM  ·  6:33–7:58
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -238,7 +222,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  8:56–10:12
+## Slide 11 — LightGBM score distribution  ·  7:58–9:13
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -263,7 +247,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  10:12–11:40
+## Slide 12 — The limit: noise MC statistics  ·  9:13–10:42
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -291,7 +275,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  11:40–13:08
+## Slide 13 — Status and next steps  ·  10:42–12:09
 
 Two things to take away from this.
 
@@ -342,6 +326,12 @@ none of them.
 **On reusing the original Level 4 code.**
 Somebody commented out the whole body.  We keep the file, and it helped a lot
 with parameter values, but it does not run.
+
+**On the fill_ratio vertex.**
+The reference does not give it.  Table 11 describes the spread of the hits about
+some vertex, and then says "details here".  That cross-reference is empty.  We
+took the vertex from the original pass2 code, and it uses the position of the
+first HLC hit.
 
 **On whether the rewritten variables are correct.**
 I do not know it completely, and that is the first item on my list.  But I
