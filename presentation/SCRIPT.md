@@ -129,7 +129,7 @@ to 0.10.
 So the five inputs do not repeat each other.
 
 That matters on the next slide.  If one of them scores low there, the variable
-is simply weak.  Nothing else is hiding it.
+is simply weak.  It is not just repeating another one.
 
 ---
 
