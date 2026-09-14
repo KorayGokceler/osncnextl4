@@ -60,6 +60,24 @@ def _icetray():
 # inspect
 # ---------------------------------------------------------------------------
 
+def _typename(frame, key):
+    """
+    The frame object's type, or why it cannot be read.
+
+    A pass2 L4 frame carries keys belonging to projects this meta-project does
+    not have -- L4_Dunkman_<pulses>_Variables needs analysis.event_selection,
+    one of the projects whose absence is why the variables were rewritten in
+    the first place.  Touching such a key raises, so the dump must not touch
+    it blindly: the whole point of inspecting is to LIST what is there, and
+    dying on the first unreadable key hides everything after it.
+    """
+    try:
+        return type(frame[key]).__name__
+    except Exception as e:
+        msg = str(e).split(".")[0]
+        return "<unreadable: %s>" % msg[:70]
+
+
 def cmd_inspect(args):
     """
     Dump the keys of the first matching P frame.
@@ -102,17 +120,17 @@ def cmd_inspect(args):
             stats = [k for k in keys if "HitStatistics" in k or "HitMultiplicity" in k]
             print("  pulse series (%d):" % len(pulses))
             for k in pulses:
-                print("      %-50s %s" % (k, type(frame[k]).__name__))
+                print("      %-50s %s" % (k, _typename(frame, k)))
             print("  hit statistics (%d):" % len(stats))
             for k in stats:
                 print("      %s" % k)
             print("  L4_* keys (%d):" % len(l4))
             for k in l4:
-                print("      %-50s %s" % (k, type(frame[k]).__name__))
+                print("      %-50s %s" % (k, _typename(frame, k)))
             if args.all_keys:
                 print("  all keys (%d):" % len(keys))
                 for k in keys:
-                    print("      %-50s %s" % (k, type(frame[k]).__name__))
+                    print("      %-50s %s" % (k, _typename(frame, k)))
         f.close()
         if shown == 0:
             print("  no P frame matched (sub_event_stream=%r)"
