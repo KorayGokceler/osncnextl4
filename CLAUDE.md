@@ -691,6 +691,50 @@ needed:
   reader stay consistent.  Cosmetic, deliberately left alone; the comparison
   table simply carries a different key name on each side.
 
+### What is actually in the pass2 files (verified)
+
+The P frames of `oscNext_genie_level3_v02.00_pass2.121122.000000.i3.zst` and of
+the matching level4 file were dumped, so this is **verified**, not assumed:
+
+- **L3**: `SRTTWOfflinePulsesDC` and `SplitInIcePulses` both present, both
+  `I3RecoPulseSeriesMapMask` -- sec. 3.2 confirmed on real data.  No `L4_*` key.
+- **pass2 L3 does NOT delete the hit statistics.**  Unlike pass3,
+  `SRTTWOfflinePulsesDCHitStatistics` / `...HitMultiplicity` are already in the
+  L3 frame, so pass2's L4 never recomputed them.  We recompute from the same
+  series with the same module, which makes `cog_z` / `z_sigma` / `z_travel` a
+  particularly clean control row.
+- **L4** carries 28 `L4_*` keys.  Everything we compare is there under the
+  spelling our constants already use: `L4_micro_count` (`I3MapStringInt`),
+  `L4_fill_ratio` (`I3FillRatioInfo`), `L4_accumulated_time`,
+  `L4_first_hlc_rho`, `L4_VICH_qtot`, `L4_separation_in_cogs` (`I3Double`),
+  `L4_iLineFitParams` (`I3LineFitParams`), plus `L4_QR_Box` (pass2 had
+  slc-veto) and `L4_ToIEval2/3`.
+  **`L4_VICH_nch` and `L4_VICH_npulses` are `I3Int`**, where we write
+  `I3Double`; both book to a `value` column, so the comparison is unaffected.
+  **There is no `L4_FullTimeLengthRatio`** -- confirming it is an L3 variable
+  at pass2, read from `IC2018_LE_L3_Vars`.
+  `L4_oscNext_bool` is pass2's L4 cut, so the file holds every event with a
+  bool rather than only the survivors.
+- **Booking-audit bug 4 is visible in the real file.**  `L4_TWPulses`,
+  `L4_SRTTWPulses`, `L4_TWPulses_DCFid` and `L4_TWPulses_DCFid_DTW200` all sit
+  in the frame, and the fiducial selection is built from `L4_TWPulses` (the
+  StaticTWC output) -- so `L4_SRTTWPulses` is written and never read.  The dead
+  cleaning step is not an artefact of the commented-out source; it is in the
+  production output.
+  **Consequence for the comparison:** `micro_count` is EXPECTED to differ under
+  our default (which follows the note's cleaned series).  Rerun with
+  `--micro-count-uncleaned` to test the implementation rather than the
+  decision -- our chain is then pass2's chain with the dead step left out.
+  `pass2.EXPECTED_DEVIATION` prints this in the report when the row differs,
+  and the summary line does not count it as a failure.
+- **One trap:** `L4_Dunkman_SRTTWOfflinePulsesDC_Variables` cannot be
+  deserialised -- it needs `analysis.event_selection`, one of the missing
+  projects that made us rewrite `accumulated_time` in the first place.  It is
+  not booked (the extracted `L4_accumulated_time` I3Double is), so this only
+  ever mattered for `inspect`, which now guards the type lookup.
+- **Not every L3 file has an L4 partner**: 121122 file `000000` exists at L3 and
+  not at L4.  `pair_files()` reports such orphans rather than skipping quietly.
+
 **Two constraints on how it is run:**
 
 1. **One L3 file per HDF5.**  `(Run, Event, SubEvent)` is unique only within a

@@ -118,9 +118,14 @@ def pass2_book_keys(cleaned_pulses=PASS2_CLEANED_PULSES):
         "L4_iLineFit", "L4_iLineFitParams",
         "L4_ToI", "L4_ToIParams",
         hitstat, hitmult,
-        # pass2's own verdicts
-        "L4_NoiseStraightCuts_Bool",
+        # pass2's own verdicts.  L4_oscNext_bool is pass2's L4 cut: the file
+        # carries every event with a bool rather than only the survivors, so
+        # booking it keeps the whole population available and says which
+        # events pass2 would have kept.
+        "L4_oscNext_bool", "L4_NoiseStraightCuts_Bool",
         "L4_NoiseClassifier_ProbNu", "L4_MuonClassifier_Data_ProbNu",
+        "L4_MuonClassifier_MuonGun_ProbNu",
+        "L4_QR_Box",
     ]
 
 
@@ -194,6 +199,23 @@ def compare_table(cleaned_pulses=PASS2_CLEANED_PULSES):
 # Integer-valued: for these "exactly equal" is the only acceptable outcome.
 INTEGER_VARS = {"micro_count", "VICH_nch", "VICH_npulses", "n_hit_doms",
                 "NchCleaned", "ICVetoHits"}
+
+# Rows that are EXPECTED to disagree, and why.  Printed when they do, so a
+# deliberate deviation is never mistaken for a bug in the rewrite.
+EXPECTED_DEVIATION = {
+    "micro_count":
+        "EXPECTED under the default settings.  pass2 starts the micro_count "
+        "chain from the UNCLEANED series, the note's Table 11 says the "
+        "cleaned one, and we follow the note (CLAUDE.md open risk 5b).  The "
+        "pass2 L4 file shows this directly: L4_TWPulses_DCFid is built from "
+        "L4_TWPulses (the StaticTWC output), so the L4_SRTTWPulses in the "
+        "same frame is written and never read -- the dead cleaning step of "
+        "booking-audit bug 4, on real data.  To compare the IMPLEMENTATION "
+        "rather than the decision, rerun process_L4.py with "
+        "--micro-count-uncleaned: our chain is then uncleaned -> StaticTWC -> "
+        "fiducial -> 200 ns DTW, which is pass2's chain with the dead step "
+        "left out, so it should match exactly.",
+}
 
 # Below this a float difference is arithmetic noise, not a different
 # calculation.  Deliberately loose -- the question is which calculation was
@@ -424,6 +446,12 @@ def report(ours_h5, pass2_h5, cleaned_pulses=PASS2_CLEANED_PULSES,
                      o[i], p[i], o[i] - p[i]), file=out)
         print("", file=out)
 
+    for r in rows:
+        if r["status"] == "DIFFERS" and r["name"] in EXPECTED_DEVIATION:
+            print("%s: %s" % (r["name"], EXPECTED_DEVIATION[r["name"]]),
+                  file=out)
+            print("", file=out)
+
     ctrl = [r for r in rows if not r["rewritten"]]
     bad_ctrl = [r["name"] for r in ctrl if r["status"] == "DIFFERS"]
     if bad_ctrl:
@@ -433,8 +461,12 @@ def report(ours_h5, pass2_h5, cleaned_pulses=PASS2_CLEANED_PULSES,
 
     rew = [r for r in rows if r["rewritten"]]
     ok = [r for r in rew if r["status"] in ("identical", "agrees")]
-    print("Rewritten variables reproducing pass2: %d/%d" % (len(ok), len(rew)),
-          file=out)
+    expected = [r["name"] for r in rew
+                if r["status"] == "DIFFERS" and r["name"] in EXPECTED_DEVIATION]
+    print("Rewritten variables reproducing pass2: %d/%d%s"
+          % (len(ok), len(rew),
+             " (%s differs on purpose -- see above)" % ", ".join(expected)
+             if expected else ""), file=out)
     nover = [r["name"] for r in rows if r["status"] == "no overlap"]
     if nover:
         print("Not compared (one side missing): %s" % ", ".join(nover),
