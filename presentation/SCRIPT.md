@@ -118,26 +118,23 @@ The reference shows the same five distributions, in Figures 12 and 13.
 
 ---
 
-## Slide 6 — Input correlations  ·  3:32–4:21
+## Slide 6 — Input correlations  ·  3:32–4:05
 
-This plot shows how much the five inputs overlap with each other.
+This plot shows how strongly the five inputs are related to each other.
 
-Both axes list the five inputs.  The colour is the Spearman rank correlation:
-dark red is plus one, dark blue is minus one, white is zero.  Signal is on the
-left and background on the right.
+The strongest pair on the signal side is `NchCleaned` with `micro_count`, at
+0.71, and both of them count hit DOMs.  On the background side that pair drops
+to 0.10.
 
-The diagonal is only each variable against itself.  Away from it, almost
-everything is pale.  The strongest pair on the signal side is `NchCleaned` with
-`micro_count`, at 0.71, and both of them count hit DOMs.  On the background side
-that pair drops to 0.10.
+So these are five genuinely different variables.  None of them is a copy of
+another one.
 
-So these are five different variables.  That matters for the next slide.  If one
-of them adds almost nothing, the variable is weak.  It is not weak because
-another variable already covers it.
+That matters for the next slide.  If one of them adds almost nothing there, the
+variable itself is weak.  No other input is covering for it.
 
 ---
 
-## Slide 7 — Feature importance  ·  4:21–5:51
+## Slide 7 — Feature importance  ·  4:05–5:34
 
 This plot shows how much each input contributed to the trained model.
 
@@ -169,7 +166,7 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  5:51–6:29
+## Slide 8 — How a boosted decision tree works  ·  5:34–6:12
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -182,7 +179,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  6:29–7:54
+## Slide 9 — Training with pybdt (AdaBoost)  ·  6:12–7:37
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -211,7 +208,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  7:54–9:18
+## Slide 10 — Training with LightGBM  ·  7:37–9:02
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -242,7 +239,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  9:18–10:34
+## Slide 11 — LightGBM score distribution  ·  9:02–10:18
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -267,7 +264,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  10:34–12:03
+## Slide 12 — The limit: noise MC statistics  ·  10:18–11:46
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -295,7 +292,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  12:03–13:30
+## Slide 13 — Status and next steps  ·  11:46–13:14
 
 Two things to take away from this.
 
