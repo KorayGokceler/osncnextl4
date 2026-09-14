@@ -140,7 +140,7 @@ This plot shows how much each input contributed to the trained model.
 `fill_ratio` takes about sixty percent.  `NchCleaned` takes twenty-six.  The
 last three take eight, four and one.
 
-So the model leans on `fill_ratio` more than on everything else together.  That
+So the model uses `fill_ratio` more than the other four together.  That
 variable has one free parameter, the spherical radius.  It is set to 1.6, and
 that value was optimised for GRECO, not for oscNext.  Tuning it for oscNext
 could help a lot.
