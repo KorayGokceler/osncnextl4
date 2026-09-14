@@ -104,26 +104,21 @@ Level 3 writes both of them, but not the ratio, so we divide them at Level 4.
 
 ---
 
-## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:04–4:02
+## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:04–3:35
 
 This plot shows the five noise inputs on our own pass3 files.
 
 Each panel is one variable.  The x axis is the variable, the y axis is rate in
 hertz per bin on a log scale.  Blue is neutrino and red is noise.
 
-The top left panel is `NchCleaned`.  The red curve dies quickly toward the
-right.  The blue curve runs out to a hundred and forty.  So small events are
-noise and large events are neutrinos, as we expect.  In the top right panel the
-two curves sit almost on top of each other.  That one comes back on slide 7.
+From how far apart the two curves sit in each panel, you can already guess which
+variables matter more.  Slide 7 puts numbers on that guess.
 
-The reference shows the same five distributions, in Figures 12 and 13.  I built
-this plot in that style, with the same axis ranges where the document let me
-read them.  The panel titles say which figure each one matches.  And the shapes
-agree with the reference.
+The reference shows the same five distributions, in Figures 12 and 13.
 
 ---
 
-## Slide 6 — Input correlations  ·  4:02–4:52
+## Slide 6 — Input correlations  ·  3:35–4:24
 
 This plot shows how much the five inputs overlap with each other.
 
@@ -142,7 +137,7 @@ another variable already covers it.
 
 ---
 
-## Slide 7 — Feature importance  ·  4:52–6:21
+## Slide 7 — Feature importance  ·  4:24–5:54
 
 This plot shows how much each input contributed to the trained model.
 
@@ -174,7 +169,7 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  6:21–6:59
+## Slide 8 — How a boosted decision tree works  ·  5:54–6:32
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -187,7 +182,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  6:59–8:24
+## Slide 9 — Training with pybdt (AdaBoost)  ·  6:32–7:57
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -216,7 +211,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  8:24–9:49
+## Slide 10 — Training with LightGBM  ·  7:57–9:22
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -247,7 +242,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  9:49–11:04
+## Slide 11 — LightGBM score distribution  ·  9:22–10:37
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -272,7 +267,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  11:04–12:33
+## Slide 12 — The limit: noise MC statistics  ·  10:37–12:06
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -300,7 +295,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  12:33–14:00
+## Slide 13 — Status and next steps  ·  12:06–13:33
 
 Two things to take away from this.
 
