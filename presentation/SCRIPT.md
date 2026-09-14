@@ -193,16 +193,18 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  6:07–6:23
+## Slide 11 — LightGBM score distribution  ·  6:07–6:32
 
 As you can see from these plots, the classifier separates noise and signal
-nicely.  The left panel is linear and the right one is on a log scale.
+nicely.  The x axis is the classifier output, from zero to one.  The y axis is
+the training weight in each bin.  The left panel is linear and the right one is
+on a log scale.
 
 And we also see no overtraining here, because train and test agree.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  6:23–7:52
+## Slide 12 — The limit: noise MC statistics  ·  6:32–8:01
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -230,7 +232,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  7:52–9:20
+## Slide 13 — Status and next steps  ·  8:01–9:28
 
 Two things to take away from this.
 
