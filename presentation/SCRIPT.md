@@ -173,7 +173,7 @@ efficiency at the same rejection instead.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  5:25–6:50
+## Slide 10 — Training with LightGBM  ·  5:25–6:07
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -181,22 +181,11 @@ I changed one thing only: same events, same variables, same split, same weights,
 same scoring code.  Only the trainer is different.  So this is a fair
 comparison.
 
-The axes are the ones from the last slide.  The green solid curve is LightGBM and
-the two dashed curves are pybdt.  The dashed curves start to fall at about 95
-percent.  The green curve stays flat, almost at a hundred, all the way to 99.
-And the green curve passes through the star.
+As you can see, LightGBM keeps 95.9 percent of the signal at 99 percent
+rejection.  So with LightGBM we reach the target from the reference, and
+LightGBM does clearly better than pybdt.
 
-The table carries the numbers.  At 90 percent rejection, 94 becomes 99.  At 95
-percent, 91.7 becomes 98.5.  At 99 percent, 65.8 becomes 95.9.  That reaches the
-target of the reference.
-
-Two things make me believe it.  There is no overtraining.  Train and test differ
-by one tenth of a point, and the next slide shows that.
-
-The model also reached the target with a handicap.  The reference asks for at
-least 500 events in one leaf.  Somebody tuned that number on far more noise
-simulation than we have.  We only had about 830 background events in the fit.
-The training also stopped early, at 122 trees out of 2,000.
+There is no overtraining.  The gap between train and test is very small.
 
 This result changed our minds about something.  We used to believe our background
 statistics were the problem.  This measurement showed that the problem was the
@@ -204,7 +193,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  6:50–8:06
+## Slide 11 — LightGBM score distribution  ·  6:07–7:23
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -229,7 +218,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  8:06–9:34
+## Slide 12 — The limit: noise MC statistics  ·  7:23–8:52
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -257,7 +246,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  9:34–11:02
+## Slide 13 — Status and next steps  ·  8:52–10:19
 
 Two things to take away from this.
 
@@ -328,6 +317,13 @@ constant, and the variable is really the cleaned duration over ten
 microseconds.  The median is 0.16 for electron neutrinos and 0.27 for noise, so
 the noise events have the longer cleaned series.  It separates well, but for the
 opposite reason: a low-energy cascade is short in time.
+
+**On the Table 10 hyperparameters fitting our sample size.**
+They do not, and the model reached the target anyway.  The reference asks for at
+least 500 events in one leaf, and somebody tuned that number on far more noise
+simulation than we have.  We only had about 830 background events in the fit, so
+that setting limits the trees hard.  The training also stopped early, at 122
+trees out of 2,000.
 
 **On 95.9 percent resting on ten background events.**
 That is a fair point.  Ten test-set background events define the 99 percent
