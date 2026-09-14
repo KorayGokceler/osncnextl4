@@ -75,7 +75,17 @@ def cmd_inspect(args):
         print("=" * 78)
         print(path)
         print("=" * 78)
-        f = dataio.I3File(path)
+        if not os.path.exists(path):
+            print("  [!] does not exist")
+            continue
+        try:
+            f = dataio.I3File(path)
+        except RuntimeError as e:
+            # One unreadable file must not kill the whole inspection -- the
+            # usual reason is that the L4 path was guessed wrong, and the
+            # remaining files are exactly what would tell us the right one.
+            print("  [!] cannot open: %s" % e)
+            continue
         shown = 0
         while f.more() and shown < args.n:
             frame = f.pop_frame()
