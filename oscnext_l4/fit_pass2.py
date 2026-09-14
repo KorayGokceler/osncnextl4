@@ -209,14 +209,14 @@ ACC_VARIANTS = {
 # window, no speed window at all, or no causal direction requirement.
 
 def _vich_count(ev, cog, speed_min, speed_max, require_causal=True,
-                source="uncleaned"):
+                source="uncleaned", veto_field="veto"):
     """Count veto DOMs / pulses / charge under one set of conditions."""
     s = ev[source]
     if cog is None or s["t"].size == 0:
         return np.nan, np.nan, np.nan
     cx, cy, cz, ct = cog
-    m = s["veto"]
-    if not m.any():
+    m = s.get(veto_field)
+    if m is None or not m.any():
         return 0.0, 0.0, 0.0
     x, y, z = s["x"][m], s["y"][m], s["z"][m]
     t, q, dom = s["t"][m], s["q"][m], s["dom"][m]
@@ -238,9 +238,12 @@ def _vich_count(ev, cog, speed_min, speed_max, require_causal=True,
     return n_dom, n_pulses, qtot
 
 
-def _cog(ev, fiducial=True, charge_weighted=True):
+def _cog(ev, fiducial=True, charge_weighted=True, cog_field=None):
     c = ev["cleaned"]
-    m = c["fid"] if fiducial else np.ones(c["t"].size, dtype=bool)
+    if cog_field is not None:
+        m = c.get(cog_field, np.ones(c["t"].size, dtype=bool))
+    else:
+        m = c["fid"] if fiducial else np.ones(c["t"].size, dtype=bool)
     if not m.any():
         m = np.ones(c["t"].size, dtype=bool)
     if not m.any():
@@ -283,10 +286,12 @@ def _vich_ref_variant(ref_fn, speed_min=VICH_SPEED_MIN,
 
 def _vich_variant(fiducial=True, charge_weighted=True,
                   speed_min=VICH_SPEED_MIN, speed_max=VICH_SPEED_MAX,
-                  require_causal=True, source="uncleaned"):
+                  require_causal=True, source="uncleaned",
+                  veto_field="veto", cog_field=None):
     def f(ev):
-        return _vich_count(ev, _cog(ev, fiducial, charge_weighted),
-                           speed_min, speed_max, require_causal, source)
+        cog = _cog(ev, fiducial, charge_weighted, cog_field)
+        return _vich_count(ev, cog, speed_min, speed_max, require_causal,
+                           source, veto_field)
     return f
 
 
@@ -302,6 +307,14 @@ VICH_VARIANTS = {
     "cleaned_input":             _vich_variant(source="cleaned"),
     "cog_all_no_speed":          _vich_variant(fiducial=False, speed_min=None,
                                                speed_max=None),
+    "l3_veto_region":            _vich_variant(veto_field="l3veto"),
+    "l3_veto_no_speed":          _vich_variant(veto_field="l3veto",
+                                               speed_min=None, speed_max=None),
+    "l3_veto_l3_cog":            _vich_variant(veto_field="l3veto",
+                                               cog_field="l3fid"),
+    "l3_veto_l3_cog_no_speed":   _vich_variant(veto_field="l3veto",
+                                               cog_field="l3fid",
+                                               speed_min=None, speed_max=None),
     "ref_first_hlc":             _vich_ref_variant(_first_hlc_ref),
     "ref_first_hlc_no_speed":    _vich_ref_variant(_first_hlc_ref,
                                                    speed_min=None,
@@ -390,6 +403,24 @@ VICH_EXTRA = {
 }
 
 
+# Technical note Table 7 (p.27): the DeepCore LEVEL 3 fiducial volume.
+#   DeepCore strings 79-86, DOMs 11-60
+#   IceCube strings 25-27, 34-37, 44-47, 54, DOMs 39-60
+# Everything else is a veto DOM *for L3*.  This is a DIFFERENT region from the
+# DeepCore Filter's (L2) one that our VICH uses, and the note says outright
+# (p.60, line 880) that "some algorithms used throughout their event selection
+# may use differing definitions of what precisely constitutes the veto region".
+L3_FID_DEEPCORE_STRINGS = tuple(range(79, 87))
+L3_FID_ICECUBE_STRINGS = (25, 26, 27, 34, 35, 36, 37, 44, 45, 46, 47, 54)
+
+
+def _l3_fiducial(string, om):
+    """Table 7 membership, as boolean arrays."""
+    dc = np.isin(string, L3_FID_DEEPCORE_STRINGS) & (om >= 11) & (om <= 60)
+    ic = np.isin(string, L3_FID_ICECUBE_STRINGS) & (om >= 39) & (om <= 60)
+    return dc | ic
+
+
 def _arrays(pulse_map, geometry, veto_doms, fid_doms):
     """One flat record per pulse.  Returns a dict of numpy arrays."""
     from .variables import iter_map
@@ -397,6 +428,7 @@ def _arrays(pulse_map, geometry, veto_doms, fid_doms):
 
     omgeo = geometry.omgeo
     x, y, z, t, q, dom, hlc, veto, fid = [], [], [], [], [], [], [], [], []
+    st, om = [], []
     for i, (omkey, pulses) in enumerate(iter_map(pulse_map)):
         if omkey not in omgeo:
             continue
@@ -407,13 +439,18 @@ def _arrays(pulse_map, geometry, veto_doms, fid_doms):
             x.append(pos.x); y.append(pos.y); z.append(pos.z)
             t.append(p.time); q.append(p.charge)
             dom.append(i)
+            st.append(omkey.string); om.append(omkey.om)
             hlc.append(bool(p.flags & _LC()))
             veto.append(in_veto); fid.append(in_fid)
     f = np.asarray
+    st = f(st, np.int64); om = f(om, np.int64)
+    l3fid = (_l3_fiducial(st, om) if st.size
+             else np.zeros(0, dtype=bool))
     return {"x": f(x, float), "y": f(y, float), "z": f(z, float),
             "t": f(t, float), "q": f(q, float),
-            "dom": f(dom, np.int64),
-            "hlc": f(hlc, bool), "veto": f(veto, bool), "fid": f(fid, bool)}
+            "dom": f(dom, np.int64), "string": st, "om": om,
+            "hlc": f(hlc, bool), "veto": f(veto, bool), "fid": f(fid, bool),
+            "l3fid": l3fid, "l3veto": ~l3fid}
 
 
 def _LC():
