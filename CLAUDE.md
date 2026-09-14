@@ -640,6 +640,75 @@ mode (it would mislead: the list may hold 100 files while the tray stopped in
 the first).  For a smoke test, pass a single file or use `--scan off` --
 scanning 100 files is pointless.
 
+## Running on pass2 (the cross-check)
+
+The rewritten variables are validated against the real pass2 L4 files: our own
+L4 production is run over the pass2 **L3** files and compared, event by event,
+with the pass2 **L4** files, which already contain every variable.  The "ours"
+side is an ordinary `process_L4.py` output, so the same HDF5 is also the
+training input for a pass2-trained model.  `scripts/compare_pass2.py`
+(`inspect` / `plan` / `book` / `report`) and `oscnext_l4/pass2.py`.
+
+**The whole delta between a pass3 run and a pass2 run is ONE FLAG:**
+
+```
+--cleaned-pulses SRTTWOfflinePulsesDC
+```
+
+Everything else adapts by itself.  What was checked, and why nothing more is
+needed:
+
+- **The pulse series.**  Technical note sec. 3.2 (p.25) defines both outright:
+  uncleaned is `SplitInIcePulses` -- *the same string as pass3*, so the default
+  stands -- and cleaned is `SRTTWOfflinePulsesDC` (pass3:
+  `SRTTWSplitInIcePulsesDC`).  Only the cleaned name is overridden.
+  The original pass2 script cannot settle this: `uncleaned_pulses` and
+  `cleaned_pulses` are parameters there with no defaults, supplied by a
+  production script we do not have.  Its straight-cut block does mention
+  `SRTTWOfflinePulsesDCHitStatistics`, but that block is stale (it also uses an
+  `L4_MicroCount`/`STW7500_DTW200` naming the same file contradicts elsewhere),
+  so the note is the source.  Table 12 (p.41) agrees with sec. 3.2.
+- **The L3 cut adapts on its own.**  `L3_oscNext_bool` and `Data_quality_bool`
+  appear NOWHERE in the pass2 note -- they are the pass3 L3 script's own
+  additions.  `l3_cut` therefore falls through to
+  `IC2018_LE_L3_bools["IC2018_LE_L3_Full"]`, which pass2 does have (pp.36-44).
+  Consequence: on pass2 the data-quality cut is not applied, i.e. the cut is
+  slightly looser than on pass3.  That changes WHICH events arrive, not what
+  any variable evaluates to, so it is harmless for the comparison (which runs
+  on matched events) -- but the pass2 training population is not identical to
+  pass2's official L4 population.
+- **The L3 variable names are unchanged.**  `IC2018_LE_L3_Vars` exists at pass2
+  with the same spelling for every column we read (`NchCleaned`, `ICVetoHits`,
+  `RTVeto250Hits`, `NAbove200Hits`, ...).  Pass2's map carries BOTH
+  `CleanedFullTimeLength`/`UncleanedFullTimeLength` AND their ratio
+  `FullTimeLengthRatio`, so our division is compared head to head with the
+  stored ratio.
+- **The hit statistics keep the pass3 NAME on a pass2 run.**  `HITSTAT_KEY` /
+  `HITMULT_KEY` derive from `CLEANED_PULSES_DEFAULT`, a module-level constant,
+  not from the runtime parameter -- and `classifier.py` derives its own from
+  the same literal.  So the values are computed from the series that was
+  actually passed while the label keeps the pass3 spelling, and writer and
+  reader stay consistent.  Cosmetic, deliberately left alone; the comparison
+  table simply carries a different key name on each side.
+
+**Two constraints on how it is run:**
+
+1. **One L3 file per HDF5.**  `(Run, Event, SubEvent)` is unique only within a
+   single L3 file (booking audit, bug 2), so a `--chunk-files` production
+   cannot be matched against the answer key.  `pass2.match()` refuses to match
+   when it sees a repeated triple instead of producing a plausible-looking
+   disagreement table that is really an event-mixing artefact.
+2. **Read the control rows first.**  The report separates *control* rows --
+   the original IceTray modules run on both sides (`iLineFit_speed`, the hit
+   statistics) or values taken straight from L3 (`NchCleaned`, `ICVetoHits`) --
+   from the *rewritten* rows.  If a control row disagrees, the two sides did
+   not see the same input and nothing below it means anything.
+
+**For a pass2 training run:** there is no CORSIKA at pass2 in the paths we have
+-- the muon background is MuonGun, so the pass3 CORSIKA weighting (open risk
+3d) does not carry over.  The noise BDT is unaffected.  NuTau (160519) exists
+at pass2, but the signal definition is still nue+numu (open risk 6).
+
 ## Conventions
 
 - **Code, comments, docstrings, printed output, plot labels and documentation
