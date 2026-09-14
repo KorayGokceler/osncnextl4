@@ -196,6 +196,17 @@ def cmd_book(args):
     icetray, dataio, dataclasses, I3Tray = _icetray()
     from oscnext_l4.booker import add_booker
 
+    # hdfwriter's converters for I3HitStatisticsValues / I3HitMultiplicityValues
+    # come from common_variables and are registered when that project is
+    # imported.  process_L4.py gets this for free -- its hit-statistics segment
+    # imports the module to COMPUTE them.  This script only books what is
+    # already in the frame, so nothing would import it and I3TableWriter dies
+    # mid-run with "No converter found for ... I3HitMultiplicityValues",
+    # leaving a half-written HDF5 behind.
+    from oscnext_l4.env import require_project
+    require_project("common_variables")
+    from icecube import common_variables      # noqa: F401  (registers converters)
+
     files = expand(args.input)
     if not files:
         sys.exit("no input file")
