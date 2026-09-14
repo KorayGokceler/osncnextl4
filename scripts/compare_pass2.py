@@ -301,6 +301,10 @@ def cmd_fit(args):
              cleaned_pulses=args.cleaned_pulses,
              uncleaned_pulses=args.uncleaned_pulses,
              Streams=[icetray.I3Frame.Physics])
+    tray.Add(F.diagnose, "diagnose",
+             cleaned_pulses=args.cleaned_pulses,
+             uncleaned_pulses=args.uncleaned_pulses,
+             Streams=[icetray.I3Frame.Physics])
     counter = {"n": 0}
 
     def _count(frame):
@@ -319,6 +323,9 @@ def cmd_fit(args):
 def cmd_fit_report(args):
     from oscnext_l4 import fit_pass2 as F
     F.report(args.hdf5)
+    if args.diagnose:
+        print("")
+        F.diagnose_report(args.hdf5)
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +381,9 @@ def main():
 
     sp = sub.add_parser("fit-report", help="rank the candidate definitions")
     sp.add_argument("hdf5")
+    sp.add_argument("--diagnose", action="store_true", default=True,
+                    help="also invert pass2's numbers (default on)")
+    sp.add_argument("--no-diagnose", dest="diagnose", action="store_false")
     sp.set_defaults(func=cmd_fit_report)
 
     sp = sub.add_parser("report", help="compare the two HDF5 files")

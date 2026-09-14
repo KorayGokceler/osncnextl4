@@ -253,6 +253,34 @@ def _cog(ev, fiducial=True, charge_weighted=True):
             float(w @ c["z"][m]), float(w @ c["t"][m]))
 
 
+def _first_hlc_ref(ev):
+    """
+    The earliest HLC hit of the cleaned series as (x, y, z, t).
+
+    Worth trying as VICH's reference point instead of the COG: it is the
+    event's entry point rather than its centre, it is the natural thing for a
+    causality test to point at, and unlike the COG it is now VERIFIED against
+    pass2 (first_hlc_rho reproduces at 99.85%).  So if the reference point is
+    what differs, this is the candidate with evidence behind it.
+    """
+    c = ev["cleaned"]
+    m = c["hlc"]
+    if not m.any():
+        return None
+    i = int(np.argmin(np.where(m, c["t"], np.inf)))
+    return (float(c["x"][i]), float(c["y"][i]), float(c["z"][i]),
+            float(c["t"][i]))
+
+
+def _vich_ref_variant(ref_fn, speed_min=VICH_SPEED_MIN,
+                      speed_max=VICH_SPEED_MAX, require_causal=True,
+                      source="uncleaned"):
+    def f(ev):
+        return _vich_count(ev, ref_fn(ev), speed_min, speed_max,
+                           require_causal, source)
+    return f
+
+
 def _vich_variant(fiducial=True, charge_weighted=True,
                   speed_min=VICH_SPEED_MIN, speed_max=VICH_SPEED_MAX,
                   require_causal=True, source="uncleaned"):
@@ -274,6 +302,10 @@ VICH_VARIANTS = {
     "cleaned_input":             _vich_variant(source="cleaned"),
     "cog_all_no_speed":          _vich_variant(fiducial=False, speed_min=None,
                                                speed_max=None),
+    "ref_first_hlc":             _vich_ref_variant(_first_hlc_ref),
+    "ref_first_hlc_no_speed":    _vich_ref_variant(_first_hlc_ref,
+                                                   speed_min=None,
+                                                   speed_max=None),
 }
 
 
@@ -488,6 +520,7 @@ def fit_keys():
                  FIT_PREFIX + "vich_qtot_" + s]
     for name in RHO_VARIANTS:
         keys.append(FIT_PREFIX + "rho_" + _slug(name))
+    keys += DIAG_KEYS
     keys += ["L4_accumulated_time", "L4_VICH_nch", "L4_VICH_npulses",
              "L4_VICH_qtot", "L4_first_hlc_rho"]
     return list(dict.fromkeys(keys))
@@ -553,3 +586,213 @@ def report(h5path, stream=None):
         print("%-18s -> %-30s %6.2f%%  %s"
               % (label, name, 100 * frac, verdict), file=out)
     return best
+
+
+# ---------------------------------------------------------------------------
+# 8. Inversion: ask what pass2's number IMPLIES
+# ---------------------------------------------------------------------------
+#
+# Adding more guesses has diminishing returns -- eight accumulated_time
+# variants and nine VICH variants all failed.  So invert the question: the
+# reference value is known per event, so compute what it would have to MEAN
+# under our arithmetic.  If the implied quantity concentrates on one value,
+# that value is the missing piece; if it is scattered, the whole framing is
+# wrong and the scatter says so honestly.
+
+def implied_fraction(t, q, ref):
+    """
+    The charge fraction accumulated by t[0] + ref.
+
+    If pass2 used these same entries and some fixed fraction f, this returns
+    f in every event.  So the median over events IS their fraction, and the
+    spread says whether the entry set is right: a right entry set with a
+    different fraction gives a tight distribution away from 0.75; a wrong
+    entry set gives a broad one.
+    """
+    if t.size == 0 or not np.isfinite(ref):
+        return np.nan
+    order = np.argsort(t, kind="stable")
+    t, q = t[order], np.maximum(q[order], 0.0)
+    total = q.sum()
+    if total <= 0:
+        return np.nan
+    return float(q[t <= t[0] + ref].sum() / total)
+
+
+ACC_ENTRY_SETS = {
+    "all_pulses": lambda c: (c["t"], c["q"]),
+    "first_pulse_per_dom": lambda c: _first_pulse_per_dom(c["dom"], c["t"],
+                                                          c["q"]),
+    "per_dom_charge": lambda c: _per_dom(c["dom"], c["t"], c["q"])[1:],
+    "hlc_only": lambda c: (c["t"][c["hlc"]], c["q"][c["hlc"]]),
+}
+
+
+def vich_bounds(ev, source="uncleaned"):
+    """
+    Ceilings for VICH_nch, to test whether pass2's count can fit inside our
+    veto region at all.
+
+    This is the decisive test for the veto-region hypothesis.  No speed
+    window, no causality requirement and no COG choice can ever raise the
+    count above the number of veto DOMs that were hit -- so if pass2's stored
+    value EXCEEDS that ceiling, our veto region is missing DOMs and no amount
+    of tuning the cuts will close the gap.
+    """
+    s = ev[source]
+    if s["t"].size == 0:
+        return 0.0, 0.0
+    veto_hit = float(np.unique(s["dom"][s["veto"]]).size)
+    any_hit = float(np.unique(s["dom"]).size)
+    return veto_hit, any_hit
+
+
+def implied_speed_cut(ev, ref, cog=None, source="uncleaned"):
+    """
+    The upper speed cut that would make our veto hits count to `ref` DOMs.
+
+    Per DOM we take its smallest speed (the easiest one to admit), sort them,
+    and read off the ref-th.  If pass2 used an upper speed cut on our veto
+    region, this concentrates on their threshold across events.
+    """
+    s = ev[source]
+    if cog is None:
+        cog = _cog(ev)
+    if cog is None or not np.isfinite(ref) or ref < 1:
+        return np.nan
+    cx, cy, cz, ct = cog
+    m = s["veto"]
+    if not m.any():
+        return np.nan
+    d = np.sqrt((s["x"][m] - cx) ** 2 + (s["y"][m] - cy) ** 2
+                + (s["z"][m] - cz) ** 2)
+    dt = ct - s["t"][m]
+    ok = dt > 0
+    if not ok.any():
+        return np.nan
+    speed = d[ok] / dt[ok]
+    dom = s["dom"][m][ok]
+    order = np.argsort(dom, kind="stable")
+    dom, speed = dom[order], speed[order]
+    edges = np.flatnonzero(np.diff(dom)) + 1
+    per_dom = np.array([g.min() for g in np.split(speed, edges)])
+    per_dom.sort()
+    k = int(ref) - 1
+    if k < 0 or k >= per_dom.size:
+        return np.nan
+    return float(per_dom[k])
+
+
+def diagnose(frame, cleaned_pulses, uncleaned_pulses,
+             acc_ref_key="L4_accumulated_time", vich_ref_key="L4_VICH_nch"):
+    """Tray module: write the inverted quantities beside the references."""
+    from icecube import dataclasses
+
+    ev = extract(frame, cleaned_pulses, uncleaned_pulses)
+    if ev is None:
+        return True
+    c = ev["cleaned"]
+
+    acc_ref = float(frame[acc_ref_key].value) if acc_ref_key in frame else np.nan
+    for name, sel in ACC_ENTRY_SETS.items():
+        try:
+            t, q = sel(c)
+            v = implied_fraction(t, q, acc_ref)
+        except Exception:
+            v = np.nan
+        key = FIT_PREFIX + "diag_accfrac_" + _slug(name)
+        if key not in frame:
+            frame[key] = dataclasses.I3Double(float(v))
+
+    vich_ref = float(frame[vich_ref_key].value) if vich_ref_key in frame else np.nan
+    veto_hit, any_hit = vich_bounds(ev)
+    for key, val in ((FIT_PREFIX + "diag_veto_doms_hit", veto_hit),
+                     (FIT_PREFIX + "diag_all_doms_hit", any_hit),
+                     (FIT_PREFIX + "diag_speed_needed",
+                      implied_speed_cut(ev, vich_ref))):
+        if key not in frame:
+            frame[key] = dataclasses.I3Double(float(val))
+    return True
+
+
+DIAG_KEYS = ([FIT_PREFIX + "diag_accfrac_" + _slug(n) for n in ACC_ENTRY_SETS]
+             + [FIT_PREFIX + "diag_veto_doms_hit",
+                FIT_PREFIX + "diag_all_doms_hit",
+                FIT_PREFIX + "diag_speed_needed"])
+
+
+def diagnose_report(h5path, stream=None):
+    """Read the inverted quantities and say what they imply."""
+    import sys
+    from .pass2 import read_pairs
+    out = stream or sys.stdout
+
+    pairs = [(k, k, "value") for k in DIAG_KEYS]
+    pairs += [("ref_acc", "L4_accumulated_time", "value"),
+              ("ref_vich", "L4_VICH_nch", "value")]
+    data, missing = read_pairs(h5path, pairs)
+    n = len(data["Run"])
+    print("Inverting the pass2 numbers: %s" % h5path, file=out)
+    print("events: %d" % n, file=out)
+    if missing:
+        print("not found: %s" % ", ".join(sorted({m[0] for m in missing})),
+              file=out)
+
+    print("\naccumulated_time -- the charge fraction pass2's value implies",
+          file=out)
+    print("  (0.75 would mean the fraction is right and the ENTRY SET is what "
+          "differs)", file=out)
+    print("  %-24s %9s %9s %9s %9s %8s"
+          % ("entry set", "median", "16%", "84%", "frac@.75", "n"), file=out)
+    print("  " + "-" * 74, file=out)
+    for name in ACC_ENTRY_SETS:
+        v = data[FIT_PREFIX + "diag_accfrac_" + _slug(name)]
+        v = v[np.isfinite(v)]
+        if v.size == 0:
+            print("  %-24s %9s" % (name, "no data"), file=out)
+            continue
+        at75 = float((np.abs(v - 0.75) < 0.01).mean())
+        print("  %-24s %9.4f %9.4f %9.4f %8.1f%% %8d"
+              % (name, np.median(v), np.percentile(v, 16),
+                 np.percentile(v, 84), 100 * at75, v.size), file=out)
+
+    print("\nVICH_nch -- can pass2's count fit inside our veto region?",
+          file=out)
+    ref = data["ref_vich"]
+    veto = data[FIT_PREFIX + "diag_veto_doms_hit"]
+    alld = data[FIT_PREFIX + "diag_all_doms_hit"]
+    ok = np.isfinite(ref) & np.isfinite(veto)
+    if ok.any():
+        over_veto = float((ref[ok] > veto[ok]).mean())
+        over_all = float((ref[ok] > alld[ok]).mean())
+        print("  pass2 count > DOMs hit in OUR veto region : %6.2f%% of events"
+              % (100 * over_veto), file=out)
+        print("  pass2 count > ALL hit DOMs in the event    : %6.2f%% of events"
+              % (100 * over_all), file=out)
+        print("  median pass2 count %.1f, median veto DOMs hit %.1f, "
+              "median DOMs hit %.1f"
+              % (np.median(ref[ok]), np.median(veto[ok]), np.median(alld[ok])),
+              file=out)
+        if over_veto > 0.05:
+            print("  -> OUR VETO REGION IS TOO SMALL.  No speed window or COG "
+                  "choice can reach a count our region cannot hold, so the "
+                  "region definition is the thing to fix.", file=out)
+        elif over_all > 0.0:
+            print("  -> pass2 counts more DOMs than the event has hits, so it "
+                  "is not counting hit DOMs the way we assume at all.",
+                  file=out)
+        else:
+            print("  -> the count FITS inside our region, so the region is "
+                  "big enough and the selection inside it is what differs.",
+                  file=out)
+
+    sp = data[FIT_PREFIX + "diag_speed_needed"]
+    sp = sp[np.isfinite(sp)]
+    if sp.size:
+        print("\n  implied upper speed cut (m/ns), over %d events:" % sp.size,
+              file=out)
+        print("    median %.4f   16%% %.4f   84%% %.4f   (we use %.2f-%.2f)"
+              % (np.median(sp), np.percentile(sp, 16), np.percentile(sp, 84),
+                 VICH_SPEED_MIN, VICH_SPEED_MAX), file=out)
+        print("    A tight distribution here is their threshold; a broad one "
+              "means the speed cut is not what separates us.", file=out)
