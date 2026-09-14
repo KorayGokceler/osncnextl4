@@ -118,7 +118,7 @@ The reference shows the same five distributions, in Figures 12 and 13.
 
 ---
 
-## Slide 6 — Input correlations  ·  3:32–4:01
+## Slide 6 — Input correlations  ·  3:32–3:59
 
 This plot shows how strongly the five inputs are related to each other.
 
@@ -129,11 +129,11 @@ to 0.10.
 So the five inputs do not repeat each other.
 
 That matters on the next slide.  If one of them scores low there, the variable
-is simply weak.  It is not just repeating another one.
+is simply weak.
 
 ---
 
-## Slide 7 — Feature importance  ·  4:01–5:30
+## Slide 7 — Feature importance  ·  3:59–5:28
 
 This plot shows how much each input contributed to the trained model.
 
@@ -165,7 +165,7 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  5:30–6:08
+## Slide 8 — How a boosted decision tree works  ·  5:28–6:06
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
@@ -178,7 +178,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  6:08–7:33
+## Slide 9 — Training with pybdt (AdaBoost)  ·  6:06–7:31
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -207,7 +207,7 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  7:33–8:58
+## Slide 10 — Training with LightGBM  ·  7:31–8:56
 
 This plot shows LightGBM against the best two pybdt models.
 
@@ -238,7 +238,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  8:58–10:14
+## Slide 11 — LightGBM score distribution  ·  8:56–10:12
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -263,7 +263,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  10:14–11:42
+## Slide 12 — The limit: noise MC statistics  ·  10:12–11:40
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -291,7 +291,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  11:42–13:10
+## Slide 13 — Status and next steps  ·  11:40–13:08
 
 Two things to take away from this.
 
