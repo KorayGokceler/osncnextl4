@@ -1,7 +1,7 @@
 # Speaking script — oscNext Level 4: rebuilding the noise classifier
 
-Thirteen slides, about 2,300 spoken words.  At 150 words a minute, which is a
-normal rehearsed pace, that is 15 minutes.  Read slowly and unrehearsed it runs
+Thirteen slides, about 2,300 spoken words.  At 150 words a minute, a normal
+rehearsed pace, that is 15 minutes.  Read slowly and unrehearsed it runs
 to 16 and a half, so one run-through with a timer is worth it.  The times below
 add up from the start.
 
@@ -79,32 +79,44 @@ descriptions in the reference.
 
 ---
 
-## Slide 4 — Noise BDT inputs, as the reference defines them  ·  1:59–3:10
+## Slide 4 — Noise BDT inputs, as the reference defines them  ·  1:59–3:47
 
-Those five are where the risk sits.  To check them I need a definition to
-compare against.  For two of them, the reference does not give one.
+These are the five inputs of the noise classifier.  The descriptions come from
+Table 11, word for word.
 
-This table has the five noise inputs, with the descriptions from Table 11, word
-for word.  I show their exact wording so the gaps are visible.
+`NchCleaned` is the number of hit DOMs in the cleaned series.  That one arrives
+ready from Level 3, so we do not compute it.
 
-The fourth row is `fill_ratio`.  It describes the spread of the hits about some
-vertex, and then it says "details here", in red.  That is an empty
-cross-reference.  So the reference never tells us which vertex to use.  This row
-comes back on slide 7.
+`micro_count` is the largest number of DOMs inside a two hundred nanosecond
+window.  We build it in four steps.  A fixed window around the trigger time,
+then only the DeepCore fiducial DOMs, then the two hundred nanosecond slide,
+then a count.
 
-The last row is `FullTimeLengthRatio`.  It is a ratio of the cleaned and the
-uncleaned duration.  The document does not say which one goes on top.
+`iLineFit_speed` is the speed from a straight line fit to the hits.  That is the
+standard IceTray segment, run on the cleaned series.
+
+`fill_ratio` is how full a sphere around the event is.  The IceTray module does
+the work, and we give it the centre of the sphere.
+
+`FullTimeLengthRatio` is the cleaned duration over the uncleaned duration.
+Level 3 writes both of them, but not the ratio, so we divide them at Level 4.
+
+Two of these are not really definitions.  For `fill_ratio` the reference says
+the spread of the hits about some vertex, and then it says "details here", in
+red.  That is an empty cross-reference.  So it never tells us which vertex to
+use.  This row comes back on slide 7.  And for `FullTimeLengthRatio` the
+document does not say which duration goes on top.
 
 I found both answers outside the document.  The vertex came from the original
-pass2 code, which uses the first HLC hit.  The direction came from Figure 13,
-because its axis runs from zero to one.
+pass2 code.  That code uses the first HLC hit.  The direction came from
+Figure 13, because its axis runs from zero to one.
 
-This is the weakest part of the chain.  I took these answers from a code file and
-from a figure axis.
+This is the weakest part of the chain.  I took these answers from a code file
+and from a figure axis.
 
 ---
 
-## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:10–4:34
+## Slide 5 — Noise BDT inputs, signal vs. noise  ·  3:47–5:11
 
 This plot shows the five noise inputs on our own pass3 files.
 
@@ -132,7 +144,7 @@ wrong story.
 
 ---
 
-## Slide 6 — Input correlations  ·  4:34–5:23
+## Slide 6 — Input correlations  ·  5:11–6:00
 
 This plot shows how much the five inputs overlap with each other.
 
@@ -151,11 +163,11 @@ another variable already covers it.
 
 ---
 
-## Slide 7 — Feature importance  ·  5:23–6:41
+## Slide 7 — Feature importance  ·  6:00–7:18
 
 This plot shows how much each input contributed to the trained model.
 
-The y axis lists the five inputs, sorted.  The x axis is gain in percent, which
+The y axis lists the five inputs, sorted.  The x axis is gain in percent.  Gain
 means how much each variable improved the splits during training.
 
 `fill_ratio` takes about sixty percent.  `NchCleaned` takes twenty-six.  The last
@@ -181,12 +193,12 @@ That closes the variables.  Now the classifier.
 
 ---
 
-## Slide 8 — How a boosted decision tree works  ·  6:41–7:19
+## Slide 8 — How a boosted decision tree works  ·  7:18–7:56
 
 This will be short.  Boosting trains many shallow trees, one after another, and
 each new tree corrects the mistakes of the earlier ones.  AdaBoost gives more
 weight to the events it gets wrong.  Gradient boosting fits the next tree to the
-gradient of the loss.  The reference uses LightGBM, which is gradient boosting.
+gradient of the loss.  The reference uses LightGBM.  That is gradient boosting.
 
 The detail I need is the output scale.  LightGBM gives a probability between zero
 and one, so the reference cut of 0.70 works on our model directly.  A pybdt score
@@ -194,7 +206,7 @@ is not on that scale, so with pybdt the reference threshold means nothing.
 
 ---
 
-## Slide 9 — Training with pybdt (AdaBoost)  ·  7:19–8:43
+## Slide 9 — Training with pybdt (AdaBoost)  ·  7:56–9:21
 
 This plot shows six pybdt configurations on the test set.  Slides 10 and 12 use
 the same axes.
@@ -223,12 +235,12 @@ us a lot.
 
 ---
 
-## Slide 10 — Training with LightGBM  ·  8:43–10:08
+## Slide 10 — Training with LightGBM  ·  9:21–10:45
 
 This plot shows LightGBM against the best two pybdt models.
 
 I changed one thing only: same events, same variables, same split, same weights,
-same scoring code.  Only the trainer is different, which makes this a fair
+same scoring code.  Only the trainer is different.  So this is a fair
 comparison.
 
 The axes are the ones from the last slide.  The green solid curve is LightGBM and
@@ -254,7 +266,7 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  10:08–11:24
+## Slide 11 — LightGBM score distribution  ·  10:45–12:01
 
 This plot shows the classifier output for train and test.  It exists for one job:
 to show that the model is not overtrained.
@@ -279,7 +291,7 @@ higher than that.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  11:24–12:52
+## Slide 12 — The limit: noise MC statistics  ·  12:01–13:30
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -289,7 +301,7 @@ percentage of events that survive.  Blue is the signal we keep and red is the
 background we reject.  The dotted line is the reference cut at 0.70.
 
 The red curve is already near a hundred by 0.2.  The blue curve stays flat until
-about 0.85.  The reference cut sits inside that window, which is comfortable.
+about 0.85.  The reference cut sits inside that window.  That is a comfortable place.
 
 The right panel is about the limit.  The axes are the ones from slides 9 and 10.
 The grey vertical lines mark where the background statistics run out, at a
@@ -307,7 +319,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  12:52–14:19
+## Slide 13 — Status and next steps  ·  13:30–14:57
 
 Two things to take away from this.
 
@@ -331,7 +343,7 @@ Then the muon classifier, with the CORSIKA background that is already processed.
 Then more vuvuzela simulation for the far tail.  And then the rest of the
 samples, because corrupt input files stopped two jobs early.
 
-Two limits, clearly.  We have no tau neutrino set, which is a few percent of the
+Two limits, clearly.  We have no tau neutrino set.  That is a few percent of the
 signal.  And our muon background is CORSIKA, not real data, so we cannot compare
 data and MC yet.
 
@@ -382,7 +394,7 @@ the far right is a line between two points, not a measurement.
 **On our signal rate sitting above Table 13.**
 Our flux is a simple power law, not a real atmospheric flux with oscillations.  A
 factor of about 1.5 is normal.  The noise rate does not depend on that choice and
-agrees to 13 percent, which tells us the vuvuzela weight unit in pass3 is
+agrees to 13 percent.  That tells us the vuvuzela weight unit in pass3 is
 correct.
 
 **On the weighting bug.**
