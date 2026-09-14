@@ -288,6 +288,8 @@ def cmd_fit(args):
         os.makedirs(outdir)
 
     keys = F.fit_keys()
+    if args.grid:
+        keys += F.grid_keys()
     print("%d candidate definitions -> %d keys, %d file(s)"
           % (len(F.ACC_VARIANTS) + len(F.VICH_VARIANTS) + len(F.RHO_VARIANTS),
              len(keys), len(files)))
@@ -305,6 +307,11 @@ def cmd_fit(args):
              cleaned_pulses=args.cleaned_pulses,
              uncleaned_pulses=args.uncleaned_pulses,
              Streams=[icetray.I3Frame.Physics])
+    if args.grid:
+        tray.Add(F.grid_variants, "grid",
+                 cleaned_pulses=args.cleaned_pulses,
+                 uncleaned_pulses=args.uncleaned_pulses,
+                 Streams=[icetray.I3Frame.Physics])
     counter = {"n": 0}
 
     def _count(frame):
@@ -326,6 +333,9 @@ def cmd_fit_report(args):
     if args.diagnose:
         print("")
         F.diagnose_report(args.hdf5)
+    if args.grid:
+        print("")
+        F.grid_report(args.hdf5)
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +386,8 @@ def main():
     sp.add_argument("--uncleaned-pulses", default=P.PASS2_UNCLEANED_PULSES)
     sp.add_argument("--n", type=int, default=0)
     sp.add_argument("--overwrite", action="store_true")
+    sp.add_argument("--grid", action="store_true",
+                    help="also sweep the fraction/speed-window grids")
     common(sp)
     sp.set_defaults(func=cmd_fit)
 
@@ -384,6 +396,8 @@ def main():
     sp.add_argument("--diagnose", action="store_true", default=True,
                     help="also invert pass2's numbers (default on)")
     sp.add_argument("--no-diagnose", dest="diagnose", action="store_false")
+    sp.add_argument("--grid", action="store_true",
+                    help="also report the grid scan (needs `fit --grid`)")
     sp.set_defaults(func=cmd_fit_report)
 
     sp = sub.add_parser("report", help="compare the two HDF5 files")

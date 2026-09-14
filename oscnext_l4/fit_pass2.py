@@ -796,3 +796,146 @@ def diagnose_report(h5path, stream=None):
                  VICH_SPEED_MIN, VICH_SPEED_MAX), file=out)
         print("    A tight distribution here is their threshold; a broad one "
               "means the speed cut is not what separates us.", file=out)
+
+
+# ---------------------------------------------------------------------------
+# 9. Grid scans
+# ---------------------------------------------------------------------------
+#
+# The inversion narrowed both failures to one parameter each, so sweep that
+# parameter instead of hand-picking more variants:
+#
+#   accumulated_time -- the implied charge fraction sits just BELOW 0.75 in
+#     most events, which is the signature of interpolating to the crossing
+#     rather than snapping to the pulse that crosses it.  So sweep the
+#     fraction AND the snap/interp choice, over each entry set.
+#
+#   VICH -- the veto region is big enough (pass2's count exceeds our ceiling
+#     in 0.16% of events), so the selection inside it is what differs.  The
+#     implied one-sided cut came out at 0.2075, below our 0.25 lower bound,
+#     but broad -- which a one-sided construction would produce even for a
+#     two-sided truth.  So sweep the window in both directions at once.
+#
+# A grid that peaks near 100% names the definition.  A grid whose best cell is
+# still ~15% proves the parameter is not what separates us, which is worth as
+# much: it retires the hypothesis instead of leaving it open.
+
+ACC_FRACTIONS = (0.50, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90)
+VICH_SPEED_MINS = (None, 0.0, 0.10, 0.15, 0.20, 0.25)
+VICH_SPEED_MAXS = (None, 0.30, 0.35, 0.40, 0.50, 1.00)
+
+
+def _acc_grid_fn(sel, fraction, interp):
+    def f(ev):
+        t, q = sel(ev["cleaned"])
+        if t.size == 0:
+            return np.nan
+        if not interp:
+            return _cum_fraction_time(t, q, fraction)
+        order = np.argsort(t, kind="stable")
+        tt, qq = t[order], np.maximum(q[order], 0.0)
+        total = qq.sum()
+        if total <= 0:
+            return np.nan
+        cum = np.cumsum(qq) / total
+        if cum[0] >= fraction:
+            return 0.0
+        return float(np.interp(fraction, cum, tt) - tt[0])
+    return f
+
+
+def acc_grid():
+    out = {}
+    for es_name, sel in ACC_ENTRY_SETS.items():
+        for fr in ACC_FRACTIONS:
+            for interp in (False, True):
+                name = "%s@%.2f%s" % (es_name, fr, "_interp" if interp else "")
+                out[name] = _acc_grid_fn(sel, fr, interp)
+    return out
+
+
+def vich_grid():
+    out = {}
+    for lo in VICH_SPEED_MINS:
+        for hi in VICH_SPEED_MAXS:
+            if lo is not None and hi is not None and lo >= hi:
+                continue
+            name = "s_%s_%s" % ("none" if lo is None else ("%.2f" % lo),
+                                "none" if hi is None else ("%.2f" % hi))
+            out[name] = _vich_variant(speed_min=lo, speed_max=hi)
+    return out
+
+
+ACC_GRID = acc_grid()
+VICH_GRID = vich_grid()
+
+
+def grid_keys():
+    keys = [FIT_PREFIX + "gacc_" + _slug(n) for n in ACC_GRID]
+    keys += [FIT_PREFIX + "gvich_" + _slug(n) for n in VICH_GRID]
+    return keys
+
+
+def grid_variants(frame, cleaned_pulses, uncleaned_pulses):
+    """Tray module: evaluate every grid cell."""
+    from icecube import dataclasses
+    ev = extract(frame, cleaned_pulses, uncleaned_pulses)
+    if ev is None:
+        return True
+    for name, fn in ACC_GRID.items():
+        key = FIT_PREFIX + "gacc_" + _slug(name)
+        if key not in frame:
+            frame[key] = dataclasses.I3Double(float(_safe(fn, ev)))
+    for name, fn in VICH_GRID.items():
+        key = FIT_PREFIX + "gvich_" + _slug(name)
+        if key in frame:
+            continue
+        try:
+            n_dom, _, _ = fn(ev)
+        except Exception:
+            n_dom = np.nan
+        frame[key] = dataclasses.I3Double(float(n_dom))
+    return True
+
+
+def grid_report(h5path, top=12, stream=None):
+    import sys
+    from .pass2 import read_pairs
+    out = stream or sys.stdout
+
+    pairs = [("ref_acc", "L4_accumulated_time", "value"),
+             ("ref_vich", "L4_VICH_nch", "value")]
+    pairs += [("acc:" + n, FIT_PREFIX + "gacc_" + _slug(n), "value")
+              for n in ACC_GRID]
+    pairs += [("vich:" + n, FIT_PREFIX + "gvich_" + _slug(n), "value")
+              for n in VICH_GRID]
+    data, missing = read_pairs(h5path, pairs)
+
+    print("Grid scan: %s" % h5path, file=out)
+    print("events: %d" % len(data["Run"]), file=out)
+    if missing:
+        print("not found: %d key(s) -- rerun `fit` with --grid"
+              % len(missing), file=out)
+
+    for label, prefix, grid, ref_key in (
+            ("accumulated_time", "acc:", ACC_GRID, "ref_acc"),
+            ("VICH_nch", "vich:", VICH_GRID, "ref_vich")):
+        ref = data[ref_key]
+        rows = []
+        for name in grid:
+            frac, med, n = score(ref, data[prefix + name])
+            rows.append((frac, med, n, name))
+        rows.sort(key=lambda r: -r[0])
+        print("\n%s -- best %d of %d cells" % (label, min(top, len(rows)),
+                                               len(rows)), file=out)
+        print("  %-28s %10s %14s" % ("cell", "agree", "median|diff|"),
+              file=out)
+        print("  " + "-" * 56, file=out)
+        for frac, med, n, name in rows[:top]:
+            mark = "  <== pass2" if frac > 0.99 else ""
+            print("  %-28s %9.2f%% %14.6g%s"
+                  % (name, 100 * frac, med, mark), file=out)
+        if rows and rows[0][0] <= 0.5:
+            print("  -> the best cell is only %.1f%%, so this parameter is NOT "
+                  "what separates us: the sweep retires it."
+                  % (100 * rows[0][0]), file=out)
