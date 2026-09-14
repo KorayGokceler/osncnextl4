@@ -196,6 +196,12 @@ def compare_table(cleaned_pulses=PASS2_CLEANED_PULSES):
     ]
 
 
+# Rows that are neither a rewrite nor a control: the ORIGINAL IceTray module,
+# but fed an input we produce.  A disagreement here is inherited from that
+# input, so it must not raise the "the two sides saw different data" alarm --
+# it points one row up, not at the module.
+DEPENDS_ON = {"fill_ratio": "first_hlc_rho (the vertex we pass it)"}
+
 # Integer-valued: for these "exactly equal" is the only acceptable outcome.
 INTEGER_VARS = {"micro_count", "VICH_nch", "VICH_npulses", "n_hit_doms",
                 "NchCleaned", "ICVetoHits"}
@@ -361,7 +367,12 @@ def _verdict(name, ours, theirs):
 
     a, b = ours[both], theirs[both]
     diff = a - b
-    rel = np.abs(diff) / np.maximum(np.abs(b), 1e-300)
+    # A relative difference against a reference of exactly 0 is undefined, not
+    # 1e300: dividing by a tiny floor printed "max rel 5e+300", which says
+    # nothing except that pass2 stored a 0 somewhere.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rel = np.where(b != 0, np.abs(diff) / np.abs(np.where(b != 0, b, 1)),
+                       np.where(diff != 0, np.inf, 0.0))
     exact = float((diff == 0).mean())
     max_abs = float(np.max(np.abs(diff)))
     max_rel = float(np.max(rel))
@@ -422,9 +433,11 @@ def report(ours_h5, pass2_h5, cleaned_pulses=PASS2_CLEANED_PULSES,
         rows.append({"name": name, "rewritten": rewritten, "status": status,
                      "n": n, "exact": exact, "max_abs": max_abs,
                      "max_rel": max_rel})
+        role = ("rewritten" if rewritten
+                else "derived" if name in DEPENDS_ON else "control")
         print("  %-22s %-9s %8d %8.2f%% %11.4g %11.4g  %s"
-              % (name, "rewritten" if rewritten else "control", n,
-                 100 * exact, max_abs, max_rel, status), file=out)
+              % (name, role, n, 100 * exact, max_abs, max_rel, status),
+              file=out)
 
     print("", file=out)
     for r in [x for x in rows if x["status"] == "DIFFERS"]:
@@ -452,7 +465,16 @@ def report(ours_h5, pass2_h5, cleaned_pulses=PASS2_CLEANED_PULSES,
                   file=out)
             print("", file=out)
 
-    ctrl = [r for r in rows if not r["rewritten"]]
+    for r in rows:
+        if r["status"] == "DIFFERS" and r["name"] in DEPENDS_ON:
+            print("%s: the original IceTray module, but driven by %s.  A "
+                  "disagreement here is inherited from that input -- fix it "
+                  "there first." % (r["name"], DEPENDS_ON[r["name"]]),
+                  file=out)
+            print("", file=out)
+
+    ctrl = [r for r in rows
+            if not r["rewritten"] and r["name"] not in DEPENDS_ON]
     bad_ctrl = [r["name"] for r in ctrl if r["status"] == "DIFFERS"]
     if bad_ctrl:
         print("CONTROL ROWS DISAGREE: %s.  Fix this before reading the "
