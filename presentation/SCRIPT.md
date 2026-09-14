@@ -193,32 +193,16 @@ engine.
 
 ---
 
-## Slide 11 — LightGBM score distribution  ·  6:07–7:23
+## Slide 11 — LightGBM score distribution  ·  6:07–6:23
 
-This plot shows the classifier output for train and test.  It exists for one job:
-to show that the model is not overtrained.
+As you can see from these plots, the classifier separates noise and signal
+nicely.  The left panel is linear and the right one is on a log scale.
 
-The x axis is the classifier output from zero to one.  The y axis is the training
-weight per bin.  There are four curves: signal and background, train and test.
-Both panels hold the same histogram, linear on the left and log on the right.
-
-In the left panel the signal piles up against one and the background against
-zero.  The middle is almost empty.  That is a working classifier.
-
-Overtraining would show in the tail between the two peaks.  On a linear axis that
-tail lies flat on the floor.  On the log axis it becomes visible.  And there the
-train and test curves follow each other bin by bin.  So the check passes.
-
-One caution on the y axis.  We normalise each class to the same total, so the two
-areas are equal by definition.  This slide does not say that we have as much
-background as signal.
-
-The red curves stop around 0.85.  No background event in the test set scores
-higher than that.
+And we also see no overtraining here, because train and test agree.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  7:23–8:52
+## Slide 12 — The limit: noise MC statistics  ·  6:23–7:52
 
 This plot shows where our noise simulation runs out, from two sides.  The engine
 was the problem and we fixed it, so this is the limit now.
@@ -246,7 +230,7 @@ target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  8:52–10:19
+## Slide 13 — Status and next steps  ·  7:52–9:20
 
 Two things to take away from this.
 
@@ -324,6 +308,12 @@ least 500 events in one leaf, and somebody tuned that number on far more noise
 simulation than we have.  We only had about 830 background events in the fit, so
 that setting limits the trees hard.  The training also stopped early, at 122
 trees out of 2,000.
+
+**On the y axis of the score distribution.**
+It is the training weight, added up in each bin.  We normalise each class to the
+same total, so the blue area and the red area are equal by definition.  The plot
+does not say that we have as much background as signal.  We do not.  For noise
+the weights are all equal, so the red curves are really event counts.
 
 **On 95.9 percent resting on ten background events.**
 That is a fair point.  Ten test-set background events define the 99 percent
