@@ -204,61 +204,42 @@ And we also see no overtraining here, because train and test agree.
 
 ---
 
-## Slide 12 — The limit: noise MC statistics  ·  6:32–8:01
+## Slide 12 — The limit: noise MC statistics  ·  6:32–7:30
 
-This plot shows where our noise simulation runs out, from two sides.  The engine
-was the problem and we fixed it, so this is the limit now.
+This plot shows where our noise simulation runs out.
 
-The left panel is about safety.  The x axis is the cut value.  The y axis is the
-percentage of events that survive.  Blue is the signal we keep and red is the
-background we reject.  The dotted line is the reference cut at 0.70.
+On the left, the x axis is the cut value and the y axis is the percentage of
+events that survive.  Blue is the signal we keep and red is the background we
+reject.  The dotted line is the reference cut at 0.70.  As you can see, it sits
+in a comfortable place: we reject almost all the noise and lose almost no
+signal.
 
-The red curve is already near a hundred by 0.2.  The blue curve stays flat until
-about 0.85.  The reference cut sits inside that window.  That is a comfortable place.
+On the right, the axes are the ones from slides 9 and 10.  The grey lines mark
+where the background statistics run out, at a hundred, ten and one remaining
+events.  The star sits past the "ten events" line.
 
-The right panel is about the limit.  The axes are the ones from slides 9 and 10.
-The grey vertical lines mark where the background statistics run out, at a
-hundred, ten and one remaining events.  The star sits past the "ten events" line.
-
-Our test set has about 330,000 signal events and 2,051 noise events.  At 90
-percent rejection about 100 background events survive.  At 95 percent, 50.  At 99
-percent, ten.  The reference target sits at 99.2 percent, and only eight events
-define that point.
-
-So I want to be careful about my request.  We have enough noise MC to reach the
-target.  We do not have enough to measure anything above 99 percent rejection.
-More vuvuzela simulation is useful, but we need it for the far tail, not for the
-target.
+So we have enough noise MC to reach the target, but not enough to measure
+anything above 99 percent rejection.  More vuvuzela simulation is useful, but we
+need it for the far tail, not for the target.
 
 ---
 
-## Slide 13 — Status and next steps  ·  8:01–9:28
-
-Two things to take away from this.
+## Slide 13 — Status and next steps  ·  7:30–8:30
 
 The classifier works.  Level 3 to Level 4 is rebuilt for pass3 and runs
-reliably.  All fourteen inputs are found.  And the noise classifier reaches the
-target.
+reliably, all fourteen inputs are found, and the noise classifier reaches the
+target.  The five variables I wrote myself are probably correct, but not proven.
 
-The five rewritten variables are probably correct, but not proven.  That is the
-first item here.
+That is the first next step.  The pass2 Level 4 files already contain these
+variables, produced by the original code, so we can compare them event by event.
+It would also let us train on one pass and test on the other.  So if you know
+where those files are, I would be glad to hear it afterwards.
 
-We should compare our variables with the pass2 Level 4 files.  Those files
-already contain these variables, produced by the original code.  So we can
-compare them event by event.  This is the only real way to check the five I wrote
-myself.  It would also let us train on one pass and test on the other.  So if you
-know where those files are, I would be glad to hear it afterwards.
+The second step is the `fill_ratio` radius, from slide 7.  Then the muon
+classifier, then more vuvuzela simulation, then the rest of the samples.
 
-The second step is the `fill_ratio` radius, from slide 7.  One parameter, one
-scan, and it touches sixty percent of the model.
-
-Then the muon classifier, with the CORSIKA background that is already processed.
-Then more vuvuzela simulation for the far tail.  And then the rest of the
-samples, because corrupt input files stopped two jobs early.
-
-Two limits, clearly.  We have no tau neutrino set.  That is a few percent of the
-signal.  And our muon background is CORSIKA, not real data, so we cannot compare
-data and MC yet.
+Two limits.  We have no tau neutrino set, and our muon background is CORSIKA,
+not real data, so we cannot compare data and MC yet.
 
 Thank you.  I am happy to take questions.
 
@@ -318,8 +299,11 @@ does not say that we have as much background as signal.  We do not.  For noise
 the weights are all equal, so the red curves are really event counts.
 
 **On 95.9 percent resting on ten background events.**
-That is a fair point.  Ten test-set background events define the 99 percent
-number, so its uncertainty is large.  The 95 percent row has fifty events and is
+That is a fair point.  The test set has about 330,000 signal events against
+2,051 noise, a ratio of 159 to one, and the cut eats what is left of the noise
+fast.  About 100 background events survive at 90 percent rejection, 50 at 95,
+ten at 99.  The reference target sits at 99.2 percent, and only eight events
+define that point.  So the uncertainty on the 99 percent number is large.  The 95 percent row has fifty events and is
 much firmer, and there LightGBM gives 98.5 against 91.7.  The order is clear, the
 exact value at 99 percent is not.
 
