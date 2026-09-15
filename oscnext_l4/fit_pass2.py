@@ -357,11 +357,14 @@ VICH_VARIANTS = {
     #                  OutputResponse = "OfflinePulsesICVeto",
     #                  OmittedKeys    = DOMList.DeepCoreFiducialDOMs)
     #
-    # i.e. "veto" means NOT FIDUCIAL, not a separate list.  Our _vich uses
-    # DOMS.DeepCoreVetoDOMs, which is a specific (narrower) list.  The
-    # complement is wider, and our count is the one that is too LOW -- median 3
-    # against pass2's 5 -- so the direction fits.  This is the first veto-region
-    # candidate taken from production code rather than inferred from the note.
+    # i.e. "veto" means NOT FIDUCIAL, not a separate list.
+    #
+    # RETIRED before it was ever run.  DOMS.DOMS("IC86") was measured: 554
+    # fiducial DOMs, 4606 veto DOMs, disjoint, 5160 together = 86 x 60, the
+    # whole in-ice detector.  So DeepCoreVetoDOMs ALREADY IS the complement of
+    # the fiducial list and these variants are identical to the production
+    # _vich for any in-ice pulse series.  Kept only so the report shows the
+    # equality rather than leaving the question open; they cost a row each.
     "veto_not_fiducial":         _vich_variant(veto_field="notfid"),
     "veto_not_fiducial_no_speed": _vich_variant(veto_field="notfid",
                                                 speed_min=None, speed_max=None),
@@ -512,8 +515,10 @@ def _arrays(pulse_map, geometry, veto_doms, fid_doms):
             "dom": f(dom, np.int64), "string": st, "om": om,
             "hlc": f(hlc, bool), "veto": f(veto, bool), "fid": fid_arr,
             # "everything that is NOT fiducial".  This is how the PRODUCTION
-            # L3 script builds its veto series -- see the variant note below --
-            # and it is a wider set than DeepCore_Filter's own DeepCoreVetoDOMs.
+            # L3 script builds its veto series -- see the variant note below.
+            # MEASURED: it is the SAME set as DeepCore_Filter's own
+            # DeepCoreVetoDOMs (554 + 4606 = 5160 = 86 x 60, disjoint), not a
+            # wider one, so "veto" and "notfid" agree on in-ice pulses.
             "notfid": ~fid_arr,
             "l3fid": l3fid, "l3veto": ~l3fid}
 

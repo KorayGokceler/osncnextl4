@@ -159,9 +159,13 @@ sklearn/joblib, only `lightgbm` + `numpy`.
 
    - the speed window: a 36-cell sweep of both edges peaks at **18.0%**, and
      the median difference stays pinned at **2 DOMs in every cell**;
-   - the veto region: pass2's count exceeds the DOMs hit in our region in only
-     **0.16%** of events, so the region is big enough, and Table 7's L3 region
-     does no better (11.4%);
+   - the veto region -- **now closed by construction**: `DOMS.DOMS("IC86")`
+     gives 554 fiducial + 4606 veto DOMs, disjoint, 5160 in total = the whole
+     in-ice detector, so `DeepCoreVetoDOMs` already IS "everything not
+     fiducial", the definition `oscNext_L3.py` uses.  There is no wider
+     region to try.  The earlier measurements agree: pass2's count exceeds
+     the DOMs hit in our region in only **0.16%** of events, and Table 7's L3
+     region does no better (11.4%);
    - the COG: unweighted (12.0%) and non-fiducial (11.9%) are the same as ours
      (12.0%);
    - the reference point: the verified first HLC hit instead of the COG, 11.7%;
@@ -524,8 +528,16 @@ are never called once `Process()` is overridden) -- removed.
     non-comment lines), and it shows how the collaboration actually builds a
     veto series: `I3OMSelection` with `OmittedKeys=DOMList.DeepCoreFiducialDOMs`
     on `splituncleaned`, i.e. **"veto" means NOT FIDUCIAL**, not a separate
-    list.  Our `_vich` uses `DOMS.DeepCoreVetoDOMs`, a narrower list -- a
-    difference now under test (open risk 1).
+    list.  **It is NOT a narrower list, and an earlier entry here said it
+    was.**  Measured on the real object: `DOMS.DOMS("IC86")` gives 554
+    fiducial and 4606 veto DOMs, disjoint, summing to 5160 = 86 x 60, i.e.
+    the whole in-ice detector.  `DeepCoreVetoDOMs` IS the complement of
+    `DeepCoreFiducialDOMs`, so our `_vich` region already equals the
+    production's "not fiducial".  The veto region is therefore closed as a
+    VICH hypothesis **by construction**, not merely by the 0.16% ceiling
+    test (open risk 1).  (The only residue: `~fiducial` taken over the
+    geometry would also admit IceTop DOMs, which never appear in
+    `SplitInIcePulses`.)
   - **`tau_bdt` is NOT in it**, so `I3CutL7Module` is still unread.  The only
     mention is `VICH = "L7VetoHitsTotalPE"`, a parameter of the old GRECO L5
     BDT (`TauBDTL5`), not of our variable.
