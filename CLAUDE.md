@@ -200,6 +200,18 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    entry's charge share short.  The median shortfall 0.024 is an average
    pulse's share at this hit multiplicity, so the size matched too.
 
+   **The residual is characterised.**  The real pipeline with
+   `--accumulated-time-pass2` reproduces the fit exactly (99.40%), and the 49
+   remaining events of 8144 split into 30 where pass2 stored exactly **0** and
+   19 that genuinely differ.  The 30 are almost certainly not ours: giving 0
+   requires one pulse carrying three quarters of the event, yet our value in
+   those same events is 800-1600 ns over the same pulse series.  A default is
+   the consistent reading -- the original pulls the number out of the Dunkman
+   compound, which yields zero when the calculation did not apply (31/8144 =
+   0.38%).  The other 19 (0.23%) are most likely tie-breaks or negative-charge
+   handling.  Not worth chasing: 0.98% -> 99.40% on the sixth of ten muon
+   inputs.
+
    **Decision: the DEFAULT follows the note** (at the crossing), as it does for
    micro_count (open risk 5b) -- we follow the description, not the original's
    slip.  `--accumulated-time-pass2` / `oscNext_L4(accumulated_time_pass2=True)`

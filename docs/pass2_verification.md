@@ -199,6 +199,28 @@ fraction × rule:
 — which is not "the time to reach 75%".  The zero point, long listed as the
 suspect, was never the problem: `t[idx] − t[0]` is right.
 
+**The residual was characterised, not waved away.**  Running the real pipeline
+with `--accumulated-time-pass2` gives 99.40% -- exactly what the fit predicted,
+so the production change is right -- and the 49 remaining events of 8144 split
+in two:
+
+- **30 events where pass2 stored exactly 0** (it stores 0 in 31 events in all;
+  we agree in 1).  These are almost certainly **not our error**.  For the
+  before-the-crossing rule to give 0, the cumulative charge must reach 75% at
+  the first or second entry, i.e. one pulse carrying three quarters of the
+  event.  In those same events our value is 1570, 1411, 849 ns -- if reaching
+  75% takes that long over that pulse series, no rule reading the same series
+  lands on 0.  A default is the consistent explanation: the original extracts
+  the value out of the Dunkman compound
+  (`frame[dunk_vars_key].accumulated_time`), which yields zero when the
+  calculation did not apply.  31 of 8144 is 0.38%, a plausible failure rate.
+- **19 events (0.23%) that genuinely differ**, both sides non-zero.  Most
+  likely tie-breaking between pulses sharing a time, or negative-charge
+  handling.
+
+Neither is worth chasing further: the rule went from 0.98% to 99.40%, and this
+is the sixth of the muon BDT's ten inputs.
+
 **In the production code:** the default follows the note (at the crossing), as
 it does for `micro_count`; `--accumulated-time-pass2` reproduces pass2.  The
 two code paths were checked against each other on 4000 random events with 0
