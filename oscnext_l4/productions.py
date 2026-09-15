@@ -33,12 +33,14 @@ Verified against real files and the technical note; the full account is in
 | cleaned pulses | `SRTTWSplitInIcePulsesDC` | `SRTTWOfflinePulsesDC` |
 | uncleaned pulses | `SplitInIcePulses` | the same |
 | noise weight unit | 1/ns | Hz |
-| L3 cut | `L3_oscNext_bool` (data quality included) | falls back to `IC2018_LE_L3_bools`, so data quality is NOT applied |
+| L3 cut | `L3_oscNext_bool` (data quality ANDed by the pass3 script) | `L3_oscNext_bool` too -- `oscNext_L3.py` folds data quality INTO `IC2018_LE_L3_Full` and copies it there, so both branches of `l3_cut` agree and the cut is applied either way |
 | `I3GenieInfo` | present | **absent** -- every event falls back to `NEvents * 70/30` |
 | muon background | CORSIKA | MuonGun (there is no CORSIKA in these paths) |
 
 The last two matter for weights, not for the BDT inputs, and neither touches
-the noise classifier.
+the noise classifier.  An earlier version of this table claimed pass2 drops
+the data-quality cut; that was read out of the technical note and is wrong --
+the production L3 script settles it.  See CLAUDE.md, "Running on pass2".
 """
 
 import os
