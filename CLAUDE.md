@@ -142,7 +142,8 @@ sklearn/joblib, only `lightgbm` + `numpy`.
       gap +0.1 points
 - [ ] numu / noise need reprocessing -- cut short by corrupt `.i3.zst`
 - [ ] Muon classifier not trained
-- [ ] The rewritten variables (VICH, accumulated_time) not verified
+- [x] The rewritten variables verified against the real pass2 production:
+      VICH 100.00%, accumulated_time 99.40%, first_hlc_rho 99.85%
 - [ ] Noise MC statistics inadequate (~2,000 events) -- nothing right of 99%
       rejection is measurable
 
@@ -151,53 +152,52 @@ sklearn/joblib, only `lightgbm` + `numpy`.
 > The technical note has been read and compared with the code line by line:
 > **`docs/technical_note_comparison.md`**.
 
-1. **VICH — NOT verified, and the justification was wrong.**  This was
-   recorded as "largely verified" because sec. 3.4 gives a speed window of
-   [0.25, 0.4] m/ns.  Reading that section in full (p.26-27, lines 483-493)
-   shows it describes the **Level 2 DeepCore Filter**, a different algorithm:
-   that filter SRT-cleans SplitUncleanedInIcePulses, splits it into fiducial
-   and veto series, takes the COG of the fiducial hits, derives a speed
-   between each veto hit and that vertex, and DISCARDS hits in the window.
-   Our `_vich` borrowed that window as its SELECTION rule.  The note's only
-   description of `L4_VICH_nch` is Table 12's one line -- no window, no
-   region, no reference point.
+1. **VICH — SOLVED (100.00%).**  `_vich` is now `VetoCausalHits` from the
+   pythonic reimplementation of the LowEnVariables algorithms used by the GRECO
+   online filter.  Measured against the real pass2 L4 files over 8144 events:
+   `nch` **100.00%**, `npulses` **100.00%**, `qtot` **100.00%**, median
+   difference 0 on all three.
 
-   The pass2 cross-check agrees that it is wrong and has retired five
-   hypotheses (8144 events; best agreement in brackets):
+   For every trigger with a matching config id (DeepCore SMT3, 1011), the hit
+   CLOSEST IN TIME to it is the reference; with `dt = t_ref - t_hit` and `d` the
+   distance to it, a hit counts when `d < 750`, `dt > -5d + 500`,
+   `dt < d/0.3 + 150` and `dt > d/0.3 - 1850`.  The production loops over every
+   matching trigger and accumulates; `nch` takes the union of the selected
+   hits' DOMs.  Input: the uncleaned series, pulse by pulse
+   (`GetHitInformation(..., hitMode=0)`), which was already verified from
+   `reference/oscNext_L4_pass2_original.py`.
 
-   - the speed window: a 36-cell sweep of both edges peaks at **18.0%**, and
-     the median difference stays pinned at **2 DOMs in every cell**;
-   - the veto region -- **now closed by construction**: `DOMS.DOMS("IC86")`
-     gives 554 fiducial + 4606 veto DOMs, disjoint, 5160 in total = the whole
-     in-ice detector, so `DeepCoreVetoDOMs` already IS "everything not
-     fiducial", the definition `oscNext_L3.py` uses.  There is no wider
-     region to try.  The earlier measurements agree: pass2's count exceeds
-     the DOMs hit in our region in only **0.16%** of events, and Table 7's L3
-     region does no better (11.4%);
-   - the COG: unweighted (12.0%) and non-fiducial (11.9%) are the same as ours
-     (12.0%);
-   - the reference point: the verified first HLC hit instead of the COG, 11.7%;
-   - the input series: the cleaned series instead of the uncleaned one, 2.8%.
+   **The old implementation could not have worked, and the search shows why.**
+   It followed sec. 3.4's speed window [0.25, 0.40] m/ns over the veto DOMs
+   around a fiducial COG, and reproduced pass2 in ~12% of events with the
+   median difference pinned at 2 DOMs.  That passage describes the **Level 2
+   DeepCore Filter**, a different algorithm that uses the window to DISCARD
+   hits; Table 12's one line is the note's only description of `L4_VICH_nch`.
 
-   Everything lands at ~12% with a median difference of 2, which is what you
-   see when the swept parameter is not the one that differs: **the algorithm is
-   structurally different, not a parameter away.**  Note p.60 (line 880) warns
-   outright that "some algorithms used throughout their event selection may use
-   differing definitions of what precisely constitutes the veto region".
+   Five hypotheses were retired by measurement, all landing at ~12%: the speed
+   window (a 36-cell sweep of both edges peaked at 18.0%, median difference
+   pinned at 2 in EVERY cell -- the signature of sweeping the wrong knob), the
+   veto region (closed by construction: `DOMS.DOMS("IC86")` gives 554 fiducial
+   + 4606 veto DOMs, disjoint, 5160 = the whole in-ice detector, so
+   `DeepCoreVetoDOMs` already IS "not fiducial"), the COG (unweighted 12.0%,
+   non-fiducial 11.9%), the reference point (first HLC hit, 11.7%) and the
+   input series (cleaned, 2.8%).
 
-   **The fastest resolution is the `tau_bdt` source** (`I3CutL7Module`), which
-   is not in this meta-project.  The direction `dt = t_COG − t_hit > 0` is
-   consistent with the physics, but that is all that can be said for the
-   current implementation.
-   **Deviation found (fixed):** the note says the COG is computed from the hits
-   *in the fiducial volume*; the code used the whole cleaned series.  In events
-   with a muon the veto hits pulled the COG upward (test: z −400 → −43).
-   `fiducial_cog=True` is now the default; `False` restores the old behaviour.
-   **Still open:** is the COG charge weighted?  The note does not say; we take
-   it charge weighted.  **The pulse series IS verified:** the original pass2
-   code (`reference/oscNext_L4_pass2_original.py`) passes
-   `InputPulses=uncleaned_pulses  # Use uncleaned hits` to `I3CutL7Module`, so
-   our use of the raw `SplitInIcePulses` matches the original.
+   Three structural differences separate the real algorithm from the old one,
+   and none is reachable by tuning: **no speed window** (four conditions in the
+   (distance, dt) plane instead), **no veto DOM list** -- restricting the same
+   bands to the veto DOMs drops agreement from 100% to **19.4%**, so the region
+   is implicit in the bands -- and the **trigger** rather than a COG as the
+   reference.  Note p.60 warned outright that "some algorithms used throughout
+   their event selection may use differing definitions of what precisely
+   constitutes the veto region"; it was more than that.
+
+   `_vich` no longer takes `cleaned_pulses` or `fiducial_cog`.  One trap worth
+   keeping: the MERGED and THROUGHPUT triggers carry **no** config id, and
+   reading it unguarded raises and loses every trigger in the event -- which is
+   exactly how the first attempt produced NaN in all 8144 events.
+
+   `tau_bdt` / `I3CutL7Module` was never found and is no longer needed.
 
 2. **accumulated_time — SOLVED against pass2 (99.40%).**  Table 12 says "Time
    to reach 75% of an event's charge in the cleaned pulse series"; the fraction
@@ -235,10 +235,16 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    handling.  Not worth chasing: 0.98% -> 99.40% on the sixth of ten muon
    inputs.
 
-   **Decision: the DEFAULT follows the note** (at the crossing), as it does for
-   micro_count (open risk 5b) -- we follow the description, not the original's
-   slip.  `--accumulated-time-pass2` / `oscNext_L4(accumulated_time_pass2=True)`
-   reproduces pass2.  The two code paths were checked against each other on
+   **Decision: the DEFAULT now REPRODUCES pass2** (the pulse before the
+   crossing), as it does for micro_count (open risk 5b).  This reverses an
+   earlier decision to follow the note.  The reason is what this pipeline is
+   for: a model trained on variables that differ from the production's is
+   training on a different quantity, so matching the numbers the collaboration
+   actually produced comes first.  `--accumulated-time-note` /
+   `oscNext_L4(accumulated_time_pass2=False)` follows the note instead (0.98%).
+   Note that LowEnVariables' own `TimeToSum` uses `>= fraction`, i.e. the
+   crossing, so the note's reading is the better-documented one -- it is simply
+   not what pass2's Dunkman code produced.  The two code paths were checked against each other on
    4000 random events: 0 mismatches.  The production sort was also made stable,
    so tied pulse times give a reproducible index.
    `separation_in_cogs` is not a BDT input -- low priority.
@@ -331,10 +337,13 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    extra parameters.  The x axis of Figure 13 is logarithmic, 10⁻³ – 10³ (m/ns).
 
 5b. **micro_count: the original code and the note CONTRADICT -- DECISION: the
-   note.**  The original pass2 code starts the chain from `uncleaned_pulses`
-   (`I3StaticTWC(InputResponse=uncleaned_pulses)`), while Table 11 says
-   *"Start with the cleaned pulse series"*.  **We follow the note** (the
-   default, a permanent decision).
+   ORIGINAL.**  The original pass2 code starts the chain from
+   `uncleaned_pulses` (`I3StaticTWC(InputResponse=uncleaned_pulses)`), while
+   Table 11 says *"Start with the cleaned pulse series"*.  **We follow the
+   original**, so the default reproduces pass2; `--micro-count-cleaned` follows
+   the note.  This reverses an earlier decision to follow the note, for the
+   same reason as open risk 2: reproducing the production's numbers comes
+   before matching its documentation.
    **Measured -- the difference is almost nil:** the two chains were computed on
    the same events.  115 of 126 nue events and 16 of 17 noise events are
    **exactly equal**; the medians agree (5 and 3).  The reason: the closing
@@ -343,9 +352,9 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    also why the dead SeededRT code in pass2 went unnoticed for years.
    So the fix is **right but small**; the original assessment ("the
    classifier's separating power was seriously degraded") was overstated.
-   Both can be produced for comparison: `process_L4.py --micro-count-uncleaned`,
-   `run_all(extra_args=["--micro-count-uncleaned"])` from the notebook, or
-   `oscNext_L4(micro_count_uncleaned=True)` directly.  `fill_ratio` uses the
+   Both can be produced for comparison: `process_L4.py --micro-count-cleaned`,
+   `run_all(extra_args=["--micro-count-cleaned"])` from the notebook, or
+   `oscNext_L4(micro_count_uncleaned=False)` directly.  `fill_ratio` uses the
    cleaned series either way (as the original does).
    Details in "Booking/read audit", item 4.
    **Verified from the original:** the DeepCore fiducial `I3OMSelection` step

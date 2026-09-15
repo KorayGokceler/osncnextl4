@@ -210,17 +210,15 @@ INTEGER_VARS = {"micro_count", "VICH_nch", "VICH_npulses", "n_hit_doms",
 # deliberate deviation is never mistaken for a bug in the rewrite.
 EXPECTED_DEVIATION = {
     "micro_count":
-        "EXPECTED under the default settings.  pass2 starts the micro_count "
-        "chain from the UNCLEANED series, the note's Table 11 says the "
-        "cleaned one, and we follow the note (CLAUDE.md open risk 5b).  The "
-        "pass2 L4 file shows this directly: L4_TWPulses_DCFid is built from "
-        "L4_TWPulses (the StaticTWC output), so the L4_SRTTWPulses in the "
-        "same frame is written and never read -- the dead cleaning step of "
-        "booking-audit bug 4, on real data.  To compare the IMPLEMENTATION "
-        "rather than the decision, rerun process_L4.py with "
-        "--micro-count-uncleaned: our chain is then uncleaned -> StaticTWC -> "
-        "fiducial -> 200 ns DTW, which is pass2's chain with the dead step "
-        "left out, so it should match exactly.",
+        "NOT expected any more.  The default now starts the micro_count chain "
+        "from the UNCLEANED series, as pass2 does, so this row should MATCH.  "
+        "A disagreement here is a real finding.  (pass2's own chain contains a "
+        "dead SeededRT step -- the pass2 L4 file shows L4_TWPulses_DCFid built "
+        "from L4_TWPulses, so L4_SRTTWPulses is written and never read, "
+        "booking-audit bug 4 on real data -- and ours is that chain with the "
+        "dead step left out, which is why it matches.)  Rerun with "
+        "--micro-count-cleaned to get Table 11's reading instead; that one is "
+        "EXPECTED to differ, in about 9% of events.",
 }
 
 # Below this a float difference is arithmetic noise, not a different

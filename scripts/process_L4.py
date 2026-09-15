@@ -377,16 +377,23 @@ def main():
                         "I3TensorOfInertia (L4_ToI) and separation_in_cogs.  "
                         "Neither appears in Table 11/12, so this is off by "
                         "default; it only costs processing time.")
-    p.add_argument("--accumulated-time-pass2", action="store_true",
-                   help="reproduce the pass2 production's accumulated_time: "
-                        "take the pulse BEFORE the cumulative charge crosses "
-                        "75%% (an off-by-one, fitted at 99.40%% against 8144 "
-                        "pass2 events).  The default follows the note.")
-    p.add_argument("--micro-count-uncleaned", action="store_true",
-                   help="start the micro_count chain from the UNCLEANED series -- "
-                        "the behaviour of the original pass2 code.  The default "
-                        "(no flag) follows the technical note and starts from the "
-                        "cleaned series.  Only for reproducing the pass2 numbers.")
+    p.add_argument("--accumulated-time-pass2", dest="accumulated_time_pass2",
+                   action="store_true", default=True,
+                   help="reproduce the pass2 production's accumulated_time: take "
+                        "the pulse BEFORE the cumulative charge crosses 75%% "
+                        "(99.40%% over 8144 pass2 events).  THIS IS THE DEFAULT.")
+    p.add_argument("--accumulated-time-note", dest="accumulated_time_pass2",
+                   action="store_false",
+                   help="follow the technical note instead: take the pulse AT the "
+                        "crossing.  Agrees with pass2 in 0.98%% of events.")
+    p.add_argument("--micro-count-uncleaned", dest="micro_count_uncleaned",
+                   action="store_true", default=True,
+                   help="start the micro_count chain from the UNCLEANED series, as "
+                        "the original pass2 code does.  THIS IS THE DEFAULT.")
+    p.add_argument("--micro-count-cleaned", dest="micro_count_uncleaned",
+                   action="store_false",
+                   help="follow Table 11 instead and start from the cleaned "
+                        "series.  The two differ in about 9%% of events.")
     p.add_argument("--usage", action="store_true",
                    help="print PER-MODULE CPU time at the end, to see which module "
                         "is slow.  Run this before optimising anything.")

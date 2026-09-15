@@ -981,8 +981,8 @@ def oscNext_L4(tray, name,
                run_optional=False,
                apply_cut=False,
                classifier_model_dir=None,
-               micro_count_uncleaned=False,
-               accumulated_time_pass2=False):
+               micro_count_uncleaned=True,
+               accumulated_time_pass2=True):
     '''
     The main oscNext L4 tray segment.
 
@@ -990,14 +990,24 @@ def oscNext_L4(tray, name,
     before the models are trained -- every event is booked without a cut, so
     both the noise and the muon training set come out of one pass.
 
-    accumulated_time_pass2=True: accumulated_time takes the pulse BEFORE the
-    cumulative charge crosses 75% -- the pass2 production's off-by-one, fitted
-    at 99.40% against 8144 pass2 events.  The default follows the note.
+    accumulated_time_pass2=True (DEFAULT): accumulated_time takes the pulse
+    BEFORE the cumulative charge crosses 75%, reproducing pass2 at 99.40% over
+    8144 events.  Set False to follow the technical note instead, which says
+    "time to reach 75%" and so takes the pulse AT the crossing -- that agrees
+    with pass2 in 0.98% of events.
 
-    micro_count_uncleaned=True: the micro_count chain starts from the uncleaned
-    series -- the (buggy) behaviour of the original pass2 code.  Only for
-    reproducing the pass2 numbers / Figure 12.  The default False follows the
-    technical note.
+    micro_count_uncleaned=True (DEFAULT): the micro_count chain starts from the
+    uncleaned series, as the original pass2 code does.  Set False to follow
+    Table 11, which says to start from the cleaned series.  The two differ in
+    about 9% of events.
+
+    BOTH DEFAULTS REPRODUCE THE PRODUCTION, NOT THE NOTE.  That is a deliberate
+    reversal: where the note and the production disagree, matching the numbers
+    the collaboration actually produced is what this pipeline is for, and a
+    model trained on variables that differ from the production's is training on
+    a different quantity.  The note's reading stays one argument away in both
+    cases, and both deviations are documented where they are implemented
+    (_accumulated_time's docstring, and open risk 5b in CLAUDE.md).
     '''
 
     # I3GenieInfo -> into every P frame, BEFORE the L3 cut so that the S
