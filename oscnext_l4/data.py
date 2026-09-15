@@ -538,8 +538,37 @@ WANTED = sorted(set(NOISE_FEATURES) | set(MUON_FEATURES) | set(AUX))
 NORM, GAMMA = 2e-2, -3.0
 NU_FRAC, NUBAR_FRAC = 0.7, 0.3
 
-# Unit of the vuvuzela noise_weight: pass3 -> 1/ns (x1e9), pass2 -> already Hz
-NOISE_NS_SCALE = 1e9
+# Unit of the vuvuzela noise_weight.  THIS DIFFERS BETWEEN PRODUCTIONS:
+#   pass3 -> 1/ns, so the rate in Hz is weight * 1e9
+#   pass2 -> already Hz, so the factor is 1
+#
+# Getting it wrong does not raise; it scales every noise rate by 1e9 and the
+# only symptom is an absurd number far downstream.  So it is not a bare
+# constant any more: set it with set_noise_weight_unit(), and every weight
+# calculation prints which unit it used.
+#
+# The pass3 value is VERIFIED by measurement (CLAUDE.md open risk 5d): it put
+# the sample's total noise rate at 41.4 mHz against the note's 36.6 mHz.  The
+# pass2 value has NOT been verified by us -- Table 13 of the note is pass2's
+# own number, so the same comparison settles it on the first pass2 run.
+NOISE_UNITS = {"per_ns": 1e9, "hz": 1.0}
+NOISE_WEIGHT_UNIT = "per_ns"          # pass3 default
+NOISE_NS_SCALE = NOISE_UNITS[NOISE_WEIGHT_UNIT]
+
+
+def set_noise_weight_unit(unit):
+    """
+    Declare the unit of the vuvuzela noise_weight column: "per_ns" (pass3) or
+    "hz" (pass2).  Call it before add_weights() when working on pass2.
+    """
+    global NOISE_WEIGHT_UNIT, NOISE_NS_SCALE
+    if unit not in NOISE_UNITS:
+        raise ValueError("unit must be one of %s, not %r"
+                         % (sorted(NOISE_UNITS), unit))
+    NOISE_WEIGHT_UNIT = unit
+    NOISE_NS_SCALE = NOISE_UNITS[unit]
+    print("  [i] noise_weight unit: %s (factor %g)" % (unit, NOISE_NS_SCALE))
+    return NOISE_NS_SCALE
 
 
 def genie_weight(d):
@@ -553,13 +582,31 @@ def genie_weight(d):
     if missing.any():
         frac = np.where(d["pdg"] < 0, NUBAR_FRAC, NU_FRAC)
         n_flux[missing] = (d["NEvents"] * frac)[missing]
-        print("  [i] n_flux_events missing in %d events -> NEvents * (%.1f/%.1f)"
-              % (missing.sum(), NU_FRAC, NUBAR_FRAC))
-        print("      (the --genie flag may have been forgotten)")
+        print("  [i] n_flux_events missing in %d of %d events -> NEvents * "
+              "(%.1f/%.1f)" % (missing.sum(), missing.size, NU_FRAC,
+                               NUBAR_FRAC))
+        if missing.all():
+            # Two very different causes, and blaming the flag for both sent
+            # the reader after the wrong one: the pass2 GENIE L3 files simply
+            # have no I3GenieInfo, so the fallback is the ONLY path there and
+            # nothing was forgotten.
+            print("      ALL events: either --genie was not passed, or the "
+                  "input has no I3GenieInfo at all (pass2 GENIE L3 does not).")
+            print("      In the latter case the fallback is exact only if the "
+                  "set really was generated %.0f/%.0f nu/nubar -- check the "
+                  "total rate against Table 13." % (100 * NU_FRAC,
+                                                    100 * NUBAR_FRAC))
+        else:
+            print("      (a partial miss usually means --genie was forgotten "
+                  "for some parts)")
     return ow * flux / n_flux / d["_n_files"]
 
 
 def noise_weight(d):
+    # Printed every time: the factor is a per-production choice and a silent
+    # wrong one costs a factor of 1e9.
+    print("  [i] noise weight: unit=%s factor=%g"
+          % (NOISE_WEIGHT_UNIT, NOISE_NS_SCALE))
     return d["noise_weight"] * NOISE_NS_SCALE / d["_n_files"]
 
 
