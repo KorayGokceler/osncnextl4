@@ -21,7 +21,6 @@ import numpy as np
 
 from .env import (require_icetray, optional_project, require_project,
                   load_deserialization_libs, deepcore_doms,
-                  deepcore_veto_domset, deepcore_fiducial_domset,
                   load_lib)
 
 require_icetray()
@@ -103,7 +102,9 @@ MICROCOUNT_SUBKEY = "STW_m%ip%i_DTW%i" % (STW_MINUS, STW_PLUS, DTW)
 # model's gain.
 FILL_RATIO_SPHERICAL_RADIUS_MEAN = 1.6
 
-# VICH causality speed window [m/ns] (technical note section 3.4)
+# The VICH speed window of technical note sec. 3.4 is NOT part of the
+# algorithm -- see _vich.  That passage describes the Level 2 DeepCore Filter.
+# Kept only because oscnext_l4/fit_pass2.py imports them while it still exists.
 VICH_SPEED_MIN = 0.25
 VICH_SPEED_MAX = 0.40
 
@@ -563,86 +564,130 @@ def _separation_in_cogs(frame, pulses_key, output_key, geometry_key="I3Geometry"
     return True
 
 
-def _vich(frame, uncleaned_pulses, cleaned_pulses,
+def _vich(frame, uncleaned_pulses,
           nch_key, npulses_key, qtot_key, geometry_key="I3Geometry",
-          fiducial_cog=True):
+          trigger_key="I3TriggerHierarchy", config_ids=(1011,)):
     '''
-    Veto Identified Causal Hits.
+    Veto Identified Causal Hits -- REPRODUCES pass2 EXACTLY (100.00%).
 
-    Technical note section 3.4: for every hit in the veto region the speed
-    between it and the event's COG position/time vertex is computed; if that
-    speed falls in [0.25, 0.4] m/ns the hit is flagged as possibly caused by a
-    muon crossing the detector.  (0.3 m/ns is the speed of light.)
+    THE ALGORITHM, AND HOW IT WAS FOUND
+    -----------------------------------
+    This is `VetoCausalHits` from the pythonic reimplementation of the
+    LowEnVariables algorithms used by the GRECO online filter
+    (`grecovariables.py`).  The GRECO tray calls it twice on the same
+    uncleaned series, extracted pulse by pulse:
 
-    IMPORTANT: the input must be the UNCLEANED series -- cleaning removes
-    exactly the faint, isolated veto-region hits by which a muon is
-    recognised.  The COG vertex, by contrast, comes from the CLEANED series.
+        VetoCausalCharge = VetoCausalHits(..., useCharge=True)    -> qtot
+        VetoCausalHits   = VetoCausalHits(..., useCharge=False)   -> npulses
 
-    COG SCOPE (fiducial_cog):
-      Technical note sec. 3.4, verbatim: "the center-of-gravity (COG) of the
-      hits INSIDE THE FIDUCIAL VOLUME is calculated".  So the COG must be
-      computed from fiducial DOMs only.  The first version used the whole
-      cleaned series; in events with a muon the veto hits pull the COG up and
-      out, shifting d and t_COG and changing the chance of landing in the speed
-      window -- in exactly the direction that destroys the separating power.
+    For every trigger with a matching config id, the hit CLOSEST IN TIME to
+    that trigger is taken as the reference, and with `dt = t_ref - t_hit` and
+    `d` the distance to it, a hit counts when
 
-      fiducial_cog=True  -> follows the note (DEFAULT)
-      fiducial_cog=False -> the old behaviour (for comparison)
+        d  < 750 m
+        dt > -5 d + 500
+        dt < d / 0.3 + 150
+        dt > d / 0.3 - 1850
 
-      The note does NOT say whether the COG is charge weighted; we take it
-      charge weighted.  That remains an unverified assumption.
+    The production loops over every matching trigger and ACCUMULATES, so a hit
+    seen by two triggers is counted twice; that is reproduced.  `nch` takes the
+    union of the selected hits' DOMs instead, since counting one DOM twice has
+    no meaning.
 
-    Originally done by tau_bdt.I3CutL7Module.
+    MEASURED against the real pass2 L4 files, 8144 events, all three outputs:
+    nch 100.00%, npulses 100.00%, qtot 100.00%, median difference 0.
+
+    WHAT THIS REPLACED, AND WHY THE OLD VERSION COULD NOT WORK
+    ---------------------------------------------------------
+    The first implementation followed technical note sec. 3.4: for every hit in
+    the veto region, the speed between it and the event's COG vertex, kept when
+    that speed fell in [0.25, 0.40] m/ns.  It reproduced pass2 in ~12% of
+    events with the median difference pinned at 2 DOMs.
+
+    Reading sec. 3.4 in full (p.26-27) showed why: that passage describes the
+    LEVEL 2 DeepCore Filter, a different algorithm, which uses the window to
+    DISCARD hits.  The note's only description of `L4_VICH_nch` is Table 12's
+    one line -- no window, no region, no reference point.
+
+    Five hypotheses were then retired by measurement, all landing at ~12%:
+    the speed window (a 36-cell sweep of both edges peaked at 18.0%, with the
+    median difference pinned at 2 in EVERY cell -- the signature of sweeping
+    the wrong knob), the veto region (closed by construction: DOMS.DOMS("IC86")
+    gives 554 fiducial + 4606 veto DOMs, disjoint, 5160 = the whole in-ice
+    detector, so DeepCoreVetoDOMs already IS "not fiducial"), the COG
+    (unweighted 12.0%, non-fiducial 11.9%), the reference point (first HLC hit,
+    11.7%) and the input series (cleaned, 2.8%).
+
+    Three structural differences separate the real algorithm from that one, and
+    none of them is reachable by tuning a parameter:
+
+      1. There is NO speed window.  Selection is four conditions in the
+         (distance, dt) plane -- a 750 m sphere and three causality bands.
+      2. There is NO veto DOM list.  The region is implicit in the bands, so
+         the whole series is scanned.  Restricting to the veto DOMs drops
+         agreement from 100% to 19.4%.
+      3. The reference is the hit nearest the TRIGGER, not a charge-weighted
+         fiducial COG.
+
+    Hence this function no longer takes `cleaned_pulses` or `fiducial_cog`:
+    neither plays any part.  The uncleaned series was already verified --
+    `reference/oscNext_L4_pass2_original.py` passes
+    `InputPulses=uncleaned_pulses  # Use uncleaned hits` to `I3CutL7Module`.
+
+    Originally done by tau_bdt.I3CutL7Module, which was never found.
     '''
     if nch_key in frame:
         return True
     unc = get_pulses(frame, uncleaned_pulses)
-    cln = get_pulses(frame, cleaned_pulses)
-    if unc is None or cln is None or geometry_key not in frame:
+    if unc is None or geometry_key not in frame:
         return True
-
     geo = frame[geometry_key]
 
-    # COG: technical note sec. 3.4 -> hits in the FIDUCIAL volume only
-    if fiducial_cog:
-        fid = deepcore_fiducial_domset("IC86")
-        cog = charge_weighted_cog(h for h in iter_hits(cln, geo) if h[0] in fid)
-        if cog is None:
-            # No hit in the fiducial volume -> fall back.  The event will be
-            # cut anyway, but using the whole series beats silently producing
-            # a wrong number.
-            cog = charge_weighted_cog(iter_hits(cln, geo))
-    else:
-        cog = charge_weighted_cog(iter_hits(cln, geo))
+    trigger_times = []
+    if trigger_key in frame:
+        for trig in frame[trigger_key]:
+            # MERGED and THROUGHPUT triggers carry no config id; only the
+            # SIMPLE_MULTIPLICITY one does.  Skipping them matters: reading
+            # config_id unguarded raises and loses every trigger in the event.
+            cid = getattr(getattr(trig, "key", None), "config_id", None)
+            if cid is not None and int(cid) in config_ids:
+                trigger_times.append(float(trig.time))
 
-    if cog is None:
-        return True
-    cx, cy, cz, ct = cog
-
-    # NOTE: this used to rebuild DOMS.DOMS("IC86") on every event.  It is now
-    # cached (env.deepcore_veto_domset).
-    veto_doms = deepcore_veto_domset("IC86")
-
-    n_doms, n_pulses, qtot = 0, 0, 0.0
+    # Pulse by pulse, as GetHitInformation(..., hitMode=0) does.
+    xs, ys, zs, ts, qs, doms = [], [], [], [], [], []
     for omkey, pulses in iter_map(unc):
-        if omkey not in veto_doms:
-            continue
         if omkey not in geo.omgeo:
             continue
         pos = geo.omgeo[omkey].position
-        d = np.sqrt((pos.x-cx)**2 + (pos.y-cy)**2 + (pos.z-cz)**2)
-        dom_counted = False
-        for p in pulses:
-            dt = ct - p.time            # the veto hit must precede the COG
-            if dt <= 0:
-                continue
-            speed = d / dt
-            if VICH_SPEED_MIN <= speed <= VICH_SPEED_MAX:
-                n_pulses += 1
-                qtot += max(p.charge, 0.0)
-                dom_counted = True
-        if dom_counted:
-            n_doms += 1
+        key = (omkey.string, omkey.om)
+        for pulse in pulses:
+            xs.append(pos.x); ys.append(pos.y); zs.append(pos.z)
+            ts.append(pulse.time); qs.append(pulse.charge); doms.append(key)
+
+    if not ts or not trigger_times:
+        frame[nch_key]     = dataclasses.I3Double(0.0)
+        frame[npulses_key] = dataclasses.I3Double(0.0)
+        frame[qtot_key]    = dataclasses.I3Double(0.0)
+        return True
+
+    x = np.asarray(xs); y = np.asarray(ys); z = np.asarray(zs)
+    t = np.asarray(ts); q = np.asarray(qs)
+
+    n_pulses, qtot = 0.0, 0.0
+    union = np.zeros(t.size, dtype=bool)
+    for trigger_time in trigger_times:
+        i = int(np.argmin(np.abs(t - trigger_time)))
+        d = np.sqrt((x - x[i]) ** 2 + (y - y[i]) ** 2 + (z - z[i]) ** 2)
+        dt = t[i] - t
+        sel = d < 750.0
+        sel &= dt > (-5.0 * d + 500.0)
+        sel &= dt < (d / 0.3 + 150.0)
+        sel &= dt > (d / 0.3 - 1850.0)
+        n_pulses += float(sel.sum())
+        qtot += float(np.maximum(q[sel], 0.0).sum())
+        union |= sel
+
+    n_doms = len({doms[j] for j in np.flatnonzero(union)})
 
     frame[nch_key]     = dataclasses.I3Double(float(n_doms))
     frame[npulses_key] = dataclasses.I3Double(float(n_pulses))
@@ -713,7 +758,6 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
     # --- VICH (tau_bdt rewrite) ---
     tray.Add(_vich, name + "_VICH",
              uncleaned_pulses=uncleaned_pulses,
-             cleaned_pulses=cleaned_pulses,
              nch_key=L4_VICH_NCH_KEY,
              npulses_key=L4_VICH_NPULSES_KEY,
              qtot_key=L4_VICH_QTOT_KEY)
