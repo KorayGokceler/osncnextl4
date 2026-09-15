@@ -25,9 +25,13 @@ ap.add_argument("--gcd", required=True)
 ap.add_argument("--outdir", default="L4_output/pass2_check")
 ap.add_argument("--n-files", type=int, default=0, help="0 = every file")
 ap.add_argument("--keep", action="store_true", help="do not delete the HDF5")
-ap.add_argument("--extra", nargs="*", default=[],
-                help="extra process_L4.py flags, e.g. --accumulated-time-pass2")
-a = ap.parse_args()
+# Anything this parser does not recognise is passed straight through to
+# process_L4.py.  nargs="*" cannot carry flags: argparse reads the next
+# "--flag" as one of its own options and fails.
+a, passthrough = ap.parse_known_args()
+a.extra = [x for x in passthrough if x != "--"]
+if a.extra:
+    print("passing through to process_L4.py: %s" % " ".join(a.extra))
 
 pats = P.PASS2_L3[a.sample]
 if isinstance(pats, str):
