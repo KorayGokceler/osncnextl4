@@ -74,12 +74,16 @@ The original pass2 script cannot settle this — both series are parameters ther
 with no defaults — and its straight-cut block, which does mention
 `SRTTWOfflinePulsesDCHitStatistics`, is stale.  The note is the source.
 
-**The L3 cut adapts by itself.**  `L3_oscNext_bool` and `Data_quality_bool`
-appear nowhere in the pass2 note; they are the pass3 L3 script's own additions.
-Our `l3_cut` falls through to `IC2018_LE_L3_bools["IC2018_LE_L3_Full"]`, which
-pass2 does have.  Consequence: on pass2 the data-quality cut is not applied, so
-the cut is slightly looser.  That changes *which* events arrive, not what any
-variable evaluates to.
+**The L3 cut adapts by itself, and it is EXACT.**  This section first said the
+opposite, reasoning from the note: `L3_oscNext_bool` and `Data_quality_bool` are
+not mentioned there, so they looked like the pass3 script's own additions, and
+falling back to `IC2018_LE_L3_bools["IC2018_LE_L3_Full"]` looked like dropping
+the data-quality cut.  The official `oscNext_L3.py` shows otherwise: data
+quality is folded INTO `IC2018_LE_L3_Full`, and `L3_oscNext_bool` is set to
+exactly that bool.  Both branches of our `l3_cut` therefore agree, and the
+pass2 event population is the production's own.  (The pass3 script's extra AND
+is real, because its `Full` comes from GRECO's copied `DeepCoreCuts`, which
+does not fold data quality in.)
 
 **The geometry.**  Both sides were given the same GCD, the one sitting in the
 pass2 level4 directory.  That it is the *right* GCD is not assumed: `cog_z`,

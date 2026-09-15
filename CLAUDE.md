@@ -529,6 +529,26 @@ are never called once `Process()` is overridden) -- removed.
   - **`tau_bdt` is NOT in it**, so `I3CutL7Module` is still unread.  The only
     mention is `VICH = "L7VetoHitsTotalPE"`, a parameter of the old GRECO L5
     BDT (`TauBDTL5`), not of our variable.
+  - **`n_flux_events` and `I3GenieInfo` occur ZERO times in the whole
+    project.**  Our `PropagateGenieInfo` path is entirely our own, and the
+    production formula is the one we call the fallback.
+  - **A four-part event ID.**  `frame_objects/simulation.py`'s
+    `FixSimEventHeaders` writes `run_id = dataset_id`, `sub_run_id = file_id`,
+    `event_id` incrementing and unique WITHIN a file, `sub_event_id`
+    untouched -- and `oscNext_master.py` runs it with `assert_unique=True`.
+    So the identifier that is unique across files is
+    `(run, sub_run, event, sub_event)`, where `data._ids()` uses three and
+    drops `sub_run`.  That omission is exactly why the cross-check needs one
+    L3 file per HDF5; booking `SubRunID` would lift the constraint.  Worth
+    checking whether the I3EventHeader table already carries it.
+  - `frame_objects/geom.py` also offers a GEOMETRIC fiducial definition
+    (`is_dom_in_deepcore_fiducial(use_dom_list=False)` ->
+    `get_deepcore_containment`: rho36 < 150 m and z inside the DeepCore band)
+    alongside the DOM-list one, with its own `#TODO does this exactly
+    correspond to the definition of fiducial in the DeepCore filter?`.  A
+    third candidate for VICH's region, untested.
+  - `frame_objects/muongun.py` gives the MuonGun weight for a future pass2
+    muon BDT: `raw_weight / num_events / prob_passing_KDE`.
   - **The whole GENIE weight chain is confirmed by it.**
     `frame_objects/weighting.py` adds a single power law with `norm=2.e-2`,
     `spectral_index=-3.` *for machine-learning training samples* -- our `NORM`
@@ -822,15 +842,25 @@ needed:
   `SRTTWOfflinePulsesDCHitStatistics`, but that block is stale (it also uses an
   `L4_MicroCount`/`STW7500_DTW200` naming the same file contradicts elsewhere),
   so the note is the source.  Table 12 (p.41) agrees with sec. 3.2.
-- **The L3 cut adapts on its own.**  `L3_oscNext_bool` and `Data_quality_bool`
-  appear NOWHERE in the pass2 note -- they are the pass3 L3 script's own
-  additions.  `l3_cut` therefore falls through to
-  `IC2018_LE_L3_bools["IC2018_LE_L3_Full"]`, which pass2 does have (pp.36-44).
-  Consequence: on pass2 the data-quality cut is not applied, i.e. the cut is
-  slightly looser than on pass3.  That changes WHICH events arrive, not what
-  any variable evaluates to, so it is harmless for the comparison (which runs
-  on matched events) -- but the pass2 training population is not identical to
-  pass2's official L4 population.
+- **The L3 cut is EXACT on pass2, and an earlier entry here said otherwise.**
+  That entry reasoned from the note -- `L3_oscNext_bool` and
+  `Data_quality_bool` are not mentioned in it -- and concluded they were the
+  pass3 script's own additions, so that on pass2 our fallback would drop the
+  data-quality cut.  **Wrong.**  The official `oscNext_L3.py` writes both, and
+  folds data quality INTO the bool we fall back on:
+
+      LE_L3_2018_bools["IC2018_LE_L3_Full"] = (L3_hit_bool * rt_veto_hit_pass
+                                               * nch_pass * data_quality_bool)
+      frame[L3_CUT_BOOL_KEY] = icetray.I3Bool(
+          frame[L3_2018_ALL_BOOLS_KEY]["IC2018_LE_L3_Full"])
+
+  So at pass2 `L3_oscNext_bool` IS `IC2018_LE_L3_Full`, both branches of our
+  `l3_cut` give the same answer, and the data-quality cut is applied either
+  way.  The pass2 training population matches pass2's own.
+  The pass3 script differs and the AND there is real: its `Full` comes from
+  GRECO's copied `DeepCoreCuts`, which does not fold data quality in, so
+  `reference/pass3_L3_process.py` computes `Data_quality_bool` itself and ANDs
+  it.  Two productions, two shapes, same result.
 - **The L3 variable names are unchanged.**  `IC2018_LE_L3_Vars` exists at pass2
   with the same spelling for every column we read (`NchCleaned`, `ICVetoHits`,
   `RTVeto250Hits`, `NAbove200Hits`, ...).  Pass2's map carries BOTH
