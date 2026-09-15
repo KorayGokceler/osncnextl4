@@ -345,6 +345,28 @@ VICH_VARIANTS = {
     "cleaned_input":             _vich_variant(source="cleaned"),
     "cog_all_no_speed":          _vich_variant(fiducial=False, speed_min=None,
                                                speed_max=None),
+    # THE VETO REGION AS THE PRODUCTION CODE BUILDS IT.
+    #
+    # oscNext_L3.py (the real, uncommented script, now in
+    # icetray-oscNext/oscNext/python/selection/) makes its veto series by
+    # REMOVING the fiducial DOMs from the whole pulse series:
+    #
+    #   tray.AddModule("I3OMSelection<I3RecoPulseSeries>", "GenICVetoPulses_0",
+    #                  selectInverse  = False,
+    #                  InputResponse  = splituncleaned,
+    #                  OutputResponse = "OfflinePulsesICVeto",
+    #                  OmittedKeys    = DOMList.DeepCoreFiducialDOMs)
+    #
+    # i.e. "veto" means NOT FIDUCIAL, not a separate list.  Our _vich uses
+    # DOMS.DeepCoreVetoDOMs, which is a specific (narrower) list.  The
+    # complement is wider, and our count is the one that is too LOW -- median 3
+    # against pass2's 5 -- so the direction fits.  This is the first veto-region
+    # candidate taken from production code rather than inferred from the note.
+    "veto_not_fiducial":         _vich_variant(veto_field="notfid"),
+    "veto_not_fiducial_no_speed": _vich_variant(veto_field="notfid",
+                                                speed_min=None, speed_max=None),
+    "veto_not_fid_cog_all":      _vich_variant(veto_field="notfid",
+                                               fiducial=False),
     "l3_veto_region":            _vich_variant(veto_field="l3veto"),
     "l3_veto_no_speed":          _vich_variant(veto_field="l3veto",
                                                speed_min=None, speed_max=None),
@@ -484,10 +506,15 @@ def _arrays(pulse_map, geometry, veto_doms, fid_doms):
     st = f(st, np.int64); om = f(om, np.int64)
     l3fid = (_l3_fiducial(st, om) if st.size
              else np.zeros(0, dtype=bool))
+    fid_arr = f(fid, bool)
     return {"x": f(x, float), "y": f(y, float), "z": f(z, float),
             "t": f(t, float), "q": f(q, float),
             "dom": f(dom, np.int64), "string": st, "om": om,
-            "hlc": f(hlc, bool), "veto": f(veto, bool), "fid": f(fid, bool),
+            "hlc": f(hlc, bool), "veto": f(veto, bool), "fid": fid_arr,
+            # "everything that is NOT fiducial".  This is how the PRODUCTION
+            # L3 script builds its veto series -- see the variant note below --
+            # and it is a wider set than DeepCore_Filter's own DeepCoreVetoDOMs.
+            "notfid": ~fid_arr,
             "l3fid": l3fid, "l3veto": ~l3fid}
 
 

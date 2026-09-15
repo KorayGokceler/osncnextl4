@@ -515,6 +515,23 @@ are never called once `Process()` is overridden) -- removed.
   the L4 cut thresholds (noise ProbNu ≥ 0.7, muon ProbNu ≥ 0.65).
   The one contradiction: the micro_count chain starting from
   `uncleaned_pulses` (see open risk 5b).
+- `icetray-oscNext/` — **the official `icecube.oscNext` project**, the one this
+  meta-project lacks.  What it settles and what it does not:
+  - `oscNext/python/selection/oscNext_L4.py` is **byte-identical to our
+    `reference/oscNext_L4_pass2_original.py`** -- still entirely commented out
+    (`#TODO migrate`).  So it adds nothing about L4 that we did not have.
+  - `oscNext/python/selection/oscNext_L3.py` IS real, uncommented code (686
+    non-comment lines), and it shows how the collaboration actually builds a
+    veto series: `I3OMSelection` with `OmittedKeys=DOMList.DeepCoreFiducialDOMs`
+    on `splituncleaned`, i.e. **"veto" means NOT FIDUCIAL**, not a separate
+    list.  Our `_vich` uses `DOMS.DeepCoreVetoDOMs`, a narrower list -- a
+    difference now under test (open risk 1).
+  - **`tau_bdt` is NOT in it**, so `I3CutL7Module` is still unread.  The only
+    mention is `VICH = "L7VetoHitsTotalPE"`, a parameter of the old GRECO L5
+    BDT (`TauBDTL5`), not of our variable.
+  - `oscNext/python/tools/classifier.py` is the `I3Classifier` our
+    `oscnext_l4/classifier.py` replaces; `frame_objects/geom.py` holds the real
+    `calc_rho_36`.
 - `reference/pass3_L3_process.py` — the user's **actual pass3 L3 processing
   script** (it uses GRECO `grecovariables.DeepCoreCleaning`/`DeepCoreCuts`).
   Compared against the L3 output `oscnext_l4/variables.py` assumes, and
