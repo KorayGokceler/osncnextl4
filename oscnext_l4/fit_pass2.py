@@ -322,6 +322,12 @@ def _vich_ref_variant(ref_fn, speed_min=VICH_SPEED_MIN,
     return f
 
 
+# Where the trigger hierarchy may live, in the order we try.  A pass2 file can
+# carry the SuperDST series instead of the plain hierarchy.
+TRIGGER_KEYS = ("I3TriggerHierarchy", "QTriggerHierarchy", "DSTTriggers",
+                "I3SuperDSTTriggers")
+
+
 def _causal_band_mask(x, y, z, t, rx, ry, rz, rt):
     """The four (distance, dt) conditions of LowEnVariables' VetoCausalHits."""
     d = np.sqrt((x - rx) ** 2 + (y - ry) ** 2 + (z - rz) ** 2)
@@ -648,14 +654,28 @@ def extract(frame, cleaned_key, uncleaned_key, geometry_key="I3Geometry"):
     # Trigger times, for the causal-band variants.  LowEnVariables'
     # VetoCausalHits anchors itself on the hit closest in time to the trigger,
     # not on a COG, so the variant cannot be built from the pulses alone.
+    # The key name is not the same in every production: pass3 L3 keeps
+    # I3TriggerHierarchy, while a pass2 file may carry only the SuperDST
+    # trigger series.  Try them in order and take the first that yields
+    # anything, so a rename shows up as "no trigger key" rather than as a
+    # silently empty variant.
     tr_cfg, tr_t = [], []
-    if "I3TriggerHierarchy" in frame:
+    for tkey in TRIGGER_KEYS:
+        if tkey not in frame:
+            continue
         try:
-            for trig in frame["I3TriggerHierarchy"]:
-                tr_cfg.append(int(trig.key.config_id))
-                tr_t.append(float(trig.time))
+            cfg, tt = [], []
+            for trig in frame[tkey]:
+                cid = getattr(getattr(trig, "key", None), "config_id", None)
+                if cid is None:
+                    continue
+                cfg.append(int(cid))
+                tt.append(float(trig.time))
         except Exception:
-            tr_cfg, tr_t = [], []
+            continue
+        if cfg:
+            tr_cfg, tr_t = cfg, tt
+            break
 
     return {"cleaned": _arrays(cln, geo, veto, fid),
             "uncleaned": _arrays(unc, geo, veto, fid),
