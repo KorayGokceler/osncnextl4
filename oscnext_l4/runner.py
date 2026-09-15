@@ -177,6 +177,26 @@ class _Bar:
             sys.stdout.flush()
 
 
+def l3_patterns(cfg):
+    """
+    The L3 input patterns of a sample, always as a list.
+
+    A pass3 sample is one dataset, so `l3` was a single glob string.  A pass2
+    sample can be several: NuE is 121122 AND 121291, NuMu is 141154 AND 141292.
+    Both spellings are accepted so neither notebook has to change shape.
+    """
+    l3 = cfg["l3"]
+    return list(l3) if isinstance(l3, (list, tuple)) else [l3]
+
+
+def l3_files(cfg):
+    """Every L3 file of a sample, de-duplicated, order preserved."""
+    out = []
+    for pat in l3_patterns(cfg):
+        out.extend(sorted(glob.glob(pat)))
+    return list(dict.fromkeys(out))
+
+
 def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
                 run_optional=False, extra_args=None):
     """
@@ -195,9 +215,9 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
     if n_frames:
         chunk_files = 0                      # cannot be combined with --n
 
-    cmd = [sys.executable, "-u", _cfg("PROCESS_PY"),
-           "--gcd", _cfg("GCD"), "--input", cfg["l3"],
-           "--output-hdf5", out] + cfg["flags"]
+    cmd = ([sys.executable, "-u", _cfg("PROCESS_PY"),
+            "--gcd", _cfg("GCD"), "--input"] + l3_patterns(cfg)
+           + ["--output-hdf5", out] + cfg["flags"])
     if n_frames:
         cmd += ["--n", str(n_frames), "--scan", "off"]
     if chunk_files:
@@ -345,9 +365,10 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
     out = cfg["hdf5"]
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
-    files = sorted(glob.glob(cfg["l3"]))
+    files = l3_files(cfg)
     if not files:
-        print("[!] %s: no L3 files -> %s" % (name, cfg["l3"]))
+        print("[!] %s: no L3 files -> %s"
+              % (name, ", ".join(l3_patterns(cfg))))
         return None
     groups = _split(files, jobs)
     print("%s: %d L3 files -> %d workers (%s files/worker)"

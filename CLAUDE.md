@@ -79,7 +79,18 @@ Supporting files:
 - `scripts/scan_files.py` — find corrupt `.i3.zst` files, write a healthy list.
 - `oscnext_l4/runner.py` — the `process_L4.py` driver plus a live progress bar.
 - `oscnext_l4/data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
-  `check_feature_map`, `load_sample`, `add_weights`.
+  `check_feature_map`, `load_sample`, `add_weights`,
+  `set_noise_weight_unit`.
+- `oscnext_l4/productions.py` — **which production the notebook is pointed at.**
+  `select("pass2"|"pass3", HDF_BASE)` returns `(GCD, SAMPLES)` and sets the
+  GCD, the sample paths, the `--cleaned-pulses` flag and the **noise weight
+  unit** together.  That last one is the reason the function exists: pass3
+  stores the vuvuzela weight in 1/ns and pass2 in Hz, and getting it wrong does
+  not raise -- it scales every noise rate by 1e9.  Notebook cell 3 carries
+  `PRODUCTION = "pass2"|"pass3"`; the output trees are suffixed so the two
+  never overwrite each other (pass3 keeps its bare names).  A pass2 run loads
+  `PASS2_NOISE_BDT` (nue, numu, noise) and section 6 skips the muon BDT when no
+  muon background is loaded.
 - `scripts/diagnose_env.py` — what is and is not in the environment.
 - `docs/pipeline.md` — which file runs when.
 - `docs/technical_note_comparison.md` — exactly what we write to HDF5, compared
