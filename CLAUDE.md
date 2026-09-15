@@ -564,7 +564,35 @@ are never called once `Process()` is overridden) -- removed.
     cannot be recovered from it.
   - `frame_objects/pulses.py` has `calc_space_time_relation_between_pulses`,
     which looks like VICH at a glance but is an SRT-style pulse-to-pulse
-    causality helper, not it.
+    causality helper, not it.  Its `pulse_info` segment also shows that the
+    production DERIVES the hit-statistics key from the series name
+    (`stats_key = pulses + "HitStatistics"`), where our `HITSTAT_KEY` is a
+    module-level constant carrying the pass3 spelling -- the deliberate,
+    cosmetic deviation already recorded under "Running on pass2".
+  - **`FullTimeLengthRatio`'s direction is now confirmed from production
+    code**, closing open risk 3 for good.  `oscNext_L3.py` (live code, line
+    708):
+    `LE_L3_Vars['FullTimeLengthRatio'] = 1.*CleanedFullTimeLength / UncleanedFullTimeLength`,
+    with each length taken as `HitStatistics.max_pulse_time -
+    min_pulse_time`.  Three independent sources now agree: Figure 13's axis,
+    our own measurement against pass2 (identical over 8144 events), and this.
+    The same block defines `NchCleaned` as
+    `len(frame["SRTTWOfflinePulsesDC"].apply(frame))` -- a DOM count, as we
+    assume.
+  - **The detector string differs by LEVEL, and ours follows L4.**
+    `oscNext_L3.py` builds its DOM lists with `DOMS.DOMS("IC86EDC")` while the
+    L4 script uses `DOMS.DOMS("IC86")`, which is what `oscnext_l4/env.py`
+    passes.  Not a conflict -- different levels by design -- and micro_count
+    reproducing pass2 exactly confirms "IC86" is right at L4.
+  - A full-tree sweep for every L4-relevant term (micro_count, fill_ratio,
+    iLineFit, StaticTWC, TimeWindowCleaning, FullTimeLength, CutL7, tau_bdt,
+    Dunkman, accumulated, first_hlc, DeepCoreVeto, OMSelection, TriggerConfig,
+    ...) hits ONLY `oscNext_L3.py`, `oscNext_L4.py`, `oscNext_L5.py`,
+    `pulses.py`, `geom.py`, `oscNext_master.py` and `oscNext_GNN_L7.py`.  The
+    remaining nineteen files (corridor_cut, simulation, reco, genie, muongun,
+    photons, physics, trigger, i3_to_analysis, processor, metadata, misc,
+    scaling, hash_tools, file_transfer, data_quality, load_data_classes,
+    GNN_L6, and oscnext_scripts/) contain nothing about the L4 variables.
 - `reference/pass3_L3_process.py` — the user's **actual pass3 L3 processing
   script** (it uses GRECO `grecovariables.DeepCoreCleaning`/`DeepCoreCuts`).
   Compared against the L3 output `oscnext_l4/variables.py` assumes, and
