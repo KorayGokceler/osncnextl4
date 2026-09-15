@@ -185,10 +185,28 @@ not fully correlated and the BDT extracts information from both.
 
 **`accumulated_time`** — Table 12: *"Time to reach 75% of an event's charge in
 the cleaned pulse series."*  Our code: `fraction=0.75`,
-`pulses_key=cleaned_pulses`.  **The fraction and the series are verified, not
-guessed.**  The one thing still open is the reference time: our code takes
-`t[idx] − t[0]` (relative to the first pulse); the note says "time to reach" but
-never states the zero point.  It could have been the trigger time.
+`pulses_key=cleaned_pulses`.  The fraction and the series were already
+verified.  **The rest is now settled against pass2** (8144 events, both values
+in the same frame -- `docs/pass2_verification.md` §7):
+
+| rule | agreement | median diff |
+|---|---|---|
+| all pulses, 0.75, the pulse **BEFORE** the crossing | **99.40%** | **0** |
+| per-DOM charge, same rule | 54.25% | 0 |
+| all pulses, fraction 0.70, at the crossing | 44.35% | 10 ns |
+| all pulses, 0.75, **at** the crossing (what the note describes) | 0.98% | 52 ns |
+
+**The reference time was never the problem** -- `t[idx] − t[0]` is right, and
+the trigger-time hypothesis recorded here before is retired.  What pass2 does
+is take the pulse *before* the cumulative charge reaches 75%, at which the
+event holds LESS than 75% of its charge.  That is an off-by-one, not "the time
+to reach 75%".
+
+**We follow the note by default**, as for `micro_count`;
+`--accumulated-time-pass2` reproduces pass2.  The two differ by ~52 ns on
+values of hundreds to thousands of ns, so the choice is not cosmetic -- but
+whichever is used, training and application must use the SAME one, because
+`classifier.py` reads the column without knowing the convention.
 
 **`first_hlc_rho`** — Table 12: *"Radial distance from string 36 (roughly the
 center of DeepCore) of the first HLC hit."*  Our code embeds the string 36
@@ -203,15 +221,25 @@ coordinates (`46.29, −34.88`) and computes the same thing.
 > basis that the veto hit could be causally related to a muon crossing the
 > detector."*
 
-That is the source of our `VICH_SPEED = (0.25, 0.40)` -- **verified**.  It also
-settles which definition the "veto region" is: the one described here is **the
-DeepCore Filter's own fiducial/veto split**, i.e.
-`icecube.DeepCore_Filter.DOMS`.  Our code uses exactly that -- **the right
-choice**.
+**THIS WAS THE SOURCE OF `VICH_SPEED = (0.25, 0.40)`, AND IT IS THE WRONG
+SOURCE.**  Read in full, sec. 3.4 (p.26-27, lines 483-493) describes the
+**Level 2 DeepCore Filter** -- a different algorithm from L4's VICH.  Note the
+verb: that filter **discards** hits inside the window.  Our `_vich` took the
+same window as its **selection** rule.
 
-> Careful: L3's fiducial definition is **different** (Table 7: DeepCore strings
-> 79-86 DOM 11-60; IceCube strings 25-27, 34-37, 44-47, 54 DOM 39-60).  Using
-> the L3 definition for VICH would have been wrong.
+The note's only description of `L4_VICH_nch` is Table 12's one line, *"Number
+of triggered DOMs in the Veto Region that can be caused by muons"* -- no
+window, no region, no reference point.  So nothing about our VICH is verified
+by the note, and the pass2 cross-check agrees: five hypotheses have been
+retired by measurement, all landing at ~12% agreement with the median
+difference pinned at 2 DOMs (`docs/pass2_verification.md` §8).
+
+> The note also says outright (p.60, line 880) that *"some algorithms used
+> throughout their event selection may use differing definitions of what
+> precisely constitutes the veto region"*.  An earlier version of this file
+> claimed L3's Table 7 definition "would have been wrong" for VICH; that was
+> inferred from the same misread passage.  Table 7 was tested against pass2
+> and does no better (11.4%), but it was never excluded on principle.
 
 **The direction of `dt`** — the note does not state it, but the physics is
 clear: a muon crossing the detector hits the veto region **first**, and the
@@ -257,6 +285,8 @@ the fiducial restriction is something the note states **explicitly**.
 | **VICH pulse series** | the DC Filter does its own SRT cleaning on `SplitUncleanedInIcePulses` (every HLC hit is kept) | raw `SplitInIcePulses` | Direction unclear.  Ours sees more hits → VICH may come out slightly high.  The original pass2 code passes `InputPulses=uncleaned_pulses`, which matches ours. |
 | **`FullTimeLengthRatio`** | Table 11 lists `IC2018_LE_L3_Vars.FullTimeLengthRatio` -- i.e. an **L3 variable** | we compute it at L4 (the pass3 L3 map has no ratio) | The components are in L3 (`CleanedFullTimeLength`, `UncleanedFullTimeLength` -- Table 8).  **Direction RESOLVED:** the x axis of this variable in Figure 13 runs 0.0-1.0 → the ratio is `cleaned/uncleaned`, the direction our code takes.  Verified against the L3 components: maximum deviation 0 over 143 events. |
 | **HitStatistics key** | `SRTTWOfflinePulsesDCHitStatistics` (pass2) | `SRTTWSplitInIcePulsesDCHitStatistics` (pass3) | A known pass2→pass3 rename, confirmed with `reference/pass3_L3_process.py`. |
+| **`accumulated_time` rule** | *"Time to reach 75% of an event's charge"* | the pulse at which the cumulative charge reaches 75% (the note's reading) | pass2 takes the pulse BEFORE that one -- an off-by-one, fitted at 99.40%.  ~52 ns apart.  `--accumulated-time-pass2` switches. |
+| **`VICH` everything** | one line, Table 12 | a speed window borrowed from the L2 DeepCore Filter, DeepCore_Filter's veto DOMs, a fiducial charge-weighted COG | **Does not reproduce pass2** (~12%).  Five hypotheses retired; needs the `tau_bdt` source. |
 | **ντ** | Table 13 has ντ CC (0.129 mHz) | no such set | ~3% of the signal. |
 | **BDT engine** | LightGBM (sec. 3.6.1) | LightGBM | The same; the Table 10 parameters are used directly. |
 
