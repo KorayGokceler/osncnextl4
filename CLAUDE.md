@@ -37,6 +37,14 @@ The IceTray meta-project in use (`py3-v4.4.2`) does **not** have:
 - The old project dependencies: `tau_bdt.I3CutL7Module` (VICH),
   `analysis.event_selection` (the Dunkman variables: accumulated_time,
   separation_in_cogs), `slc-veto` (QR box, optional).
+- **`LowEnVariables` (the `LowEn` C++ library) -- CHECKED, ABSENT.**
+  `oscNext_master.py` points at it as "the new C++ versions" of the low-energy
+  variables (`svn/sandbox/LowEnVariables/trunk/private/LowEnVariables/LowEnAlgorithms.cxx`),
+  and a GRECO processing script uses it for `TimeTo75 = LowEn.TimeToSum(t, q,
+  0.75)` on `SRTTWOfflinePulsesDC` -- an independent confirmation that
+  accumulated_time's series and fraction are what we already verified (open
+  risk 2).  `icetray.load("LowEnVariables")` fails in this build, so it cannot
+  be run here.  It carries no VICH-like function in the code we have seen.
 
 So VICH, accumulated_time and separation_in_cogs were rewritten in pure Python
 inside `oscnext_l4/variables.py`, **following the definitions in the technical
