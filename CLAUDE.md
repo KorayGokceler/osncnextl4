@@ -84,6 +84,10 @@ Supporting files:
 - `docs/pipeline.md` — which file runs when.
 - `docs/technical_note_comparison.md` — exactly what we write to HDF5, compared
   line by line with the technical note (Tables 7/10/11/12/13).
+- `docs/pass2_verification.md` — the step-by-step record of checking the
+  rewritten variables against the official pass2 production: what each step
+  established, the two bugs it exposed, how `accumulated_time` was solved, and
+  why `VICH` is still open.  Written to be readable on its own.
 
 To dump the HDF5 columns, use section 2 of the notebook.
 
