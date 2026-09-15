@@ -1,4 +1,13 @@
 """
+TEMPORARY SCAFFOLDING -- DELETE THIS FILE once the definitions are settled.
+
+This module exists to FIND two definitions, not to be part of the pipeline.
+When VICH and accumulated_time are pinned down, the answer goes into
+oscnext_l4/variables.py (the function plus a docstring recording what the
+evidence was), the finding goes into CLAUDE.md, and then this file and the
+fit/fit-report subcommands of scripts/compare_pass2.py are removed.  Nothing
+in the production path imports it.
+
 Fit the pass2 definition of the variables our rewrite does NOT reproduce.
 
 WHY
@@ -67,12 +76,23 @@ from .variables import (VICH_SPEED_MIN, VICH_SPEED_MAX,
 #     twr       (start, stop) of the cleaned series' TimeRange, or None
 
 
-def _cum_fraction_time(t, q, fraction):
+def _cum_fraction_time(t, q, fraction, mode="at"):
     """
-    Time from the first entry to the point where the cumulative charge first
-    reaches `fraction` of the total.  The shared core of every
-    accumulated_time variant: the variants differ only in WHICH entries they
-    hand in and in the zero point, never in this step.
+    Time from the first entry to the point where the cumulative charge reaches
+    `fraction` of the total.  The shared core of every accumulated_time
+    variant: they differ in WHICH entries they hand in, in the zero point, and
+    in `mode` -- never in this step.
+
+    mode="at"   the first entry whose cumulative charge reaches the fraction
+                (what our production code does)
+    mode="prev" the last entry BEFORE that one -- an off-by-one convention
+
+    "prev" is not a shot in the dark.  Inverting pass2's numbers showed the
+    charge fraction at their stored time sits just BELOW 0.75 in at least 84%
+    of events (median 0.7258, 84th pct 0.7449) and never above it, which is
+    exactly what taking the entry before the crossing produces: one entry's
+    charge share short of the target.  The implied median shortfall, 0.024, is
+    the share of an average pulse in an event with this many hits.
     """
     if t.size == 0:
         return np.nan
@@ -84,6 +104,8 @@ def _cum_fraction_time(t, q, fraction):
     cum = np.cumsum(q) / total
     idx = int(np.searchsorted(cum, fraction))
     idx = min(idx, t.size - 1)
+    if mode == "prev":
+        idx = max(idx - 1, 0)
     return float(t[idx] - t[0])
 
 
@@ -188,8 +210,24 @@ def acc_interp(ev, fraction=0.75):
     return float(np.interp(fraction, cum, t) - t[0])
 
 
+def acc_prev_entry(ev, fraction=0.75):
+    """The entry BEFORE the cumulative charge crosses 75% -- see the mode
+    note in _cum_fraction_time: this is what the inversion points at."""
+    c = ev["cleaned"]
+    return _cum_fraction_time(c["t"], c["q"], fraction, mode="prev")
+
+
+def acc_prev_per_dom(ev, fraction=0.75):
+    """The same off-by-one, but over per-DOM total charge."""
+    c = ev["cleaned"]
+    _, t, q = _per_dom(c["dom"], c["t"], c["q"])
+    return _cum_fraction_time(t, q, fraction, mode="prev")
+
+
 ACC_VARIANTS = {
     "all_pulses (ours)":   acc_all_pulses,
+    "prev_entry":          acc_prev_entry,
+    "prev_entry_per_dom":  acc_prev_per_dom,
     "first_pulse_per_dom": acc_first_pulse_per_dom,
     "per_dom_charge":      acc_per_dom_charge,
     "hlc_only":            acc_hlc_only,
@@ -862,13 +900,13 @@ VICH_SPEED_MINS = (None, 0.0, 0.10, 0.15, 0.20, 0.25)
 VICH_SPEED_MAXS = (None, 0.30, 0.35, 0.40, 0.50, 1.00)
 
 
-def _acc_grid_fn(sel, fraction, interp):
+def _acc_grid_fn(sel, fraction, mode):
     def f(ev):
         t, q = sel(ev["cleaned"])
         if t.size == 0:
             return np.nan
-        if not interp:
-            return _cum_fraction_time(t, q, fraction)
+        if mode != "interp":
+            return _cum_fraction_time(t, q, fraction, mode=mode)
         order = np.argsort(t, kind="stable")
         tt, qq = t[order], np.maximum(q[order], 0.0)
         total = qq.sum()
@@ -881,13 +919,17 @@ def _acc_grid_fn(sel, fraction, interp):
     return f
 
 
+ACC_MODES = ("at", "prev", "interp")
+
+
 def acc_grid():
     out = {}
     for es_name, sel in ACC_ENTRY_SETS.items():
         for fr in ACC_FRACTIONS:
-            for interp in (False, True):
-                name = "%s@%.2f%s" % (es_name, fr, "_interp" if interp else "")
-                out[name] = _acc_grid_fn(sel, fr, interp)
+            for mode in ACC_MODES:
+                name = "%s@%.2f%s" % (es_name, fr,
+                                      "" if mode == "at" else "_" + mode)
+                out[name] = _acc_grid_fn(sel, fr, mode)
     return out
 
 

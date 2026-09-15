@@ -10,6 +10,11 @@ See oscnext_l4/pass2.py for what is compared and why, and for the two things
 that have to be right before any of it means anything (the pass2 cleaned pulse
 series name, and one L3 file per HDF5 so events can be matched).
 
+The `fit` and `fit-report` subcommands are TEMPORARY scaffolding (see
+oscnext_l4/fit_pass2.py): they exist to pin down two definitions and are
+removed once those land in variables.py.  `inspect` / `book` / `report` are
+the cross-check itself.
+
 Subcommands
 -----------
   inspect  what is actually in a pass2 frame -- run this FIRST

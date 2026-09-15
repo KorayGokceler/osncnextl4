@@ -735,6 +735,19 @@ the matching level4 file were dumped, so this is **verified**, not assumed:
 - **Not every L3 file has an L4 partner**: 121122 file `000000` exists at L3 and
   not at L4.  `pair_files()` reports such orphans rather than skipping quietly.
 
+### The fitting scaffolding is TEMPORARY
+
+`oscnext_l4/fit_pass2.py` and the `fit` / `fit-report` subcommands of
+`scripts/compare_pass2.py` exist only to FIND the two definitions our rewrite
+does not reproduce.  They are not part of the pipeline and nothing in the
+production path imports them.
+
+**When VICH and accumulated_time are settled: put the answer in
+`oscnext_l4/variables.py` (the code plus a docstring recording the evidence),
+record the finding here, then DELETE the scaffolding.**  Everything worth
+keeping has to live in the code and in this file, so that removing the tooling
+loses nothing.
+
 **Two constraints on how it is run:**
 
 1. **One L3 file per HDF5.**  `(Run, Event, SubEvent)` is unique only within a
