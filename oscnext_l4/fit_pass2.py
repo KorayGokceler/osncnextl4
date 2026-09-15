@@ -608,7 +608,7 @@ def fit_keys():
 def report(h5path, stream=None):
     """Rank every candidate definition against the pass2 reference."""
     import sys
-    from .pass2 import read_pairs
+    from .pass2 import read_pairs, MOSTLY_FRACTION
     out = stream or sys.stdout
 
     families = [
@@ -647,7 +647,7 @@ def report(h5path, stream=None):
             frac, med, n = score(ref, data[prefix + name])
             rows.append((frac, med, n, name))
         for frac, med, n, name in sorted(rows, key=lambda r: -r[0]):
-            mark = "  <== pass2" if frac > 0.99 else ""
+            mark = "  <== pass2" if frac >= MOSTLY_FRACTION else ""
             print("  %-30s %9.2f%% %14.6g %8d%s"
                   % (name, 100 * frac, med, n, mark), file=out)
         if rows:
@@ -656,7 +656,7 @@ def report(h5path, stream=None):
 
     print("", file=out)
     for label, (name, frac) in best.items():
-        verdict = ("REPRODUCES pass2" if frac > 0.99
+        verdict = ("REPRODUCES pass2" if frac >= MOSTLY_FRACTION
                    else "best so far, but NOT the definition")
         print("%-18s -> %-30s %6.2f%%  %s"
               % (label, name, 100 * frac, verdict), file=out)
@@ -979,7 +979,7 @@ def grid_variants(frame, cleaned_pulses, uncleaned_pulses):
 
 def grid_report(h5path, top=12, stream=None):
     import sys
-    from .pass2 import read_pairs
+    from .pass2 import read_pairs, MOSTLY_FRACTION
     out = stream or sys.stdout
 
     pairs = [("ref_acc", "L4_accumulated_time", "value"),
@@ -1011,7 +1011,7 @@ def grid_report(h5path, top=12, stream=None):
               file=out)
         print("  " + "-" * 56, file=out)
         for frac, med, n, name in rows[:top]:
-            mark = "  <== pass2" if frac > 0.99 else ""
+            mark = "  <== pass2" if frac >= MOSTLY_FRACTION else ""
             print("  %-28s %9.2f%% %14.6g%s"
                   % (name, 100 * frac, med, mark), file=out)
         if rows and rows[0][0] <= 0.5:
