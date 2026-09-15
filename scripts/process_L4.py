@@ -377,6 +377,11 @@ def main():
                         "I3TensorOfInertia (L4_ToI) and separation_in_cogs.  "
                         "Neither appears in Table 11/12, so this is off by "
                         "default; it only costs processing time.")
+    p.add_argument("--accumulated-time-pass2", action="store_true",
+                   help="reproduce the pass2 production's accumulated_time: "
+                        "take the pulse BEFORE the cumulative charge crosses "
+                        "75%% (an off-by-one, fitted at 99.40%% against 8144 "
+                        "pass2 events).  The default follows the note.")
     p.add_argument("--micro-count-uncleaned", action="store_true",
                    help="start the micro_count chain from the UNCLEANED series -- "
                         "the behaviour of the original pass2 code.  The default "
@@ -505,7 +510,8 @@ def main():
                  run_optional=args.run_optional,
                  apply_cut=args.apply_cut,
                  classifier_model_dir=args.model_dir,
-                 micro_count_uncleaned=args.micro_count_uncleaned)
+                 micro_count_uncleaned=args.micro_count_uncleaned,
+                 accumulated_time_pass2=args.accumulated_time_pass2)
 
         # --- what survives the L3 cut (and gets booked) ---
         def count(frame):

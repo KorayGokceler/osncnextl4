@@ -128,12 +128,40 @@ sklearn/joblib, only `lightgbm` + `numpy`.
 > The technical note has been read and compared with the code line by line:
 > **`docs/technical_note_comparison.md`**.
 
-1. **VICH** (`_vich`, `oscnext_l4/variables.py`) — largely **verified**:
-   sec. 3.4 states the speed window ([0.25, 0.4] m/ns) and that the "veto
-   region" is the DeepCore **Filter's** (L2) definition -- so our use of
-   `DeepCore_Filter.DOMS` is right.  (L3's fiducial definition in Table 7 is
-   **different**; using it would have been wrong.)  The direction
-   `dt = t_COG − t_hit > 0` is consistent with the physics.
+1. **VICH — NOT verified, and the justification was wrong.**  This was
+   recorded as "largely verified" because sec. 3.4 gives a speed window of
+   [0.25, 0.4] m/ns.  Reading that section in full (p.26-27, lines 483-493)
+   shows it describes the **Level 2 DeepCore Filter**, a different algorithm:
+   that filter SRT-cleans SplitUncleanedInIcePulses, splits it into fiducial
+   and veto series, takes the COG of the fiducial hits, derives a speed
+   between each veto hit and that vertex, and DISCARDS hits in the window.
+   Our `_vich` borrowed that window as its SELECTION rule.  The note's only
+   description of `L4_VICH_nch` is Table 12's one line -- no window, no
+   region, no reference point.
+
+   The pass2 cross-check agrees that it is wrong and has retired five
+   hypotheses (8144 events; best agreement in brackets):
+
+   - the speed window: a 36-cell sweep of both edges peaks at **18.0%**, and
+     the median difference stays pinned at **2 DOMs in every cell**;
+   - the veto region: pass2's count exceeds the DOMs hit in our region in only
+     **0.16%** of events, so the region is big enough, and Table 7's L3 region
+     does no better (11.4%);
+   - the COG: unweighted (12.0%) and non-fiducial (11.9%) are the same as ours
+     (12.0%);
+   - the reference point: the verified first HLC hit instead of the COG, 11.7%;
+   - the input series: the cleaned series instead of the uncleaned one, 2.8%.
+
+   Everything lands at ~12% with a median difference of 2, which is what you
+   see when the swept parameter is not the one that differs: **the algorithm is
+   structurally different, not a parameter away.**  Note p.60 (line 880) warns
+   outright that "some algorithms used throughout their event selection may use
+   differing definitions of what precisely constitutes the veto region".
+
+   **The fastest resolution is the `tau_bdt` source** (`I3CutL7Module`), which
+   is not in this meta-project.  The direction `dt = t_COG − t_hit > 0` is
+   consistent with the physics, but that is all that can be said for the
+   current implementation.
    **Deviation found (fixed):** the note says the COG is computed from the hits
    *in the fiducial volume*; the code used the whole cleaned series.  In events
    with a muon the veto hits pulled the COG upward (test: z −400 → −43).
@@ -144,15 +172,36 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    `InputPulses=uncleaned_pulses  # Use uncleaned hits` to `I3CutL7Module`, so
    our use of the raw `SplitInIcePulses` matches the original.
 
-2. **accumulated_time** — **verified**: Table 12 says "Time to reach 75% of an
-   event's charge in the cleaned pulse series"; the code uses `fraction=0.75`
-   and `cleaned_pulses`.  Neither the fraction nor the series is a guess any
-   more.  The original pass2 code also passes `PulseSeries=cleaned_pulses` to
-   Dunkman's `CalculateVariables` -- the series choice is **verified**.
-   **Still open:** the reference time.  The code takes `t[idx] − t[0]` (the
-   first pulse); the note does not state the zero point (it could have been the
-   trigger time), and the original's internals are in the
-   `analysis.event_selection` C++ code, which we do not have.
+2. **accumulated_time — SOLVED against pass2 (99.40%).**  Table 12 says "Time
+   to reach 75% of an event's charge in the cleaned pulse series"; the fraction
+   and the series were already verified (the original passes
+   `PulseSeries=cleaned_pulses` to Dunkman's `CalculateVariables`).  What was
+   open was the exact rule, and the pass2 cross-check settled it on 8144 events
+   with both values in the same frame:
+
+   | rule | agreement |
+   |---|---|
+   | all pulses, 0.75, the pulse **BEFORE** the crossing | **99.40%** (median diff 0) |
+   | per-DOM charge, same rule | 54.25% |
+   | all pulses, fraction 0.70, at the crossing | 44.35% |
+   | all pulses, 0.75, **at** the crossing (what the note describes) | 0.98% |
+
+   So **pass2 has an off-by-one**: at the pulse it reports, the event holds
+   LESS than 75% of its charge, which is not "the time to reach 75%".
+   The zero point was never the problem -- `t[idx] − t[0]` is right.
+
+   It was found by INVERTING rather than guessing: the charge fraction
+   accumulated at pass2's stored time sits just below 0.75 in at least 84% of
+   events (median 0.7258, 84th pct 0.7449) and never above, i.e. exactly one
+   entry's charge share short.  The median shortfall 0.024 is an average
+   pulse's share at this hit multiplicity, so the size matched too.
+
+   **Decision: the DEFAULT follows the note** (at the crossing), as it does for
+   micro_count (open risk 5b) -- we follow the description, not the original's
+   slip.  `--accumulated-time-pass2` / `oscNext_L4(accumulated_time_pass2=True)`
+   reproduces pass2.  The two code paths were checked against each other on
+   4000 random events: 0 mismatches.  The production sort was also made stable,
+   so tied pulse times give a reproducible index.
    `separation_in_cogs` is not a BDT input -- low priority.
 
 3. **FullTimeLengthRatio direction — RESOLVED.** The text of Table 11 does not

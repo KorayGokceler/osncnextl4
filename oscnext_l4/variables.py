@@ -447,7 +447,8 @@ class PropagateGenieInfo(icetray.I3Module):
 # 2. MUON REJECTION VARIABLES
 # ===========================================================================
 
-def _accumulated_time(frame, pulses_key, output_key, fraction=0.75):
+def _accumulated_time(frame, pulses_key, output_key, fraction=0.75,
+                      before_crossing=False):
     '''
     Time [ns] taken to reach 75% of the event's total charge.
 
@@ -455,6 +456,34 @@ def _accumulated_time(frame, pulses_key, output_key, fraction=0.75):
     cleaned pulse series."  One of the few charge-dependent variables in the
     selection.  The original took it from analysis/event_selection's
     CalculateVariables module; it is computed directly here.
+
+    before_crossing=False (DEFAULT, the note): the time of the first pulse
+        whose cumulative charge REACHES the fraction -- i.e. the time at which
+        the event has 75% of its charge, which is what Table 12 describes.
+
+    before_crossing=True: the pulse BEFORE that one.  This reproduces the
+        pass2 production, and it is an off-by-one: at that pulse the event has
+        LESS than 75% of its charge, so it is not "the time to reach 75%".
+
+    THE PASS2 BEHAVIOUR IS MEASURED, NOT GUESSED.  On 8144 pass2 L4 events
+    with both values in the same frame, this variable was fitted against the
+    stored L4_accumulated_time:
+
+        all pulses, fraction 0.75, the pulse BEFORE the crossing   99.40%
+        per-DOM charge, same rule                                  54.25%
+        all pulses, fraction 0.70, at the crossing                 44.35%
+        all pulses, fraction 0.75, at the crossing (the note)       0.98%
+
+    with a median difference of 0 for the winner.  It was found by inverting
+    the question rather than guessing: the charge fraction accumulated at
+    pass2's stored time sits just BELOW 0.75 in at least 84% of events
+    (median 0.7258, 84th pct 0.7449) and never above it, which is exactly one
+    entry's charge share short -- the signature of an off-by-one.  The median
+    shortfall, 0.024, is the share of an average pulse at this hit multiplicity.
+
+    The DEFAULT stays with the note, as it does for micro_count (open risk 5b):
+    we follow the description, not the original's slip.  Use
+    before_crossing=True only to reproduce pass2 numbers.
     '''
     if output_key in frame:
         return True
@@ -471,7 +500,10 @@ def _accumulated_time(frame, pulses_key, output_key, fraction=0.75):
         return True
 
     t = np.asarray(times); q = np.asarray(charges)
-    order = np.argsort(t)
+    # stable: pulses sharing a time must keep their order, or the index the
+    # cumulative sum lands on is not reproducible run to run.  The fit that
+    # settled before_crossing used a stable sort, so production must too.
+    order = np.argsort(t, kind="stable")
     t, q = t[order], q[order]
     total = q.sum()
     if total <= 0:
@@ -479,6 +511,8 @@ def _accumulated_time(frame, pulses_key, output_key, fraction=0.75):
     cum = np.cumsum(q) / total
     idx = int(np.searchsorted(cum, fraction))
     idx = min(idx, len(t) - 1)
+    if before_crossing:
+        idx = max(idx - 1, 0)
     frame[output_key] = dataclasses.I3Double(float(t[idx] - t[0]))
     return True
 
@@ -608,7 +642,8 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
                                              uncleaned_pulses,
                                              cleaned_pulses,
                                              run_qr_box=False,
-                                             run_optional=False):
+                                             run_optional=False,
+                                             accumulated_time_pass2=False):
     '''
     Inputs of the L4 atmospheric muon rejection classifier.
 
@@ -653,7 +688,8 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
     # --- Dunkman variables (Python rewrite) ---
     tray.Add(_accumulated_time, name + "_AccTime",
              pulses_key=cleaned_pulses,
-             output_key=L4_ACC_TIME_KEY)
+             output_key=L4_ACC_TIME_KEY,
+             before_crossing=accumulated_time_pass2)
 
     # Not a BDT input (absent from Table 12) -- pure Python, real per-event cost
     if run_optional:
@@ -888,13 +924,18 @@ def oscNext_L4(tray, name,
                run_optional=False,
                apply_cut=False,
                classifier_model_dir=None,
-               micro_count_uncleaned=False):
+               micro_count_uncleaned=False,
+               accumulated_time_pass2=False):
     '''
     The main oscNext L4 tray segment.
 
     apply_cut=False (default): compute the variables only.  Run in this mode
     before the models are trained -- every event is booked without a cut, so
     both the noise and the muon training set come out of one pass.
+
+    accumulated_time_pass2=True: accumulated_time takes the pulse BEFORE the
+    cumulative charge crosses 75% -- the pass2 production's off-by-one, fitted
+    at 99.40% against 8144 pass2 events.  The default follows the note.
 
     micro_count_uncleaned=True: the micro_count chain starts from the uncleaned
     series -- the (buggy) behaviour of the original pass2 code.  Only for
@@ -945,7 +986,8 @@ def oscNext_L4(tray, name,
     tray.Add(oscNext_L4_atm_muon_classifier_variables, name + "_muon_vars",
              uncleaned_pulses=uncleaned_pulses,
              cleaned_pulses=cleaned_pulses,
-             run_optional=run_optional)
+             run_optional=run_optional,
+             accumulated_time_pass2=accumulated_time_pass2)
 
     if apply_cut:
         if classifier_model_dir is None:
