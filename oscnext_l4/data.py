@@ -535,6 +535,10 @@ WANTED = sorted(set(NOISE_FEATURES) | set(MUON_FEATURES) | set(AUX))
 # (Earlier code used the HDF5 count: with 100 L3 files booked into one HDF5
 # the divisor came out as 1 and the weights were 100 TIMES too large.)
 
+# VERIFIED against the official project: oscNext/frame_objects/weighting.py
+# passes norm=2.e-2, spectral_index=-3. to add_single_powerlaw_flux_weight for
+# machine-learning training samples, and neutrinos.py defaults gen_ratio to 0.7
+# for GENIE (1 - 0.7 for antineutrinos).  These are not our invention.
 NORM, GAMMA = 2e-2, -3.0
 NU_FRAC, NUBAR_FRAC = 0.7, 0.3
 
@@ -572,7 +576,29 @@ def set_noise_weight_unit(unit):
 
 
 def genie_weight(d):
-    """w [Hz] = OneWeight * flux(E) / n_flux / n_files,  flux = NORM * E^GAMMA."""
+    """
+    w [Hz] = OneWeight * flux(E) / n_flux / n_files,  flux = NORM * E^GAMMA.
+
+    VERIFIED against the official project (icetray-oscNext,
+    oscNext/frame_objects/).  weighting.py adds, for exactly our purpose --
+    its own comment says "useful for unbiased samples for training machine
+    learning algorithms" -- a single power law with norm=2.e-2 and
+    spectral_index=-3., which is our NORM and GAMMA to the digit.  neutrinos.py
+    then computes
+
+        weight = OneWeight * flux / ( NEvents * gen_ratio )        (line 362)
+        flux   = norm * energy ** spectral_index                   (line 334)
+        gen_ratio = 0.7 for GENIE, and 1 - 0.7 for antineutrinos    (line 132)
+
+    and weighting.py divides by the file count at the end, as we do.
+
+    SO THE "FALLBACK" BELOW IS THE PRODUCTION FORMULA.  It is our n_flux_events
+    path -- taken from I3GenieInfo -- that is the deviation; the official code
+    never reads that field.  The two agree only if
+    n_flux_events == NEvents * gen_ratio, which has NOT been measured.  pass3
+    files carry both, so it can be.  pass2 GENIE L3 has no I3GenieInfo at all,
+    so a pass2 run uses the production formula throughout.
+    """
     E = d["true_energy"]
     ow = d["OneWeight"]
     flux = NORM * np.power(E, GAMMA, where=E > 0, out=np.full_like(E, np.nan))
@@ -588,14 +614,13 @@ def genie_weight(d):
         if missing.all():
             # Two very different causes, and blaming the flag for both sent
             # the reader after the wrong one: the pass2 GENIE L3 files simply
-            # have no I3GenieInfo, so the fallback is the ONLY path there and
+            # have no I3GenieInfo, so this path is the ONLY one there and
             # nothing was forgotten.
             print("      ALL events: either --genie was not passed, or the "
                   "input has no I3GenieInfo at all (pass2 GENIE L3 does not).")
-            print("      In the latter case the fallback is exact only if the "
-                  "set really was generated %.0f/%.0f nu/nubar -- check the "
-                  "total rate against Table 13." % (100 * NU_FRAC,
-                                                    100 * NUBAR_FRAC))
+            print("      This is NOT a degraded path: NEvents * gen_ratio is "
+                  "what the official oscNext weighting does (neutrinos.py "
+                  "line 362, gen_ratio 0.7 for GENIE).")
         else:
             print("      (a partial miss usually means --genie was forgotten "
                   "for some parts)")

@@ -166,8 +166,21 @@ def get_pulses(frame, key):
 
 
 def calc_rho_36(x, y):
-    '''String 36'ya (DeepCore merkezi) yatay radyal uzaklik.'''
-    return float(np.hypot(x - STRING36_X, y - STRING36_Y))
+    '''
+    Horizontal radial distance from string 36 (the DeepCore centre).
+
+    VERBATIM from the official project, oscNext/frame_objects/geom.py:
+
+        return np.sqrt( (x-46.29) ** 2 + (y+34.88) ** 2 )
+
+    The constants were already right; the SQUARE ROOT was not.  We used
+    np.hypot, which is a different algorithm (it rescales to avoid overflow)
+    and disagrees with the naive form in the last bit.  Measured against pass2:
+    our rho matched bitwise in 80.6% of 8144 events and to 1e-6 in 99.85% --
+    the gap was this, not a different definition.  Using their form makes it
+    exact.
+    '''
+    return float(np.sqrt((x - STRING36_X) ** 2 + (y - STRING36_Y) ** 2))
 
 
 def iter_hits(pulse_map, geometry, first_pulse_only=False):

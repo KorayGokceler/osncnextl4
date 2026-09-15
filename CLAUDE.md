@@ -529,9 +529,42 @@ are never called once `Process()` is overridden) -- removed.
   - **`tau_bdt` is NOT in it**, so `I3CutL7Module` is still unread.  The only
     mention is `VICH = "L7VetoHitsTotalPE"`, a parameter of the old GRECO L5
     BDT (`TauBDTL5`), not of our variable.
+  - **The whole GENIE weight chain is confirmed by it.**
+    `frame_objects/weighting.py` adds a single power law with `norm=2.e-2`,
+    `spectral_index=-3.` *for machine-learning training samples* -- our `NORM`
+    and `GAMMA` to the digit, and no longer "an invented power law".
+    `frame_objects/neutrinos.py` computes
+    `weight = OneWeight * flux / (NEvents * gen_ratio)` with
+    `flux = norm * E**index` and `gen_ratio = 0.7` for GENIE (`1 - 0.7` for
+    antineutrinos), and weighting.py divides by the file count at the end.
+    Every piece matches `data.genie_weight`.
+    **This inverts open risk 4:** what our code calls the *fallback*
+    (`NEvents * nu/nubar fraction`) IS the production formula, and our
+    `n_flux_events` path -- read from `I3GenieInfo`, which the official code
+    never touches -- is the deviation.  They agree only if
+    `n_flux_events == NEvents * gen_ratio`, still unmeasured; pass3 carries
+    both, so it can be checked.
+  - `frame_objects/noise.py` copies the vuvuzela weight through with **no unit
+    conversion at all**, so the production applies no scale factor -- which is
+    why `NOISE_NS_SCALE` is a per-production fact about what vuvuzela wrote,
+    and why "hz" (factor 1) is right for pass2.
+  - `selection/globals.py` confirms from code what sec. 3.2 says:
+    `UNCLEANED_PULSES = "SplitInIcePulses"`,
+    `CLEANED_PULSES = "SRTTWOfflinePulsesDC"`,
+    `SUB_EVENT_STREAM = "InIceSplit"`, `L4_CUT_BOOL_KEY = "L4_oscNext_bool"`.
+  - `frame_objects/geom.py` gave the real `calc_rho_36`:
+    `np.sqrt((x-46.29)**2 + (y+34.88)**2)`.  Our constants were right but we
+    used `np.hypot`, a different algorithm that disagrees in the last bit --
+    which is the whole reason `first_hlc_rho` matched bitwise in only 80.6% of
+    events while agreeing to 1e-6 in 99.85%.  **Fixed**; the two forms now
+    agree on 20000/20000 random points where hypot managed 16728.
   - `oscNext/python/tools/classifier.py` is the `I3Classifier` our
-    `oscnext_l4/classifier.py` replaces; `frame_objects/geom.py` holds the real
-    `calc_rho_36`.
+    `oscnext_l4/classifier.py` replaces, but it is generic -- the feature list
+    is passed in by `oscNext_L4.py`, which is dead -- so the L4 input list
+    cannot be recovered from it.
+  - `frame_objects/pulses.py` has `calc_space_time_relation_between_pulses`,
+    which looks like VICH at a glance but is an SRT-style pulse-to-pulse
+    causality helper, not it.
 - `reference/pass3_L3_process.py` — the user's **actual pass3 L3 processing
   script** (it uses GRECO `grecovariables.DeepCoreCleaning`/`DeepCoreCuts`).
   Compared against the L3 output `oscnext_l4/variables.py` assumes, and
