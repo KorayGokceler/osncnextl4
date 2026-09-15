@@ -322,6 +322,88 @@ def _vich_ref_variant(ref_fn, speed_min=VICH_SPEED_MIN,
     return f
 
 
+def _causal_band_mask(x, y, z, t, rx, ry, rz, rt):
+    """The four (distance, dt) conditions of LowEnVariables' VetoCausalHits."""
+    d = np.sqrt((x - rx) ** 2 + (y - ry) ** 2 + (z - rz) ** 2)
+    dt = rt - t
+    sel = d < 750.0
+    sel &= dt > (-5.0 * d + 500.0)
+    sel &= dt < (d / 0.3 + 150.0)
+    sel &= dt > (d / 0.3 - 1850.0)
+    return sel
+
+
+def _vich_causal_count(ev, source="uncleaned", veto_field="all",
+                       config_ids=(1011,)):
+    """
+    VICH under LowEnVariables' CAUSALITY BANDS instead of a speed window.
+
+    SOURCE.  `grecovariables.VetoCausalHits`, the pythonic reimplementation of
+    the LowEnVariables algorithms used by the GRECO online filter.  The GRECO
+    tray calls it twice on the SAME uncleaned series, extracted PULSE BY PULSE
+    (`GetHitInformation(..., 0)`):
+
+        VetoCausalCharge = VetoCausalHits(..., useCharge=True)    -> summed charge
+        VetoCausalHits   = VetoCausalHits(..., useCharge=False)   -> pulse count
+
+    which is exactly the shape of pass2's L4_VICH_qtot / L4_VICH_npulses, on
+    exactly the series our _vich is already verified to use.
+
+    HOW IT DIFFERS FROM OUR _vich -- structurally, in three ways:
+
+      1. No speed window.  Selection is four conditions in the (distance, dt)
+         plane: a 750 m sphere and three causality bands.
+      2. No veto DOM list.  The region is implicit in the bands, so the default
+         here is the WHOLE series (veto_field="all").
+      3. The reference is the hit closest in time to the TRIGGER, not a
+         charge-weighted fiducial COG.
+
+    That matters because the evidence says the disagreement is structural: a
+    36-cell sweep of both speed edges peaked at 18.0% with the median
+    difference pinned at 2 DOMs in EVERY cell -- the signature of sweeping a
+    knob that is not the one that differs.
+
+    The production loops over every matching trigger and ACCUMULATES, so a hit
+    seen by two triggers is counted twice; that is reproduced here for the
+    charge and pulse counts.  n_dom takes the union instead, since counting one
+    DOM twice has no sensible meaning.
+    """
+    s = ev[source]
+    if s["t"].size == 0:
+        return np.nan, np.nan, np.nan
+    cfg, tt = ev.get("trig_cfg"), ev.get("trig_t")
+    if cfg is None or cfg.size == 0:
+        return np.nan, np.nan, np.nan
+    keep = np.isin(cfg, np.asarray(config_ids, dtype=np.int64))
+    if not keep.any():
+        return np.nan, np.nan, np.nan
+
+    m = s.get(veto_field)
+    if m is None or not m.any():
+        return 0.0, 0.0, 0.0
+    x, y, z = s["x"][m], s["y"][m], s["z"][m]
+    t, q, dom = s["t"][m], s["q"][m], s["dom"][m]
+
+    n_pulses, qtot = 0.0, 0.0
+    union = np.zeros(t.size, dtype=bool)
+    for trigger_time in tt[keep]:
+        i = int(np.argmin(np.abs(t - trigger_time)))
+        sel = _causal_band_mask(x, y, z, t, x[i], y[i], z[i], t[i])
+        n_pulses += float(sel.sum())
+        qtot += float(np.maximum(q[sel], 0.0).sum())
+        union |= sel
+
+    n_dom = float(np.unique(dom[union]).size)
+    return n_dom, n_pulses, qtot
+
+
+def _vich_causal_variant(source="uncleaned", veto_field="all",
+                         config_ids=(1011,)):
+    def f(ev):
+        return _vich_causal_count(ev, source, veto_field, config_ids)
+    return f
+
+
 def _vich_variant(fiducial=True, charge_weighted=True,
                   speed_min=VICH_SPEED_MIN, speed_max=VICH_SPEED_MAX,
                   require_causal=True, source="uncleaned",
@@ -335,6 +417,12 @@ def _vich_variant(fiducial=True, charge_weighted=True,
 
 VICH_VARIANTS = {
     "ours (fid cog, 0.25-0.40)": _vich_variant(),
+    # LowEnVariables' causality bands -- the first STRUCTURALLY different
+    # candidate.  See _vich_causal_count for the source and the reasoning.
+    "causal_all_smt3":        _vich_causal_variant(),
+    "causal_all_both_trig":   _vich_causal_variant(config_ids=(1010, 1011)),
+    "causal_veto_smt3":       _vich_causal_variant(veto_field="veto"),
+    "causal_all_cleaned":     _vich_causal_variant(source="cleaned"),
     "cog_all_hits":              _vich_variant(fiducial=False),
     "cog_unweighted":            _vich_variant(charge_weighted=False),
     "speed_max_only":            _vich_variant(speed_min=None),
@@ -520,6 +608,10 @@ def _arrays(pulse_map, geometry, veto_doms, fid_doms):
             # DeepCoreVetoDOMs (554 + 4606 = 5160 = 86 x 60, disjoint), not a
             # wider one, so "veto" and "notfid" agree on in-ice pulses.
             "notfid": ~fid_arr,
+            # No region cut at all.  LowEnVariables' VetoCausalHits applies its
+            # causality bands to the WHOLE series -- the region is implicit in
+            # the bands, not a DOM list -- so a faithful variant needs this.
+            "all": np.ones(fid_arr.size, dtype=bool),
             "l3fid": l3fid, "l3veto": ~l3fid}
 
 
@@ -553,8 +645,22 @@ def extract(frame, cleaned_key, uncleaned_key, geometry_key="I3Geometry"):
         except Exception:
             twr = None
 
+    # Trigger times, for the causal-band variants.  LowEnVariables'
+    # VetoCausalHits anchors itself on the hit closest in time to the trigger,
+    # not on a COG, so the variant cannot be built from the pulses alone.
+    tr_cfg, tr_t = [], []
+    if "I3TriggerHierarchy" in frame:
+        try:
+            for trig in frame["I3TriggerHierarchy"]:
+                tr_cfg.append(int(trig.key.config_id))
+                tr_t.append(float(trig.time))
+        except Exception:
+            tr_cfg, tr_t = [], []
+
     return {"cleaned": _arrays(cln, geo, veto, fid),
             "uncleaned": _arrays(unc, geo, veto, fid),
+            "trig_cfg": np.asarray(tr_cfg, dtype=np.int64),
+            "trig_t": np.asarray(tr_t, dtype=float),
             "twr": twr}
 
 
