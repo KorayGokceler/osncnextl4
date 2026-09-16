@@ -544,7 +544,7 @@ def report(ours_h5, pass2_h5, cleaned_pulses=PASS2_CLEANED_PULSES,
 #   * there is NO CORSIKA at pass2 here -- the muon background is MuonGun, so
 #     a pass2-trained muon BDT is not weighted the way the pass3 one is
 #     (CLAUDE.md open risk 3d is about the CORSIKA weighting specifically);
-#   * NuTau exists at pass2 (160519).  Our signal definition is nue+numu
+#   * NuTau exists at pass2 (160511).  Our signal definition is nue+numu
 #     (open risk 6), so it is listed but not used unless that changes.
 PASS2_L3 = {
     "NuE":     ["/data/ana/LE/oscNext/pass2/genie/level3/121122/"
@@ -555,8 +555,8 @@ PASS2_L3 = {
                 "oscNext_genie_level3_v02.00_pass2.141154.*.i3.zst",
                 "/data/ana/LE/oscNext/pass2/genie/level3/141292/"
                 "oscNext_genie_level3_v02.00_pass2.141292.*.i3.zst"],
-    "NuTau":   ["/data/ana/LE/oscNext/pass2/genie/level3/160519/"
-                "oscNext_genie_level3_v02.00_pass2.160519.*.i3.zst"],
+    "NuTau":   ["/data/ana/LE/oscNext/pass2/genie/level3/160511/"
+                "oscNext_genie_level3_v02.00_pass2.160511.*.i3.zst"],
     "MuonGun": ["/data/ana/LE/oscNext/pass2/muongun/level3/139008/"
                 "oscNext_muongun_level3_v02.00_pass2.139008.*.i3.zst"],
     "Noise":   ["/data/ana/LE/oscNext/pass2/noise/level3/888003/"

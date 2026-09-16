@@ -97,7 +97,7 @@ PASS2_SAMPLES_ALL = {
     "noise":   dict(l3=_P2 + "/noise/level3/888003/"
                             "oscNext_noise_level3_v02.00_pass2.888003.*.i3.zst",
                     flags=["--noise"], kind="noise_bg"),
-    "nutau":   dict(l3=_GENIE_L3 % ("160519", "160519"),
+    "nutau":   dict(l3=_GENIE_L3 % ("160511", "160511"),
                     flags=["--mc", "--genie"], kind="signal"),
     "muongun": dict(l3=_P2 + "/muongun/level3/139008/"
                             "oscNext_muongun_level3_v02.00_pass2.139008.*.i3.zst",
