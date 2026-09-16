@@ -29,11 +29,18 @@ The IceTray meta-project in use (`py3-v4.4.2`) does **not** have:
 
 - The `icecube.oscNext` project at all → `I3Classifier` (model application),
   `oscNext_cut` and `calc_rho_36` are unavailable.
-- `icecube.hdfwriter` was missing **from the cvmfs metaproject** →
-  `oscnext_l4/booker.py` falls back to pytables.  The user's own build
-  (`/data/user/$USER/icetray_build/build`) DOES have hdfwriter -- a real run
-  prints `Booking: icecube.hdfwriter`.  The fallback is not in use but the
-  code stays (it is needed if we return to a cvmfs environment).
+- `icecube.hdfwriter` was thought to be missing from the cvmfs metaproject, so
+  `oscnext_l4/booker.py` carries a pytables fallback.  **That is out of date.**
+  The environment actually in use is PURE CVMFS -- `icetray/v1.17.0` under
+  `py3-v4.4.2/RHEL_9_x86_64_v2`, with no local build anywhere in the path --
+  and hdfwriter IS there.  Every measurement in this file, the pass2
+  cross-check included, was produced on it.  `SimpleBooker` has therefore never
+  run end to end; treat it as untested code, not as a working fallback.
+  **hdfwriter is DEPRECATED in v1.17.0:** importing it warns *"icecube.hdfwriter
+  is deprecated and will be removed in a future release.  Use icecube.tableio
+  instead."*  That is a real forward risk, because `pass2.match()` depends on
+  the `/__I3Index__/<key>` tables hdfwriter writes -- a metaproject upgrade that
+  drops it breaks both booking and event matching.
 - The old project dependencies: `tau_bdt.I3CutL7Module` (VICH),
   `analysis.event_selection` (the Dunkman variables: accumulated_time,
   separation_in_cogs), `slc-veto` (QR box, optional).
@@ -132,8 +139,10 @@ sklearn/joblib, only `lightgbm` + `numpy`.
 
 ## Current status
 
-- [x] Environment verified (no `oscNext` project; no `slc-veto`; the user's own
-      build DOES have `hdfwriter`)
+- [x] Environment verified: PURE CVMFS, `icetray/v1.17.0` under
+      `py3-v4.4.2/RHEL_9_x86_64_v2`.  No `oscNext` project, no `slc-veto`, no
+      `tau_bdt`, no `LowEnVariables` -- but `hdfwriter` IS present (deprecated).
+      Running this pipeline on cvmfs needs no change; it is what it runs on.
 - [x] IceTray/lightgbm import layer (`oscnext_l4/env.py` + `setup_env.sh`)
 - [x] Robust against corrupt input files (`--scan` + `--retries`)
 - [x] nue processed (100 files → 256,799 events), CORSIKA (500 files → 6,462)
