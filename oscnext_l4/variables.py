@@ -229,14 +229,51 @@ def check_object_exists(frame, object_key):
 # 1. COMMON VARIABLES
 # ===========================================================================
 
+# The sentinel the original vertex search starts from.  It is not a guard:
+# FirstHLC.cxx calls GetFirstHLCHit, IGNORES the bool it returns, and writes
+# the I3Particle unconditionally -- so an event with no HLC hit gets a vertex
+# at (1000, 1000, 1000) with time 1e10, and a first_hlc_rho of 1407.3.  Both
+# the production's fill_ratio and its muon BDT saw that number, so we write it
+# too.  (The original's own "was one found" check compares against 10000.0
+# rather than 1000.0 -- an extra zero -- but nothing reads the result.)
+FIRST_HLC_SENTINEL_POS = (1000.0, 1000.0, 1000.0)
+FIRST_HLC_SENTINEL_TIME = 1e10
+
+
 def _first_hlc(frame, pulses_key, output_key, geometry_key="I3Geometry"):
     '''
-    Find the earliest HLC hit in the cleaned series and write it as an
-    I3Particle.
+    Earliest HLC hit of the cleaned series, written as an I3Particle.
 
-    The original script used the "FirstHLC<I3RecoPulse>" C++ module.  That
-    module is not in every meta-project, so the same job is done in Python:
-    HLC hits carry the I3RecoPulse.PulseFlags.LC flag.
+    VERIFIED against the module the production actually ran:
+    `SimpleVertex/private/SimpleVertex/FirstHLC.cxx`, registered as
+    `I3_MODULE(FirstHLC<I3RecoPulse>)`, which is what
+    `tray.AddModule("FirstHLC<I3RecoPulse>", ...)` instantiates.  (A Python
+    class of the same name exists in `analysis/python/yanez/FirstHLC.py`, but
+    its parameters are `InputPulseSeries`/`Vertex` where the L4 tray passes
+    `HitSeriesName`/`OutputName`, so it is a different author's module and not
+    the one that produced pass2.)
+
+    Two things came out of reading it, and this rewrite had BOTH wrong:
+
+    1. TIES GO TO THE LAST DOM, not the first.  The C++ reads
+
+           if (hitTime > hlc_time) continue;
+           hlc_time = hitTime;  hlc_position = dom_position;
+
+       -- it skips only a STRICTLY later hit, so a hit at exactly the current
+       best time overwrites it.  Iteration is over an I3Map, i.e. ascending
+       OMKey, so the highest OMKey among tied hits wins.  This code used
+       `p.time < best[0]`, which keeps the first.  That is the whole of the
+       146 m disagreements: a tie resolved to a different string.
+
+    2. AN EVENT WITH NO HLC HIT STILL GETS A VERTEX -- the sentinel one.  See
+       FIRST_HLC_SENTINEL_POS above.
+
+    Everything else matches: the C++ scans every pulse of every DOM with no
+    early exit (equivalent to stopping at a DOM's first HLC pulse, since
+    pulses are time-ordered within a DOM), skips DOMs absent from the geometry,
+    takes the DOM position rather than anything charge weighted, and sets
+    fit_status OK.
     '''
     if output_key in frame:
         return True
@@ -245,23 +282,29 @@ def _first_hlc(frame, pulses_key, output_key, geometry_key="I3Geometry"):
         return True
     omgeo = frame[geometry_key].omgeo
 
-    best = None   # (time, pos)
+    best_time = FIRST_HLC_SENTINEL_TIME
+    best_pos = None
     for omkey, pulses in iter_map(pmap):
         if omkey not in omgeo:
             continue
         for p in pulses:
             if not (p.flags & _LC_FLAG):
                 continue
-            if best is None or p.time < best[0]:
-                best = (p.time, omgeo[omkey].position)
-            break   # DOM basina ilk HLC pulse yeterli
-
-    if best is None:
-        return True
+            # `<=`, not `<`: a tie overwrites, so the last DOM in OMKey order
+            # wins.  This mirrors the original's `if (hitTime > hlc_time)
+            # continue`.
+            if p.time <= best_time:
+                best_time = p.time
+                best_pos = omgeo[omkey].position
+            break          # a DOM's first HLC pulse is its earliest
 
     part = dataclasses.I3Particle()
-    part.pos = best[1]
-    part.time = best[0]
+    if best_pos is None:
+        part.pos = dataclasses.I3Position(*FIRST_HLC_SENTINEL_POS)
+        part.time = FIRST_HLC_SENTINEL_TIME
+    else:
+        part.pos = best_pos
+        part.time = best_time
     part.shape = dataclasses.I3Particle.ParticleShape.Cascade
     part.fit_status = dataclasses.I3Particle.FitStatus.OK
     frame[output_key] = part
