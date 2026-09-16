@@ -84,8 +84,15 @@ import numpy as np
 # pass2 spelling of the pulse series -- technical note sec. 3.2, p.25, which
 # names both explicitly.  The uncleaned series is the same string as pass3's,
 # so only the cleaned one is really a "pass2" constant.
-PASS2_CLEANED_PULSES = "SRTTWOfflinePulsesDC"
-PASS2_UNCLEANED_PULSES = "SplitInIcePulses"
+# The pass2 facts -- which datasets, which flags, which pulse series -- live in
+# ONE place, `oscnext_l4/productions.py`, because they are the same facts the
+# notebook's production switch needs.  They used to be written out here as well,
+# and the cost showed: correcting the NuTau dataset number from 160519 to
+# 160511 had to be done in both files, and a miss would have left one of them
+# globbing to nothing without raising.
+from .productions import PASS2_CLEANED_PULSES, PASS2_SAMPLES_ALL  # noqa: F401
+
+PASS2_UNCLEANED_PULSES = "SplitInIcePulses"     # the same string as pass3
 
 # Our own (pass3) spelling -- what process_L4.py writes even on a pass2 run.
 OURS_HITSTAT = "SRTTWSplitInIcePulsesDCHitStatistics"
@@ -546,32 +553,22 @@ def report(ours_h5, pass2_h5, cleaned_pulses=PASS2_CLEANED_PULSES,
 #     (CLAUDE.md open risk 3d is about the CORSIKA weighting specifically);
 #   * NuTau exists at pass2 (160511).  Our signal definition is nue+numu
 #     (open risk 6), so it is listed but not used unless that changes.
-PASS2_L3 = {
-    "NuE":     ["/data/ana/LE/oscNext/pass2/genie/level3/121122/"
-                "oscNext_genie_level3_v02.00_pass2.121122.*.i3.zst",
-                "/data/ana/LE/oscNext/pass2/genie/level3/121291/"
-                "oscNext_genie_level3_v02.00_pass2.121291.*.i3.zst"],
-    "NuMu":    ["/data/ana/LE/oscNext/pass2/genie/level3/141154/"
-                "oscNext_genie_level3_v02.00_pass2.141154.*.i3.zst",
-                "/data/ana/LE/oscNext/pass2/genie/level3/141292/"
-                "oscNext_genie_level3_v02.00_pass2.141292.*.i3.zst"],
-    "NuTau":   ["/data/ana/LE/oscNext/pass2/genie/level3/160511/"
-                "oscNext_genie_level3_v02.00_pass2.160511.*.i3.zst"],
-    "MuonGun": ["/data/ana/LE/oscNext/pass2/muongun/level3/139008/"
-                "oscNext_muongun_level3_v02.00_pass2.139008.*.i3.zst"],
-    "Noise":   ["/data/ana/LE/oscNext/pass2/noise/level3/888003/"
-                "oscNext_noise_level3_v02.00_pass2.888003.*.i3.zst"],
-}
+def _l3_patterns(spec):
+    """`l3` is a string for a single dataset and a list when a sample spans
+    several -- pass2 NuE is 121122 AND 121291, NuMu is 141154 AND 141292."""
+    l3 = spec["l3"]
+    return [l3] if isinstance(l3, str) else list(l3)
 
-# process_L4.py flags per sample -- the weighting keys differ and booking the
-# wrong ones produces a column of NaN rather than an error (CLAUDE.md, AUX).
-PASS2_FLAGS = {
-    "NuE":     ["--mc", "--genie"],
-    "NuMu":    ["--mc", "--genie"],
-    "NuTau":   ["--mc", "--genie"],
-    "MuonGun": ["--mc", "--muongun"],
-    "Noise":   ["--noise"],
-}
+
+# The cross-check spells its samples with capitals (NuE) where productions.py
+# uses the notebook's lower case (nue); the two differ in nothing else.
+_SAMPLES = ("NuE", "NuMu", "NuTau", "MuonGun", "Noise")
+
+PASS2_L3 = {name: _l3_patterns(PASS2_SAMPLES_ALL[name.lower()])
+            for name in _SAMPLES}
+
+PASS2_FLAGS = {name: list(PASS2_SAMPLES_ALL[name.lower()]["flags"])
+               for name in _SAMPLES}
 
 
 def l4_path(l3_path):
