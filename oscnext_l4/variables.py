@@ -566,7 +566,7 @@ def _separation_in_cogs(frame, pulses_key, output_key, geometry_key="I3Geometry"
 
 def _vich(frame, uncleaned_pulses,
           nch_key, npulses_key, qtot_key, geometry_key="I3Geometry",
-          trigger_key="I3TriggerHierarchy", config_ids=(1011,)):
+          trigger_key="I3TriggerHierarchy", config_ids=(1010, 1011)):
     '''
     Veto Identified Causal Hits -- REPRODUCES pass2 EXACTLY (100.00%).
 
@@ -589,25 +589,46 @@ def _vich(frame, uncleaned_pulses,
         dt < d / 0.3 + 150
         dt > d / 0.3 - 1850
 
-    Only the FIRST matching trigger is used; the original says so in a comment
-    right before its `break`.
+    Only the FIRST matching trigger is used, and `TriggerConfigIDs` defaults to
+    **[1010, 1011]**, which the L4 tray does not override.
 
-    CONFIRMED BY A SECOND, INDEPENDENT SOURCE.  The algorithm was found by
-    fitting candidate definitions against pass2 and reaching 100.00%; the
-    oscNext_meta V01-00-07 build that produced pass2 then turned out to carry
-    it in readable Python, as `CausalTrackVeto` in
-    `analysis/python/event_selection/I3CutL7Module_JP_Matt.py`:
+    CONFIRMED AGAINST THE MODULE ITSELF.  The algorithm was found by fitting
+    candidate definitions against pass2 and reaching 100.00%; the oscNext_meta
+    V01-00-07 build that produced pass2 then turned out to carry
+    `tau_bdt/python/I3CutL7Module.py` -- Python, not C++, and exactly what
+    `from icecube.tau_bdt import I3CutL7Module` imports.  It settles every
+    detail this function had to assume:
+
+      - `break` after the first trigger whose config id is in the list;
+      - `nch` counts DOMs with at least one selected pulse (`foundOne`);
+      - `npulses` counts the selected pulses;
+      - `nVetoHitsTotalPE += pulse.charge`, with no clamping of negatives;
+      - the reference is the pulse closest in time to the trigger, ties going
+        to the first in map order (a strict `<`, as `np.argmin` does).
+
+    One deviation is deliberate.  The original seeds its reference search with
+    `refPulseTime = 0` and `refPulsePos = (0,0,0)`, so if NO pulse is closer to
+    the trigger than t=0 is, that sentinel survives and the whole calculation
+    is done against the origin at t=0.  With a trigger at ~10 us and pulses in
+    the readout window this cannot happen, and it did not in any of the 8144
+    verified events; reproducing it would only copy a latent bug.
+
+    A second, structurally identical implementation exists as `CausalTrackVeto`
+    in `analysis/python/event_selection/I3CutL7Module_JP_Matt.py`:
 
         def mightBeBackground(distance, timeDiff):
             return ((distance < 750) and (timeDiff > (-5*distance + 500)) and
                     ((distance/0.3 - 1850) < timeDiff < (distance/0.3 + 150)))
 
-    with `config_id != 1011: continue`, the reference taken as the pulse
-    closest in time to the trigger, `hitTimeDiff = refHitTime - pulse.time`
-    and `nVetoPE += pulse.charge` -- every piece as implemented here.  Its
-    docstring also names the physics: "charge that might have caused the
+    Its docstring names the physics: "charge that might have caused the
     DeepCore trigger ... direct or scattered light that could have come from a
-    muon track approaching the trigger position".
+    muon track approaching the trigger position".  It restricts itself to
+    config id 1011 and returns charge only, so it corroborates the bands but
+    is NOT the module L4 runs; where the two differ, I3CutL7Module.py wins.
+    (GRECO's `VetoCausalHits` is a third implementation of the same bands, and
+    it loops over every matching trigger with no `break` -- which is why the
+    trigger question had to be settled from the module itself rather than by
+    majority.)
 
     MEASURED against the real pass2 L4 files, 8144 events, all three outputs:
     nch 100.00%, npulses 100.00%, qtot 100.00%, median difference 0.
@@ -688,13 +709,15 @@ def _vich(frame, uncleaned_pulses,
     x = np.asarray(xs); y = np.asarray(ys); z = np.asarray(zs)
     t = np.asarray(ts); q = np.asarray(qs)
 
-    # ONLY THE FIRST matching trigger.  An earlier version of this function
-    # looped over every matching trigger and accumulated.  It still agreed with
-    # pass2 in 100% of 8144 events, because those events carry exactly one
-    # config-1011 trigger (next to a MERGED and a THROUGHPUT one, which have no
-    # config id at all) -- so the bug was invisible in the data that verified
-    # it, and an event with two DeepCore triggers would have been double
-    # counted.  Found by reading the original, not by measurement.
+    # ONLY THE FIRST matching trigger, per the module's own `break`.  An
+    # earlier version looped over every matching trigger and accumulated.  It
+    # still agreed with pass2 in 100% of 8144 events, because those events
+    # carry exactly one matching trigger (next to a MERGED and a THROUGHPUT
+    # one, which have no config id at all) -- so the bug was invisible in the
+    # data that verified it, and an event with two would have been double
+    # counted.  Found by reading the original, not by measurement; the same
+    # goes for the [1010, 1011] default, which pass2 simulation never exercises
+    # because 1010 does not appear in it.
     trigger_time = trigger_times[0]
     i = int(np.argmin(np.abs(t - trigger_time)))
     d = np.sqrt((x - x[i]) ** 2 + (y - y[i]) ** 2 + (z - z[i]) ** 2)

@@ -206,7 +206,30 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    reading it unguarded raises and loses every trigger in the event -- which is
    exactly how the first attempt produced NaN in all 8144 events.
 
-   `tau_bdt` / `I3CutL7Module` was never found and is no longer needed.
+   **`tau_bdt` WAS found, and it is Python, not C++.**  The oscNext_meta
+   V01-00-07 build carries `src/tau-bdt/python/I3CutL7Module.py` (note the
+   hyphen in the directory, the underscore in the import), which is exactly
+   what `from icecube.tau_bdt import I3CutL7Module` loads.  It confirms the
+   bands, the `break` after the first matching trigger, `nch` as DOMs with at
+   least one selected pulse, `npulses` as the pulse count, and `+= pulse.charge`
+   with no clamping.  **It also corrected one thing measurement could not:**
+   `TriggerConfigIDs` defaults to **[1010, 1011]** and the L4 tray does not
+   override it, where we had used 1011 alone.  pass2 simulation carries no 1010
+   trigger, so all 8144 events agreed either way; on detector data the first
+   matching trigger could be a 1010 and the reference pulse would differ.
+   Fixed.
+
+   Three implementations of these bands exist and they do NOT agree with each
+   other: `I3CutL7Module.py` (the one L4 runs) breaks after the first trigger;
+   GRECO's `VetoCausalHits` loops over all matching triggers and accumulates;
+   `I3CutL7Module_JP_Matt.py` breaks but restricts itself to 1011 and returns
+   charge only.  Where they differ, the module L4 actually calls decides.
+
+   One deliberate deviation remains: the original seeds its reference search
+   with `refPulseTime = 0`, `refPulsePos = (0,0,0)`, so an event with no pulse
+   closer to the trigger than t=0 would be computed against the origin.  A
+   trigger at ~10 us makes that unreachable, and it never occurred in the 8144
+   events; reproducing it would only copy a latent bug.
 
 2. **accumulated_time — SOLVED against pass2 (99.40%).**  Table 12 says "Time
    to reach 75% of an event's charge in the cleaned pulse series"; the fraction
