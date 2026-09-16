@@ -505,42 +505,61 @@ class PropagateGenieInfo(icetray.I3Module):
 # ===========================================================================
 
 def _accumulated_time(frame, pulses_key, output_key, fraction=0.75,
-                      before_crossing=False):
+                      before_crossing=True):
     '''
-    Time [ns] taken to reach 75% of the event's total charge.
+    Time [ns] from the first pulse to the point where the event has ~75% of
+    its charge.
 
-    Technical note Table 12: "Time to reach 75% of an event's charge in the
-    cleaned pulse series."  One of the few charge-dependent variables in the
-    selection.  The original took it from analysis/event_selection's
-    CalculateVariables module; it is computed directly here.
+    VERIFIED against the module the production ran:
+    `analysis/private/analysis/event_selection/CalculateVariables.cxx`
+    (`I3_MODULE(CalculateVariables)`), which the L4 tray calls as
+    `tray.AddModule("CalculateVariables", "DunkVars", PulseSeries=cleaned)`.
 
-    before_crossing=False (DEFAULT, the note): the time of the first pulse
-        whose cumulative charge REACHES the fraction -- i.e. the time at which
-        the event has 75% of its charge, which is what Table 12 describes.
+    THE PRODUCTION DOES NOT LOOK FOR A 75% CROSSING AT ALL.  It bins the
+    time-sorted pulses into CHARGE QUARTILES and assigns the variable inside
+    the third one:
 
-    before_crossing=True: the pulse BEFORE that one.  This reproduces the
-        pass2 production, and it is an off-by-one: at that pulse the event has
-        LESS than 75% of its charge, so it is not "the time to reach 75%".
+        bin_edges = [0, Q/4, Q/2, 3Q/4, Q]
+        accumulated_charge += current_charge
+        part_index = index of the first edge >= accumulated_charge
 
-    THE PASS2 BEHAVIOUR IS MEASURED, NOT GUESSED.  On 8144 pass2 L4 events
-    with both values in the same frame, this variable was fitted against the
-    stored L4_accumulated_time:
+        } else if ( part_index == 3 ) {
+            variables.accumulated_time = pulse.GetTime() - first_slc.t();
 
-        all pulses, fraction 0.75, the pulse BEFORE the crossing   99.40%
-        per-DOM charge, same rule                                  54.25%
-        all pulses, fraction 0.70, at the crossing                 44.35%
-        all pulses, fraction 0.75, at the crossing (the note)       0.98%
+    `part_index == 3` means `0.5Q < accumulated_charge <= 0.75Q`, and the line
+    runs for EVERY pulse in that band, so what survives is the LAST pulse
+    whose cumulative charge has not yet passed 0.75Q.
 
-    with a median difference of 0 for the winner.  It was found by inverting
-    the question rather than guessing: the charge fraction accumulated at
-    pass2's stored time sits just BELOW 0.75 in at least 84% of events
-    (median 0.7258, 84th pct 0.7449) and never above it, which is exactly one
-    entry's charge share short -- the signature of an off-by-one.  The median
-    shortfall, 0.024, is the share of an average pulse at this hit multiplicity.
+    That is what the pass2 fit found empirically -- "the pulse before the
+    crossing", 99.40% over 8144 events against 0.98% for the crossing itself.
+    It is therefore NOT an off-by-one bug, as this docstring previously
+    claimed: it is what quartile binning gives when the variable is written in
+    the Q3 branch.  Two details the fit could not see, both fixed here:
 
-    The DEFAULT stays with the note, as it does for micro_count (open risk 5b):
-    we follow the description, not the original's slip.  Use
-    before_crossing=True only to reproduce pass2 numbers.
+      * the bound is `<=`, not `<` (lower_bound returns bin_edges[3] when the
+        cumulative charge lands exactly on 0.75Q), where searchsorted's
+        default gave the pulse before that one;
+      * when NO pulse falls in the Q3 band the variable keeps its default,
+        which is why pass2 stores exactly 0 in a fraction of events.  That
+        needs one pulse to carry the cumulative sum from below 0.5Q to above
+        0.75Q, i.e. more than a QUARTER of the event's charge -- not three
+        quarters, as was written here before.
+
+    `first_slc` is the first entry of the time-sorted list, HLC or not, so the
+    zero point is the earliest pulse -- the same `t[0]` used here.
+
+    Charges are summed as they come, with no clamping of negatives, as the
+    original does.
+
+    `before_crossing=True` (DEFAULT) is the production rule above.
+    `before_crossing=False` follows technical note Table 12 instead -- "time to
+    reach 75% of an event's charge" -- taking the first pulse that reaches the
+    fraction.  That agrees with pass2 in 0.98% of events.
+
+    ONE DEVIATION REMAINS.  The original sorts with `std::sort`, which is not
+    stable, so pulses sharing a time can land in either order; this uses a
+    stable sort so the index is reproducible run to run.  There is no way to
+    reproduce an unspecified order, and a reproducible answer is worth more.
     '''
     if output_key in frame:
         return True
@@ -548,62 +567,120 @@ def _accumulated_time(frame, pulses_key, output_key, fraction=0.75,
     if pmap is None:
         return True
 
+    n_doms = 0
     times, charges = [], []
     for _, pulses in iter_map(pmap):
+        n_doms += 1
         for p in pulses:
             times.append(p.time)
-            charges.append(max(p.charge, 0.0))
-    if not times:
+            charges.append(p.charge)
+
+    # `if (map_of_pulses.size() <= 4) { PushFrame; return; }` -- with four or
+    # fewer DOMs the original writes no Variables object at all, so the L4
+    # script's ExtractDunk finds nothing and neither key reaches the frame.
+    if n_doms <= 4 or not times:
         return True
 
-    t = np.asarray(times); q = np.asarray(charges)
-    # stable: pulses sharing a time must keep their order, or the index the
-    # cumulative sum lands on is not reproducible run to run.  The fit that
-    # settled before_crossing used a stable sort, so production must too.
+    t = np.asarray(times)
+    q = np.asarray(charges)
     order = np.argsort(t, kind="stable")
     t, q = t[order], q[order]
     total = q.sum()
-    if total <= 0:
+    if not np.isfinite(total) or total <= 0:
         return True
-    cum = np.cumsum(q) / total
-    idx = int(np.searchsorted(cum, fraction))
-    idx = min(idx, len(t) - 1)
+
+    cum = np.cumsum(q)
+
     if before_crossing:
-        idx = max(idx - 1, 0)
+        # The Q3 band: 0.5Q < cumulative <= 0.75Q, last pulse in it.
+        in_q3 = (cum > 0.5 * total) & (cum <= 0.75 * total)
+        if not in_q3.any():
+            # No pulse landed in Q3, so the struct default survives.
+            frame[output_key] = dataclasses.I3Double(0.0)
+            return True
+        idx = int(np.flatnonzero(in_q3)[-1])
+    else:
+        idx = min(int(np.searchsorted(cum, fraction * total)), t.size - 1)
+
     frame[output_key] = dataclasses.I3Double(float(t[idx] - t[0]))
     return True
 
 
-def _separation_in_cogs(frame, pulses_key, output_key, geometry_key="I3Geometry"):
+def _separation_in_cogs(frame, pulses_key, output_key,
+                        geometry_key="I3Geometry"):
     '''
-    Split the event into two halves in time, compute each half's charge
-    weighted COG, and write the distance between them.
+    Distance between the charge-weighted COG of the event's FIRST charge
+    quartile and that of its FOURTH.
 
-    A track moves on   -> the COG shifts -> large separation.
-    A cascade is local -> small separation.
+    A track moves on  -> the two COGs sit apart -> large separation.
+    A cascade is local -> they coincide          -> small separation.
 
-    CAREFUL: the exact definition of the original Dunkman implementation could
-    not be verified (the project is unavailable).  If you have reference files,
-    compare this variable against them.  It is not a BDT input, so it is not
-    critical.
+    VERIFIED against `CalculateVariables.cxx`, which the L4 tray runs as
+    `CalculateVariables(PulseSeries=cleaned_pulses)`:
+
+        variables.separation = CalcDistance(variables.cog_q1, variables.cog_q4);
+
+    with `cog_q1` and `cog_q4` accumulated in the same quartile loop that
+    produces accumulated_time: pulses are sorted by time, the cumulative
+    charge is binned against `[0, Q/4, Q/2, 3Q/4, Q]`, and each pulse updates
+    the COG of the quartile it falls in.
+
+    THIS REPLACES A GUESS.  The earlier version split the event into two
+    halves by HIT COUNT and compared those two COGs, with a docstring saying
+    the definition "could not be verified (the project is unavailable)".  The
+    project is available now, and the definition is different in two ways: the
+    split is by CHARGE, not by count, and it compares the outer quartiles, not
+    two halves -- so the middle half of the charge is excluded entirely.
+
+    Not a BDT input (it is in neither Table 12 nor the production's
+    L4_MUON_MODEL_INPUT_VARIABLES), so it is behind --run-optional.
     '''
     if output_key in frame:
         return True
     pmap = get_pulses(frame, pulses_key)
     if pmap is None or geometry_key not in frame:
         return True
+    geo = frame[geometry_key]
 
-    hits = list(iter_hits(pmap, frame[geometry_key]))
-    if len(hits) < 4:
+    n_doms = 0
+    hits = []
+    for omkey, pulses in iter_map(pmap):
+        n_doms += 1
+        if omkey not in geo.omgeo:
+            continue
+        pos = geo.omgeo[omkey].position
+        for p in pulses:
+            hits.append((p.time, p.charge, pos.x, pos.y, pos.z))
+
+    # Same guard as accumulated_time: the original computes no Variables at
+    # all for four or fewer DOMs.
+    if n_doms <= 4 or not hits:
         return True
-    hits.sort(key=lambda h: h[2])          # sort by time
-    half = len(hits) // 2
-    c1 = charge_weighted_cog(hits[:half])
-    c2 = charge_weighted_cog(hits[half:])
-    if c1 is None or c2 is None:
+
+    hits.sort(key=lambda h: h[0])
+    a = np.asarray(hits, dtype=float)
+    q = a[:, 1]
+    total = q.sum()
+    if not np.isfinite(total) or total <= 0:
         return True
-    d = np.sqrt((c2[0]-c1[0])**2 + (c2[1]-c1[1])**2 + (c2[2]-c1[2])**2)
-    frame[output_key] = dataclasses.I3Double(float(d))
+
+    cum = np.cumsum(q)
+    q1 = cum <= 0.25 * total
+    q4 = cum > 0.75 * total
+    if not q1.any() or not q4.any():
+        return True
+
+    def cog(mask):
+        w = q[mask]
+        if w.sum() <= 0:
+            return None
+        w = w / w.sum()
+        return np.array([w @ a[mask, 2], w @ a[mask, 3], w @ a[mask, 4]])
+
+    c1, c4 = cog(q1), cog(q4)
+    if c1 is None or c4 is None:
+        return True
+    frame[output_key] = dataclasses.I3Double(float(np.linalg.norm(c4 - c1)))
     return True
 
 
