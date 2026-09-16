@@ -1088,18 +1088,30 @@ the matching level4 file were dumped, so this is **verified**, not assumed:
 - **Not every L3 file has an L4 partner**: 121122 file `000000` exists at L3 and
   not at L4.  `pair_files()` reports such orphans rather than skipping quietly.
 
-### The fitting scaffolding is TEMPORARY
+### The fitting scaffolding is GONE (recover it from the tag)
 
-`oscnext_l4/fit_pass2.py` and the `fit` / `fit-report` subcommands of
-`scripts/compare_pass2.py` exist only to FIND the two definitions our rewrite
-does not reproduce.  They are not part of the pipeline and nothing in the
-production path imports them.
+`oscnext_l4/fit_pass2.py` and the `fit` / `fit-report` subcommands existed to
+FIND the definitions the rewrite did not reproduce.  Both are settled -- VICH
+and accumulated_time are in `oscnext_l4/variables.py` with the evidence in
+their docstrings, and the measurements are in open risks 1, 2, 2a and 2b here
+-- so they were deleted, as this file said they would be.  Removing them lost
+nothing: everything they established is written down.
 
-**When VICH and accumulated_time are settled: put the answer in
-`oscnext_l4/variables.py` (the code plus a docstring recording the evidence),
-record the finding here, then DELETE the scaffolding.**  Everything worth
-keeping has to live in the code and in this file, so that removing the tooling
-loses nothing.
+`scripts/run_crosscheck.py` went with them.  It drove the cross-check from the
+command line before `notebooks/pass2_verification.ipynb` existed; the notebook
+does the same job and pools the events across files, which the script could
+not.
+
+**If a definition ever has to be fitted again** -- a pass3 variable that does
+not reproduce, `separation_in_cogs`, a new L4 variable -- the machine is one
+command away:
+
+    git show pass2-verified-v1:oscnext_l4/fit_pass2.py > oscnext_l4/fit_pass2.py
+    git show pass2-verified-v1:scripts/compare_pass2.py > scripts/compare_pass2.py
+
+It is worth recovering rather than rewriting: it carries the variant/inversion/
+grid-scan method that found VICH, and the `production_tie_*` variants that
+measured the accumulated_time residual.
 
 **Two constraints on how it is run:**
 

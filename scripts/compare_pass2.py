@@ -10,10 +10,11 @@ See oscnext_l4/pass2.py for what is compared and why, and for the two things
 that have to be right before any of it means anything (the pass2 cleaned pulse
 series name, and one L3 file per HDF5 so events can be matched).
 
-The `fit` and `fit-report` subcommands are TEMPORARY scaffolding (see
-oscnext_l4/fit_pass2.py): they exist to pin down two definitions and are
-removed once those land in variables.py.  `inspect` / `book` / `report` are
-the cross-check itself.
+`inspect` / `plan` / `book` / `report` are the cross-check.  The `fit` /
+`fit-report` subcommands that used to sit beside them were scaffolding for
+finding the definitions our rewrite did not reproduce; those are settled and
+recorded in variables.py and CLAUDE.md, so the scaffolding is gone.  Recover
+it from the tag pass2-verified-v1 if a definition ever has to be fitted again.
 
 Subcommands
 -----------
@@ -270,81 +271,6 @@ def cmd_report(args):
 # fit
 # ---------------------------------------------------------------------------
 
-def cmd_fit(args):
-    """
-    Compute every candidate definition over the pass2 L4 files.
-
-    This runs on the L4 files, not the L3 ones, on purpose: the reference
-    value and the pulse series it came from sit in the SAME frame, so each
-    candidate is scored against the answer key with no event matching and no
-    doubt about what went in.
-    """
-    icetray, dataio, dataclasses, I3Tray = _icetray()
-    from oscnext_l4.booker import add_booker
-    from oscnext_l4 import fit_pass2 as F
-
-    files = expand(args.input)
-    if not files:
-        sys.exit("no input file")
-    if os.path.exists(args.output_hdf5) and not args.overwrite:
-        sys.exit("%s exists (use --overwrite)" % args.output_hdf5)
-    outdir = os.path.dirname(os.path.abspath(args.output_hdf5))
-    if outdir and not os.path.isdir(outdir):
-        os.makedirs(outdir)
-
-    keys = F.fit_keys()
-    if args.grid:
-        keys += F.grid_keys()
-    print("%d candidate definitions -> %d keys, %d file(s)"
-          % (len(F.ACC_VARIANTS) + len(F.VICH_VARIANTS) + len(F.RHO_VARIANTS),
-             len(keys), len(files)))
-
-    tray = I3Tray()
-    tray.Add("I3Reader", "reader", FilenameList=[args.gcd] + files)
-    tray.Add(lambda f: (f["I3EventHeader"].sub_event_stream
-                        == args.sub_event_stream),
-             "stream_filter", Streams=[icetray.I3Frame.Physics])
-    tray.Add(F.fit_variants, "fit",
-             cleaned_pulses=args.cleaned_pulses,
-             uncleaned_pulses=args.uncleaned_pulses,
-             Streams=[icetray.I3Frame.Physics])
-    tray.Add(F.diagnose, "diagnose",
-             cleaned_pulses=args.cleaned_pulses,
-             uncleaned_pulses=args.uncleaned_pulses,
-             Streams=[icetray.I3Frame.Physics])
-    if args.grid:
-        tray.Add(F.grid_variants, "grid",
-                 cleaned_pulses=args.cleaned_pulses,
-                 uncleaned_pulses=args.uncleaned_pulses,
-                 Streams=[icetray.I3Frame.Physics])
-    counter = {"n": 0}
-
-    def _count(frame):
-        counter["n"] += 1
-        return True
-    tray.Add(_count, "count", Streams=[icetray.I3Frame.Physics])
-    add_booker(tray, "booker", output=args.output_hdf5, keys=keys,
-               sub_event_streams=(args.sub_event_stream,))
-    if args.n:
-        tray.Execute(args.n)
-    else:
-        tray.Execute()
-    print("Events booked: %d" % counter["n"])
-
-
-def cmd_fit_report(args):
-    from oscnext_l4 import fit_pass2 as F
-    F.report(args.hdf5)
-    if args.diagnose:
-        print("")
-        F.diagnose_report(args.hdf5)
-    if args.grid:
-        print("")
-        F.grid_report(args.hdf5)
-
-
-# ---------------------------------------------------------------------------
-
 def main():
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -381,29 +307,6 @@ def main():
     sp.add_argument("--overwrite", action="store_true")
     common(sp)
     sp.set_defaults(func=cmd_book)
-
-    sp = sub.add_parser("fit", help="compute every candidate definition")
-    sp.add_argument("--gcd", required=True)
-    sp.add_argument("--input", nargs="+", required=True,
-                    help="pass2 L4 .i3 files (the reference lives in them)")
-    sp.add_argument("--output-hdf5", required=True)
-    sp.add_argument("--sub-event-stream", default="InIceSplit")
-    sp.add_argument("--uncleaned-pulses", default=P.PASS2_UNCLEANED_PULSES)
-    sp.add_argument("--n", type=int, default=0)
-    sp.add_argument("--overwrite", action="store_true")
-    sp.add_argument("--grid", action="store_true",
-                    help="also sweep the fraction/speed-window grids")
-    common(sp)
-    sp.set_defaults(func=cmd_fit)
-
-    sp = sub.add_parser("fit-report", help="rank the candidate definitions")
-    sp.add_argument("hdf5")
-    sp.add_argument("--diagnose", action="store_true", default=True,
-                    help="also invert pass2's numbers (default on)")
-    sp.add_argument("--no-diagnose", dest="diagnose", action="store_false")
-    sp.add_argument("--grid", action="store_true",
-                    help="also report the grid scan (needs `fit --grid`)")
-    sp.set_defaults(func=cmd_fit_report)
 
     sp = sub.add_parser("report", help="compare the two HDF5 files")
     sp.add_argument("--ours", required=True)
