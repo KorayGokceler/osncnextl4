@@ -1031,6 +1031,115 @@ loses nothing.
 3d) does not carry over.  The noise BDT is unaffected.  NuTau (160519) exists
 at pass2, but the signal definition is still nue+numu (open risk 6).
 
+## Verified against the PRODUCTION SOURCE (oscNext_meta V01-00-07)
+
+The build that actually produced pass2 L1-L5 is readable on cvmfs at
+`/cvmfs/icecube.opensciencegrid.org/users/Oscillation/software/oscNext_meta/releases/V01-00-07/`,
+and the training recipe lives in the fridge at
+`/data/sim/DeepCore/2018/workspace/fridge/processing/samples/oscNext/selection/level4/`.
+Its `oscNext_L4.py` is **live code**, unlike the commented-out copy in
+`reference/`.  Everything below was checked against it line by line.
+
+### The L4 tray -- every variable AGREES
+
+| variable | the production | ours |
+|---|---|---|
+| `first_hlc` | `FirstHLC<I3RecoPulse>`, `HitSeriesName=cleaned_pulses` | same series |
+| `first_hlc_rho` | `calc_rho_36(pos.x, pos.y)` | same, and the formula now matches bit for bit |
+| `iLineFit` | `linefit.simple`, `inputResponse=cleaned_pulses` | verbatim |
+| `ToI` | `I3TensorOfInertia`, amplitude 1/1, MinHits 3, cleaned | verbatim (optional, not a BDT input) |
+| `QR_Box` | `SmallQ_Box`, `RecoPulsesKey=cleaned_pulses` | verbatim (optional) |
+| Dunkman | `CalculateVariables(PulseSeries=cleaned_pulses)` | `accumulated_time`, `separation_in_cogs` from the cleaned series |
+| `VICH` | `I3CutL7Module(InputPulses=uncleaned_pulses)`, three output keys | uncleaned, same three keys |
+| `micro_count` | `uncleaned` -> StaticTWC [1010,1011] -3500/+4000 -> (dead SRT) -> `I3OMSelection(DeepCoreFiducialDOMs, "IC86")` -> DTW 200 -> `len(values())` | identical, minus the dead step |
+| `fill_ratio` | `RecoPulseName=cleaned`, `SphericalRadiusMean=1.6`, `VertexName=L4_first_hlc` | verbatim |
+| L3 cut | `oscNext_cut(processing_level=3)` first | same |
+
+**Booking-audit bug 4 is confirmed in LIVE code**, not just in the
+commented-out copy: `I3OMSelection` takes `tw_pulses`, while `srt_tw_pulses`
+is written and never read, right under the author's own
+`#TODO Is this actually used?`.
+
+### The BDT input lists -- DEFINITIVE, and ours match exactly
+
+No longer read off Tables 11/12.  From `L4_noise_model_train.py`:
+
+    L4_NOISE_MODEL_INPUT_VARIABLES = [
+        "IC2018_LE_L3_Vars.NchCleaned",
+        "L4_micro_count.STW_m3500p4000_DTW200",
+        "L4_iLineFit.speed",
+        "L4_fill_ratio.fill_ratio_from_mean",
+        "IC2018_LE_L3_Vars.FullTimeLengthRatio" ]
+
+and from `L4_muon_model_train.py` (the v01.01 list): `ICVetoHits`,
+`NAbove200Hits`, `RTVeto250Hits`, `NchCleaned`, `L4_VICH_nch`,
+`L4_accumulated_time`, `L4_first_hlc_rho`, `HitStatistics.cog.z`,
+`.z_sigma`, `.z_travel`.
+
+5 + 10, 14 unique -- **exactly `NOISE_FEATURES` and `MUON_FEATURES`**, subkey
+spellings included.  This also settles open risk 3a: `NchCleaned` does belong
+in the muon list.
+
+### The hyperparameters -- identical
+
+`max_depth 6`, `num_leaves 25`, `max_bin 32`, `min_data_in_leaf 500`,
+`lambda_l1 2.0`, `lambda_l2 1.0`, `min_gain_to_split 2.0`,
+`is_unbalance False`, and **`feature_fraction` 0.8 for noise / 0.7 for muon**
+-- `PARAMS` in `train_L4_classifier.py` to the digit, the 0.8/0.7 split
+included.  Class balancing also matches in method: they pass
+`class_ratio={k: 1.}` with `scale_weights=True`, we balance through `weight`.
+The cut thresholds `P_noise >= 0.7` and `P_muon >= 0.65` are confirmed in
+`compute_L4_cut`.
+
+### Five real differences, none of them a bug in our variables
+
+1. **The signal includes ν_τ.**  `L4_model_data.py` harvests GENIE 12xxxx,
+   14xxxx AND **16xxxx**, all as `CLASSES["neutrino"]`.  We define the signal
+   as νe+νμ (open risk 6).  pass2 NuTau (160519) exists in the paths we have,
+   so this is fixable.
+
+2. **The muon background is REAL DETECTOR DATA, not simulation.**  The muon
+   classifier is trained with `--muon-events data` against `CLASSES["traindata"]`
+   -- one run per month, 2012-2018 -- and the L4 cut uses
+   `L4_MuonClassifier_Data_ProbNu`.  A MuonGun-trained model exists but the
+   file says outright: *"we never actually used the MC trained muon classifier
+   anyway (we used the data driven one instead for the sample)"*.  CORSIKA was
+   dropped too: *"we never got a decent CORSIKA set"*.  So open risk 6's
+   "CORSIKA instead of data" is not a small substitution -- it is the opposite
+   of what the production did.
+
+3. **Detector-data weights are `1 / livetime_s` per event**, applied after
+   harvesting so the histograms come out in Hz like the MC.
+
+4. **The train/test split is not 50/50.**  `train_fraction` is
+   `{"neutrino": 0.02, "noise": 0.3333}` for noise and `{"neutrino": 0.02,
+   "traindata": 0.5}` for muon.  **Do not copy the fraction**: the comments
+   show they are targeting an absolute size -- *"1% with new nominal dataset
+   (0000) ... gives a comparable 2.24e5 events.  Doubling to 2% to address
+   overtraining"*.  Our `TRAIN_FRAC = 0.5` on 330k signal gives 165k training
+   events, the same regime as their 2.2e5, so 0.5 is right for our statistics
+   and 0.02 would leave 6.6k.
+
+5. **The noise straight cuts, exactly** (`L4_NoiseStraightCuts_Bool`, a loose
+   cut the production computes but does not use):
+   `n_hit_doms >= 8`, `STW9000_DTW300Hits >= 2`,
+   `L4_micro_count["STW_m3500p4000_DTW200"] >= 2`,
+   `fill_ratio_from_mean >= 0.03`, `z_sigma >= 8`, `z_travel >= -50`.
+
+### `first_hlc_rho` has a known pathology -- worth knowing before we use it
+
+`investigate_first_hlc_rho_issue.py` exists because the variable *"shows
+significant disagreement pre- vs post- 2017 run start, once the L4 classifier
+cut has been made"*.  The script scans `P_nu` against `first_hlc_rho` and
+overlays the string positions: the model learns **step functions at the exact
+rho of each string**, and the 2016 and 2017 GCDs differ in string x-y by ~1e-5 m
+(string 84: 71.477530 vs 71.477533).  That is enough to flip events across a
+learned boundary.
+
+The variable is the seventh of our ten muon inputs, so this is a caution, not
+a blocker -- but if our muon BDT shows a season- or GCD-dependent step, this
+is the first place to look, and it is not our bug.
+
 ## Conventions
 
 - **Code, comments, docstrings, printed output, plot labels and documentation
