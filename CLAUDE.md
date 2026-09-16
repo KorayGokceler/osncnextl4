@@ -744,8 +744,12 @@ environment is cleanest (README step 3); otherwise register the kernel with
 `./setup_env.sh kernel` and select it in the notebook.
 
 **3. `lightgbm` appears to be missing in the kernel.** It is not in the
-`icecube` namespace -- an ordinary pip package that must be installed in the
-env-shell python.
+`icecube` namespace -- an ordinary pip package.  In the environment actually in
+use it needs no installing: `lightgbm 4.5.0` ships inside cvmfs itself
+(`py3-v4.4.2/RHEL_9_x86_64_v2/lib/python3.12/site-packages`), not as a `--user`
+install.  So a missing lightgbm means the kernel is not the env-shell python,
+not that a package is absent -- check `sys.executable` before installing
+anything.
 
 **4. The location of `I3Tray` depends on the version** —
 `icecube.icetray.I3Tray` (v1.5+) versus a top-level `I3Tray` (combo).
