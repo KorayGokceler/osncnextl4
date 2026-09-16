@@ -25,6 +25,10 @@ ap.add_argument("--gcd", required=True)
 ap.add_argument("--outdir", default="L4_output/pass2_check")
 ap.add_argument("--n-files", type=int, default=0, help="0 = every file")
 ap.add_argument("--keep", action="store_true", help="do not delete the HDF5")
+ap.add_argument("--production-hdf5", action="store_true",
+                help="use the production's OWN hdf5 next to each pass2 L4 .i3 "
+                     "file as the answer key, instead of booking one.  Halves "
+                     "the work.  These files are never written to or deleted.")
 ap.add_argument("--reuse-pass2", action="store_true",
                 help="reuse an existing pass2_<tag>.hdf5 answer key instead of "
                      "booking it again, and never delete it.  The answer key "
@@ -61,8 +65,23 @@ for i, (f3, f4) in enumerate(pairs, 1):
     ref = os.path.join(a.outdir, "pass2_%s.hdf5" % tag)
     print("\n===== [%d/%d] %s =====" % (i, len(pairs), tag), flush=True)
 
-    reused = a.reuse_pass2 and os.path.exists(ref)
-    if a.reuse_pass2 and not reused:
+    # The production publishes an hdf5 beside every L4 .i3 file, same stem.
+    # Using it skips booking entirely -- and it is SOMEONE ELSE'S FILE, so it
+    # is never passed to the cleanup below.
+    production = None
+    if a.production_hdf5:
+        for ext in (".i3.zst", ".i3.bz2", ".i3.gz", ".i3"):
+            if f4.endswith(ext):
+                production = f4[:-len(ext)] + ".hdf5"
+                break
+        if production and os.path.exists(production):
+            ref = production
+        else:
+            print("no production hdf5 for %s -- booking it" % tag, flush=True)
+            production = None
+
+    reused = production is not None or (a.reuse_pass2 and os.path.exists(ref))
+    if a.reuse_pass2 and production is None and not reused:
         print("no answer key at %s -- booking it" % ref, flush=True)
 
     # Our side is always recomputed: it is what the code change affects.  The
@@ -96,7 +115,11 @@ for i, (f3, f4) in enumerate(pairs, 1):
         print("FAILED %s -- %s" % (tag, exc), flush=True)
     finally:
         if not a.keep:
-            doomed = [ours] if a.reuse_pass2 else [ours, ref]
+            # `ours` always; the booked answer key only when we booked it and
+            # are not reusing it.  A production file is never in this list.
+            doomed = [ours]
+            if production is None and not a.reuse_pass2:
+                doomed.append(ref)
             for f in doomed:
                 for extra in (f, f + ".badfiles.txt", f.replace(".hdf5", ".meta.json")):
                     if os.path.exists(extra):
