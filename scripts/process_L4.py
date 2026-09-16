@@ -50,7 +50,7 @@ I3Tray = get_I3Tray()
 #   simclasses     -> I3MCPESeriesMap, I3MCPulseSeriesMap, noise_weight
 #   recclasses     -> I3DST, PoleMuonLlhFitFitParams, ...
 #   genie_icetray  -> I3GenieInfo, I3GenieResult   <-- for n_flux_events
-#   sim_services   -> I3MCPEShifter vb.
+#   sim_services   -> I3MCPEShifter and the like
 load_deserialization_libs()
 
 from oscnext_l4.booker import add_booker
@@ -154,8 +154,8 @@ _BAD_FILE_RE = re.compile(r"Error reading (\S+?) at frame")
 # Progress reporting
 # ---------------------------------------------------------------------------
 #
-# Notebook process_L4.py'yi subprocess olarak calistiriyor.  Ilerleme
-# gorunsun diye stdout'a MAKINE OKUNUR satirlar basiyoruz:
+# The notebook runs process_L4.py as a subprocess, so progress has to travel
+# back over stdout.  These are MACHINE READABLE lines written for that:
 #
 #   [CHUNK] 3/10 files=30/100 booked=1840 elapsed=312.4
 #   [PROGRESS] frames=15000 physics=7100 booked=4300 elapsed=98.2 rate=152.7
@@ -224,9 +224,9 @@ def _print_usage(tray):
     """
     Modul bazli CPU zamanini bas (--usage).
 
-    IceTray her modulun ne kadar surdugunu zaten tutuyor; tahmin etmek
-    yerine buna bakin.  Ciktida "usermodule" satirlari en yavas modulleri
-    gosterir -- optimizasyona oradan baslayin.
+    IceTray already records how long every module took, so read that rather
+    than guessing.  The "usermodule" lines name the slowest modules -- that is
+    where optimisation starts.
     """
     if not _WANT_USAGE["on"]:
         return
@@ -415,7 +415,13 @@ def main():
     args = p.parse_args()
 
     if not args.input and not args.input_list:
-        p.error("--input ya da --input-list vermelisiniz.")
+        p.error("--input or --input-list is required.")
+
+    # Which icetray projects are absent.  `variables.py` records them at import
+    # time through `optional_project`; without this call the record is kept and
+    # never shown, so a missing project only surfaced later as a require_project
+    # error deep inside a segment.
+    report_missing()
 
     _WANT_USAGE["on"] = args.usage
 
@@ -491,8 +497,8 @@ def main():
         tray.Add(_count_physics, "count_physics",
                  Streams=[icetray.I3Frame.Physics])
 
-        # Ilerleme: TUM frame'lerde sayar (Q/P/G/C/D), her --progress frame'de
-        # bir satir basar.  Bu, notebook'un bar'ini besleyen kaynak.
+        # Progress: counts EVERY frame (Q/P/G/C/D) and prints one line every
+        # --progress frames.  This is what feeds the notebook's bar.
         if args.progress:
             tray.Add(ProgressReporter(args.progress, counter, time.time()),
                      "progress")

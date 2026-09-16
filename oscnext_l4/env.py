@@ -120,7 +120,7 @@ class IceTrayNotAvailable(ImportError):
 
 
 # ---------------------------------------------------------------------------
-# Zorunlu import
+# The mandatory import
 # ---------------------------------------------------------------------------
 
 _icecube = None
@@ -150,12 +150,12 @@ def have_icetray():
 
 
 # ---------------------------------------------------------------------------
-# I3Tray  --  surumden bagimsiz
+# I3Tray  --  independent of the icetray version
 # ---------------------------------------------------------------------------
 
 def get_I3Tray():
     '''
-    I3Tray sinifini dondur.
+    Return the I3Tray class.
 
     icetray v1.5+   : icecube.icetray.I3Tray
     combo / oncesi  : top-level I3Tray modulu
@@ -190,12 +190,12 @@ def get_I3Tray():
 # project name -> the L4 variable that needs it (shown in the error message)
 _PROJECT_PURPOSE = {
     "DomTools":          "I3OMSelection / I3TimeWindowCleaning (micro_count)",
-    "STTools":           "SeededRT temizleme (micro_count)",
+    "STTools":           "SeededRT cleaning (micro_count)",
     "linefit":           "improved LineFit -> iLineFit_speed (noise BDT)",
     "tensor_of_inertia": "I3TensorOfInertia -> ToI evalratio (muon BDT)",
     "fill_ratio":        "I3FillRatioModule -> fill_ratio (noise BDT)",
     "common_variables":  "HitStatistics/HitMultiplicity -> cog_z, z_sigma, z_travel",
-    "DeepCore_Filter":   "DeepCore fiducial/veto DOM listeleri (VICH, micro_count)",
+    "DeepCore_Filter":   "the DeepCore fiducial/veto DOM lists (micro_count)",
 }
 
 _missing = []
@@ -232,7 +232,7 @@ def report_missing(stream=sys.stderr):
     print("", file=stream)
     print("  These projects are absent from the meta-project or were not built.",
           file=stream)
-    print("  Kendi build'inizde: src/ altinda var mi bakin, sonra yeniden derleyin.",
+    print("  In your own build: check whether src/<name> exists, then rebuild.",
           file=stream)
     print("  Ayrinti: python diagnose_env.py", file=stream)
     print("", file=stream)
@@ -254,7 +254,7 @@ def require_project(name):
 
 def load_lib(libname, required=False):
     '''
-    C++ modul kutuphanesi yukle (icetray.load).  Basarili ise True.
+    Load a C++ module library (icetray.load).  True when it succeeded.
 
     Libraries such as `slc-veto` and `static-twc` are not in every build.
     '''
@@ -266,7 +266,7 @@ def load_lib(libname, required=False):
     except Exception as exc:
         if required:
             raise IceTrayNotAvailable(
-                "C++ kutuphanesi '%s' yuklenemedi: %s" % (libname, exc)) from exc
+                "the C++ library '%s' could not be loaded: %s" % (libname, exc)) from exc
         return False
 
 
