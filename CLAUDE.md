@@ -269,17 +269,37 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    Together these took the agreement from 99.42% to **99.84%** and the maximum
    difference from 3927 ns to **286 ns** over 56,301 events.
 
-   **THE RESIDUAL IS NOT REPRODUCIBLE, and that is the end of it.**  The
-   original sorts with `std::sort` and a comparator that compares only
+   **THE RESIDUAL IS NOT REPRODUCIBLE, AND THAT IS MEASURED, NOT ASSUMED.**
+   The original sorts with `std::sort` and a comparator that compares only
    `GetTime()`.  `std::sort` is not stable, so pulses sharing a time are left
-   in an unspecified order -- one that depends on the implementation, the
-   array size and the input.  If two tied pulses carry different charge, which
-   of them is "the last in Q3" changes with that order.  We sort stably, so
-   the answer is at least the same twice.  286 ns is the gap to a neighbouring
-   pulse, which is the signature.  One hypothesis was tested and eliminated:
-   summing the total charge in map order rather than with `np.sum` (the
-   original accumulates it in a first loop over the map while the cumulative
-   runs in time order) changed not one event.
+   in an unspecified order.  If two tied pulses carry different charge, which
+   of them is "the last in Q3" changes with that order.
+
+   That was a hypothesis, and this file stated it as fact until it was tested.
+   The test: the same quartile rule computed three times on one pass2 L4 file,
+   8144 events, differing ONLY in the secondary sort key.
+
+   | tie-break | agreement |
+   |---|---|
+   | smaller charge first | 99.89% |
+   | **stable (ours)** | **99.80%** |
+   | larger charge first | 99.67% |
+
+   **The three differ, so tied times exist and they decide the residual.**  And
+   none reaches 100%, so the order `std::sort` produced is not any simple rule
+   we could adopt.  (The variants live in `fit_pass2.ACC_VARIANTS` as
+   `production_tie_*`; the same file gives 99.40% for the old `prev_entry`
+   rule, so the move to quartiles is confirmed here too.)
+
+   **We keep the stable sort and do NOT chase the better number.**  99.89% vs
+   99.80% is 7 events in 8144 -- 9 differing against 16, about 2 sigma on one
+   file.  Adopting an arbitrary tie-break to capture that is fitting to noise,
+   and it would trade a reproducible answer for one that is not.
+
+   A second hypothesis was tested and ELIMINATED: summing the total charge in
+   map order rather than with `np.sum` (the original accumulates it in a first
+   loop over the map while the cumulative runs in time order) changed not one
+   event.
 
    Remaining difference: 0.16% of events on the sixth of ten muon BDT inputs,
    bounded by one pulse spacing.  `--accumulated-time-note` /
