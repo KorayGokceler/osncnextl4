@@ -589,10 +589,25 @@ def _vich(frame, uncleaned_pulses,
         dt < d / 0.3 + 150
         dt > d / 0.3 - 1850
 
-    The production loops over every matching trigger and ACCUMULATES, so a hit
-    seen by two triggers is counted twice; that is reproduced.  `nch` takes the
-    union of the selected hits' DOMs instead, since counting one DOM twice has
-    no meaning.
+    Only the FIRST matching trigger is used; the original says so in a comment
+    right before its `break`.
+
+    CONFIRMED BY A SECOND, INDEPENDENT SOURCE.  The algorithm was found by
+    fitting candidate definitions against pass2 and reaching 100.00%; the
+    oscNext_meta V01-00-07 build that produced pass2 then turned out to carry
+    it in readable Python, as `CausalTrackVeto` in
+    `analysis/python/event_selection/I3CutL7Module_JP_Matt.py`:
+
+        def mightBeBackground(distance, timeDiff):
+            return ((distance < 750) and (timeDiff > (-5*distance + 500)) and
+                    ((distance/0.3 - 1850) < timeDiff < (distance/0.3 + 150)))
+
+    with `config_id != 1011: continue`, the reference taken as the pulse
+    closest in time to the trigger, `hitTimeDiff = refHitTime - pulse.time`
+    and `nVetoPE += pulse.charge` -- every piece as implemented here.  Its
+    docstring also names the physics: "charge that might have caused the
+    DeepCore trigger ... direct or scattered light that could have come from a
+    muon track approaching the trigger position".
 
     MEASURED against the real pass2 L4 files, 8144 events, all three outputs:
     nch 100.00%, npulses 100.00%, qtot 100.00%, median difference 0.
@@ -673,21 +688,26 @@ def _vich(frame, uncleaned_pulses,
     x = np.asarray(xs); y = np.asarray(ys); z = np.asarray(zs)
     t = np.asarray(ts); q = np.asarray(qs)
 
-    n_pulses, qtot = 0.0, 0.0
-    union = np.zeros(t.size, dtype=bool)
-    for trigger_time in trigger_times:
-        i = int(np.argmin(np.abs(t - trigger_time)))
-        d = np.sqrt((x - x[i]) ** 2 + (y - y[i]) ** 2 + (z - z[i]) ** 2)
-        dt = t[i] - t
-        sel = d < 750.0
-        sel &= dt > (-5.0 * d + 500.0)
-        sel &= dt < (d / 0.3 + 150.0)
-        sel &= dt > (d / 0.3 - 1850.0)
-        n_pulses += float(sel.sum())
-        qtot += float(np.maximum(q[sel], 0.0).sum())
-        union |= sel
+    # ONLY THE FIRST matching trigger.  An earlier version of this function
+    # looped over every matching trigger and accumulated.  It still agreed with
+    # pass2 in 100% of 8144 events, because those events carry exactly one
+    # config-1011 trigger (next to a MERGED and a THROUGHPUT one, which have no
+    # config id at all) -- so the bug was invisible in the data that verified
+    # it, and an event with two DeepCore triggers would have been double
+    # counted.  Found by reading the original, not by measurement.
+    trigger_time = trigger_times[0]
+    i = int(np.argmin(np.abs(t - trigger_time)))
+    d = np.sqrt((x - x[i]) ** 2 + (y - y[i]) ** 2 + (z - z[i]) ** 2)
+    dt = t[i] - t
+    sel = d < 750.0
+    sel &= dt > (-5.0 * d + 500.0)
+    sel &= dt < (d / 0.3 + 150.0)
+    sel &= dt > (d / 0.3 - 1850.0)
 
-    n_doms = len({doms[j] for j in np.flatnonzero(union)})
+    n_pulses = float(sel.sum())
+    # The original sums pulse.charge as it is -- no clamping of negatives.
+    qtot = float(q[sel].sum())
+    n_doms = len({doms[j] for j in np.flatnonzero(sel)})
 
     frame[nch_key]     = dataclasses.I3Double(float(n_doms))
     frame[npulses_key] = dataclasses.I3Double(float(n_pulses))
