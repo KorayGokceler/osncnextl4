@@ -21,7 +21,11 @@ from oscnext_l4 import pass2 as P
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--sample", required=True)
-ap.add_argument("--gcd", required=True)
+ap.add_argument("--gcd", default=None,
+                help="GCD file.  Omitted by default: each sample's GCD is "
+                     "found in its own directory, which is what the "
+                     "production used.  Passing one overrides that for every "
+                     "sample, which is wrong across detector configurations.")
 ap.add_argument("--outdir", default="L4_output/pass2_check")
 ap.add_argument("--n-files", type=int, default=0, help="0 = every file")
 ap.add_argument("--keep", action="store_true", help="do not delete the HDF5")
@@ -59,6 +63,35 @@ flags = list(P.PASS2_FLAGS.get(a.sample, [])) + list(a.extra)
 cp = P.PASS2_CLEANED_PULSES
 ok = fail = 0
 
+_gcd_cache = {}
+
+
+def find_gcd(*paths):
+    """
+    The GCD that sits with the files, not one passed in by hand.
+
+    Each pass2 sample directory ships its own GeoCalibDetectorStatus_*.i3.gz,
+    and it is the one that production used.  Reusing the genie GCD for muongun
+    or noise would silently change every geometry-derived variable -- cog_z,
+    z_travel, the VICH distances -- so this refuses to guess: it looks beside
+    the L4 file first, then beside the L3 file, and raises when there is not
+    exactly one candidate.
+    """
+    for path in paths:
+        d = os.path.dirname(path)
+        if d in _gcd_cache:
+            return _gcd_cache[d]
+        found = sorted(glob.glob(os.path.join(d, "GeoCalibDetectorStatus*.i3*")))
+        if len(found) == 1:
+            _gcd_cache[d] = found[0]
+            return found[0]
+        if len(found) > 1:
+            raise RuntimeError("%d GCD files in %s -- pass --gcd to choose: %s"
+                               % (len(found), d, ", ".join(map(os.path.basename,
+                                                               found))))
+    raise RuntimeError("no GeoCalibDetectorStatus*.i3* beside %s"
+                       % " or ".join(paths))
+
 for i, (f3, f4) in enumerate(pairs, 1):
     tag = os.path.basename(f3).replace(".i3.zst", "").replace(".i3", "")
     ours = os.path.join(a.outdir, "ours_%s.hdf5" % tag)
@@ -87,12 +120,16 @@ for i, (f3, f4) in enumerate(pairs, 1):
     # Our side is always recomputed: it is what the code change affects.  The
     # answer key is read out of the pass2 L4 files and never changes, so with
     # --reuse-pass2 an existing one is taken as is.
-    steps = [["python", "scripts/process_L4.py", "--gcd", a.gcd, "--input", f3,
+    gcd = a.gcd or find_gcd(f4, f3)
+    if i == 1:
+        print("GCD: %s" % gcd, flush=True)
+
+    steps = [["python", "scripts/process_L4.py", "--gcd", gcd, "--input", f3,
               "--cleaned-pulses", cp, "--output-hdf5", ours, "--scan", "off"]
              + flags]
     if not reused:
         steps.append(["python", "scripts/compare_pass2.py", "book",
-                      "--gcd", a.gcd, "--input", f4, "--cleaned-pulses", cp,
+                      "--gcd", gcd, "--input", f4, "--cleaned-pulses", cp,
                       "--output-hdf5", ref, "--overwrite"])
     steps.append(["python", "scripts/compare_pass2.py", "report",
                   "--ours", ours, "--pass2", ref, "--cleaned-pulses", cp])
