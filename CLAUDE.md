@@ -447,6 +447,45 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    default 90% rejection -- at 99% only ~10 events sit above the cut and the
    gap is mostly noise).
 
+5i. **The production trains the muon BDT ONLY on events that pass the noise
+   cut -- we do not.**  The official workflow (fridge,
+   `processing/samples/oscNext/selection/level4`, README) runs in this order:
+
+       python L4_noise_model_train.py
+       python ../tools/apply_model.py -d L4_model_data.hdf5 \
+              -m L4_noise_model.joblib -k L4_NoiseClassifier_ProbNu.value
+       python L4_muon_model_train.py
+
+   with its own reason: *"This is then cut on in the muon classifier before
+   training to avoid training using events that will be cut anyway."*
+
+   Section 6 of the notebook trains both classifiers on the SAME event
+   population, so our muon BDT sees events the production's never would.  That
+   changes the background and signal distributions it fits, not just its
+   normalisation.  The muon classifier is not trained yet, so this is cheap to
+   fix now: apply the trained noise model to the dataset, cut at
+   `P_noise >= 0.70`, and build the muon dataset from the survivors -- keeping
+   the shared signal split (open risk 5c) intact.
+
+   The same README also shows the production stores its models as
+   `.joblib` + `.hdf5`, where we use LightGBM's native text plus a JSON
+   sidecar -- a deliberate difference (the IceTray environment has no
+   sklearn/joblib), not an oversight.
+
+5j. **Where the pass2 L4 was actually produced.**  The fridge README pins it:
+   L1-L5 ran under `oscNext_meta V01-00-07` on **py2-v3.1.1**, deployed at
+
+       /cvmfs/icecube.opensciencegrid.org/users/Oscillation/software/oscNext_meta/releases/V01-00-07/build/
+
+   That is a readable cvmfs path and it is the build that contains every
+   project this repository had to rewrite around (`tau_bdt`,
+   `analysis.event_selection`, `slc-veto`), plus -- per the README's own `cp`
+   instruction -- the real trained models in
+   `oscNext/resources/models/L4_noise_model.joblib` / `.hdf5`.  The `.hdf5`
+   sidecar would give the production's exact BDT input list rather than our
+   reading of Tables 11/12.  Python 2 is why `oscNext_L4.py` in the GitHub port
+   is still entirely commented out with `#TODO migrate`.
+
 6. **No ντ and no real detector data** — the signal is defined as νe+νμ
    (ντ CC is ~3%), and the muon BDT's background is CORSIKA rather than real
    data.  How much that substitution shifts things will become clear once the
