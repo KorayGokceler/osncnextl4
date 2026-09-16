@@ -69,6 +69,9 @@ scripts/process_L4.py  ──uses──►  oscnext_l4.variables (the oscNext_L4
    │                          ├─ muon vars: ToI, iLineFit, VICH, accumulated_time
    │                          ├─ noise vars: micro_count, fill_ratio
    │                          └─ hit_statistics: cog_z, z_sigma, z_travel, n_hit_doms
+   │                                │
+   │                                ├─ oscnext_l4.rewritten.{first_hlc,dunkman,vich}
+   │                                └─ oscnext_l4.{geom,pulses,weighting,l3vars}
    │
    ├─uses──►  oscnext_l4.booker (add_booker: hdfwriter if present, else SimpleBooker)
    │
@@ -87,6 +90,30 @@ oscnext_l4.classifier  (the L4Classifier tray module, add_L4_classifiers)
 ```
 
 Supporting files:
+- `oscnext_l4/variables.py` — **the tray segments only**, structured to be read
+  beside the production's own `oscNext_L4.py`: the same `L4_*` key names, the
+  same segments in the same order, and the small per-segment helpers left inline
+  exactly as the original leaves them.  Everything else was moved out so that
+  stays true:
+  - `oscnext_l4/rewritten/` — the pure-Python replacements for the three
+    icetray modules this meta-project lacks.  `first_hlc.py`
+    (`SimpleVertex FirstHLC<I3RecoPulse>`), `dunkman.py`
+    (`analysis CalculateVariables` -> accumulated_time, separation_in_cogs),
+    `vich.py` (`tau_bdt I3CutL7Module`).  Each is ONE `tray.AddModule` line in
+    the original.  **The evidence for each definition is in its docstring** --
+    where it came from, which of the several implementations the production
+    actually ran, and what the measurement was.  Read those before touching
+    anything here.
+  - `oscnext_l4/geom.py`, `pulses.py` — `calc_rho_36`, `iter_map`,
+    `get_pulses`.  The production takes these from
+    `oscNext/frame_objects/geom.py` and `pulses.py`; the layout here mirrors
+    that.
+  - `oscnext_l4/weighting.py` — `PropagateGenieInfo`.  The production does this
+    in `oscNext_master.py`, not in its L4 segment, which is why the original L4
+    script has no counterpart.
+  - `oscnext_l4/l3vars.py` — `FullTimeLengthRatio`.  An L3 variable
+    (`oscNext_L3.py` writes it, and pass2's L3 map carries it); pass3's L3 map
+    carries only the two components, so it is divided out at L4 instead.
 - `oscnext_l4/env.py` — **every `icecube` import goes through here**; when an
   import fails it reports why.  `have_lightgbm()` lives here too.
 - `setup_env.sh` — find the environment / open a shell / run one command /
