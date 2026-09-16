@@ -111,9 +111,12 @@ Supporting files:
 - `docs/technical_note_comparison.md` — exactly what we write to HDF5, compared
   line by line with the technical note (Tables 7/10/11/12/13).
 - `docs/pass2_verification.md` — the step-by-step record of checking the
-  rewritten variables against the official pass2 production: what each step
-  established, the two bugs it exposed, how `accumulated_time` was solved, and
-  why `VICH` is still open.  Written to be readable on its own.
+  rewritten variables against the official pass2 production, from the first
+  run to 14 of 15 rows bitwise identical: what each step established, the bugs
+  it exposed on both sides, how `VICH` and `accumulated_time` were solved, and
+  what measurement could and could not settle without the source.  Written to
+  be readable on its own; §5 and §6 are deliberately kept as the historical
+  snapshot they were, and say so.
 
 To dump the HDF5 columns, use section 2 of the notebook.
 
