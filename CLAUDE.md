@@ -1043,6 +1043,12 @@ loses nothing.
    cannot be matched against the answer key.  `pass2.match()` refuses to match
    when it sees a repeated triple instead of producing a plausible-looking
    disagreement table that is really an event-mixing artefact.
+   **This is why the cross-check cannot use `runner.run_process_parallel`**,
+   and why `notebooks/pass2_verification.ipynb` carries its own parallel loop.
+   That runner chunks several L3 files into one part AND names its output by
+   job/part index (`L4_nue_job0_part000.hdf5`), so even at `chunk_files=1` the
+   file could not be paired with the right L4 partner.  The verification names
+   each output after its L3 file instead.
 2. **Read the control rows first.**  The report separates *control* rows --
    the original IceTray modules run on both sides (`iLineFit_speed`, the hit
    statistics) or values taken straight from L3 (`NchCleaned`, `ICVetoHits`) --
