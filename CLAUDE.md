@@ -151,8 +151,11 @@ sklearn/joblib, only `lightgbm` + `numpy`.
       gap +0.1 points
 - [ ] numu / noise need reprocessing -- cut short by corrupt `.i3.zst`
 - [ ] Muon classifier not trained
-- [x] The rewritten variables verified against the real pass2 production:
-      VICH 100.00%, accumulated_time 99.40%, first_hlc_rho 99.85%
+- [x] **The rewritten variables verified against the real pass2 production:
+      14 of 15 rows BITWISE IDENTICAL over 56,301 events in five samples**
+      (NuE, NuMu, NuTau, MuonGun, Noise), every control row among them.
+      The exception is `accumulated_time` at 99.84%, max difference 286 ns,
+      whose residual is not reproducible (open risk 2).
 - [ ] Noise MC statistics inadequate (~2,000 events) -- nothing right of 99%
       rejection is measurable
 
@@ -231,55 +234,97 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    trigger at ~10 us makes that unreachable, and it never occurred in the 8144
    events; reproducing it would only copy a latent bug.
 
-2. **accumulated_time — SOLVED against pass2 (99.40%).**  Table 12 says "Time
-   to reach 75% of an event's charge in the cleaned pulse series"; the fraction
-   and the series were already verified (the original passes
-   `PulseSeries=cleaned_pulses` to Dunkman's `CalculateVariables`).  What was
-   open was the exact rule, and the pass2 cross-check settled it on 8144 events
-   with both values in the same frame:
+2. **accumulated_time — SOLVED from the source (99.84%), and it was never an
+   off-by-one.**  `analysis/private/analysis/event_selection/CalculateVariables.cxx`
+   -- the C++ module the L4 tray calls as `CalculateVariables` -- does not look
+   for a 75% crossing at all.  It bins the time-sorted pulses into CHARGE
+   QUARTILES and writes the variable in the Q3 branch:
 
-   | rule | agreement |
-   |---|---|
-   | all pulses, 0.75, the pulse **BEFORE** the crossing | **99.40%** (median diff 0) |
-   | per-DOM charge, same rule | 54.25% |
-   | all pulses, fraction 0.70, at the crossing | 44.35% |
-   | all pulses, 0.75, **at** the crossing (what the note describes) | 0.98% |
+       bin_edges = [0, Q/4, Q/2, 3Q/4, Q]
+       accumulated_charge += current_charge
+       part_index = index of the first edge >= accumulated_charge
+       } else if ( part_index == 3 ) {
+           variables.accumulated_time = pulse.GetTime() - first_slc.t();
 
-   So **pass2 has an off-by-one**: at the pulse it reports, the event holds
-   LESS than 75% of its charge, which is not "the time to reach 75%".
-   The zero point was never the problem -- `t[idx] − t[0]` is right.
+   `part_index == 3` means `0.5Q < accumulated_charge <= 0.75Q`, and the line
+   runs for every pulse in that band, so what survives is the LAST pulse whose
+   cumulative charge has not passed 0.75Q.  That is exactly what the pass2 fit
+   had found empirically (99.40% against 0.98% for the crossing), so the
+   earlier description of pass2 "having an off-by-one" was wrong: it is what
+   quartile binning gives.  The fit found the right rule for the wrong reason.
 
-   It was found by INVERTING rather than guessing: the charge fraction
-   accumulated at pass2's stored time sits just below 0.75 in at least 84% of
-   events (median 0.7258, 84th pct 0.7449) and never above, i.e. exactly one
-   entry's charge share short.  The median shortfall 0.024 is an average
-   pulse's share at this hit multiplicity, so the size matched too.
+   Reading the source fixed three things measurement could not reach:
 
-   **The residual is characterised.**  The real pipeline with
-   `--accumulated-time-pass2` reproduces the fit exactly (99.40%), and the 49
-   remaining events of 8144 split into 30 where pass2 stored exactly **0** and
-   19 that genuinely differ.  The 30 are almost certainly not ours: giving 0
-   requires one pulse carrying three quarters of the event, yet our value in
-   those same events is 800-1600 ns over the same pulse series.  A default is
-   the consistent reading -- the original pulls the number out of the Dunkman
-   compound, which yields zero when the calculation did not apply (31/8144 =
-   0.38%).  The other 19 (0.23%) are most likely tie-breaks or negative-charge
-   handling.  Not worth chasing: 0.98% -> 99.40% on the sixth of ten muon
-   inputs.
+   - the bound is `<=`, not `<` (`lower_bound` returns `bin_edges[3]` when the
+     cumulative charge lands exactly on 0.75Q);
+   - when NO pulse falls in the Q3 band the struct default survives, and
+     `Variables.h` says outright *"Default constructor (initialize all to
+     zero)"* -- that is the source of the events where pass2 stores exactly 0.
+     It needs one pulse to carry the cumulative sum from under 0.5Q to over
+     0.75Q, i.e. more than a QUARTER of the event's charge (an earlier entry
+     here said three quarters, which was wrong);
+   - the module writes NO `Variables` object at all when the pulse map holds
+     four or fewer DOMs, so neither Dunkman key reaches the frame.
 
-   **Decision: the DEFAULT now REPRODUCES pass2** (the pulse before the
-   crossing), as it does for micro_count (open risk 5b).  This reverses an
-   earlier decision to follow the note.  The reason is what this pipeline is
-   for: a model trained on variables that differ from the production's is
-   training on a different quantity, so matching the numbers the collaboration
-   actually produced comes first.  `--accumulated-time-note` /
-   `oscNext_L4(accumulated_time_pass2=False)` follows the note instead (0.98%).
-   Note that LowEnVariables' own `TimeToSum` uses `>= fraction`, i.e. the
-   crossing, so the note's reading is the better-documented one -- it is simply
-   not what pass2's Dunkman code produced.  The two code paths were checked against each other on
-   4000 random events: 0 mismatches.  The production sort was also made stable,
-   so tied pulse times give a reproducible index.
-   `separation_in_cogs` is not a BDT input -- low priority.
+   Together these took the agreement from 99.42% to **99.84%** and the maximum
+   difference from 3927 ns to **286 ns** over 56,301 events.
+
+   **THE RESIDUAL IS NOT REPRODUCIBLE, and that is the end of it.**  The
+   original sorts with `std::sort` and a comparator that compares only
+   `GetTime()`.  `std::sort` is not stable, so pulses sharing a time are left
+   in an unspecified order -- one that depends on the implementation, the
+   array size and the input.  If two tied pulses carry different charge, which
+   of them is "the last in Q3" changes with that order.  We sort stably, so
+   the answer is at least the same twice.  286 ns is the gap to a neighbouring
+   pulse, which is the signature.  One hypothesis was tested and eliminated:
+   summing the total charge in map order rather than with `np.sum` (the
+   original accumulates it in a first loop over the map while the cumulative
+   runs in time order) changed not one event.
+
+   Remaining difference: 0.16% of events on the sixth of ten muon BDT inputs,
+   bounded by one pulse spacing.  `--accumulated-time-note` /
+   `oscNext_L4(accumulated_time_pass2=False)` follows Table 12's description
+   instead ("time to reach 75%"), which agrees with pass2 in 0.98% of events.
+   LowEnVariables' own `TimeToSum` uses `>= fraction`, i.e. the crossing, so
+   the note's reading is the better-documented one -- it is simply not what
+   pass2 produced.
+
+2a. **first_hlc -- TWO REAL BUGS, both found by reading the module.**
+   `SimpleVertex/private/SimpleVertex/FirstHLC.cxx`, registered as
+   `I3_MODULE(FirstHLC<I3RecoPulse>)`, is what
+   `tray.AddModule("FirstHLC<I3RecoPulse>", ...)` instantiates.  (A Python
+   class of the same name in `analysis/python/yanez/FirstHLC.py` is a
+   different author's module: its parameters are `InputPulseSeries`/`Vertex`
+   where the L4 tray passes `HitSeriesName`/`OutputName`.)
+
+   - **Ties go to the LAST DOM.**  The C++ reads `if (hitTime > hlc_time)
+     continue;` -- it skips only a strictly later hit, so a hit at exactly the
+     current best time overwrites it, and the highest OMKey among tied hits
+     wins.  This code kept the first.  That was the whole of the 146 m
+     disagreements: a tie resolved to a different string.
+   - **An event with no HLC hit still gets a vertex.**  `GetFirstHLCHit`
+     returns a bool that `Physics` ignores, so the search's starting value is
+     written: position (1000, 1000, 1000), time 1e10, i.e. a `first_hlc_rho`
+     of 1407.3.  The production's `fill_ratio` and muon BDT both saw that
+     number where we wrote nothing at all.
+
+   Both fixed.  `first_hlc_rho` and `fill_ratio` went from 0.9987 and 0.9831
+   to **bitwise identical** over 56,301 events -- which also explains why
+   `fill_ratio` disagreed ten times more often than `first_hlc_rho` did:
+   `rho` compares only sqrt((x-46.29)^2+(y+34.88)^2), so a different DOM on
+   the same string gives an identical rho and a different z, and only
+   `fill_ratio`, which is handed the whole vertex, could see it.
+
+2b. **separation_in_cogs -- the definition was a guess, and it was wrong.**
+   `CalculateVariables.cxx`: `variables.separation = CalcDistance(cog_q1,
+   cog_q4)`, with the quartiles accumulated in the same charge-quartile loop
+   as accumulated_time, and `Variables.h` documenting it as *"Distance between
+   CoG_Q1 and CoG_Q4"*.  This code split the event into two halves by HIT
+   COUNT and compared those COGs: a different split measure (count, not
+   charge) and different parts (halves, not the outer quartiles -- the middle
+   half of the charge is excluded entirely).  Fixed.  Not a BDT input, so it
+   is behind `--run-optional` and is not in the comparison table; adding a row
+   would verify it for free.
 
 3. **FullTimeLengthRatio direction — RESOLVED.** The text of Table 11 does not
    give the direction of the ratio, but **Figure 13** does: the x axis of the
@@ -1009,12 +1054,12 @@ the matching level4 file were dumped, so this is **verified**, not assumed:
   StaticTWC output) -- so `L4_SRTTWPulses` is written and never read.  The dead
   cleaning step is not an artefact of the commented-out source; it is in the
   production output.
-  **Consequence for the comparison:** `micro_count` is EXPECTED to differ under
-  our default (which follows the note's cleaned series).  Rerun with
-  `--micro-count-uncleaned` to test the implementation rather than the
-  decision -- our chain is then pass2's chain with the dead step left out.
-  `pass2.EXPECTED_DEVIATION` prints this in the report when the row differs,
-  and the summary line does not count it as a failure.
+  **Consequence for the comparison:** none any more.  The default now starts
+  from the uncleaned series as pass2 does, so `micro_count` comes out BITWISE
+  IDENTICAL and a disagreement there would be a real finding.  Our chain is
+  pass2's chain with the dead step left out, and the two agree exactly because
+  that step never did anything.  `--micro-count-cleaned` gives Table 11's
+  reading instead, and THAT is expected to differ.
 - **One trap:** `L4_Dunkman_SRTTWOfflinePulsesDC_Variables` cannot be
   deserialised -- it needs `analysis.event_selection`, one of the missing
   projects that made us rewrite `accumulated_time` in the first place.  It is
@@ -1057,7 +1102,7 @@ loses nothing.
 
 **For a pass2 training run:** there is no CORSIKA at pass2 in the paths we have
 -- the muon background is MuonGun, so the pass3 CORSIKA weighting (open risk
-3d) does not carry over.  The noise BDT is unaffected.  NuTau (160519) exists
+3d) does not carry over.  The noise BDT is unaffected.  NuTau (160511) exists
 at pass2, but the signal definition is still nue+numu (open risk 6).
 
 ## Verified against the PRODUCTION SOURCE (oscNext_meta V01-00-07)
@@ -1124,7 +1169,7 @@ The cut thresholds `P_noise >= 0.7` and `P_muon >= 0.65` are confirmed in
 
 1. **The signal includes ν_τ.**  `L4_model_data.py` harvests GENIE 12xxxx,
    14xxxx AND **16xxxx**, all as `CLASSES["neutrino"]`.  We define the signal
-   as νe+νμ (open risk 6).  pass2 NuTau (160519) exists in the paths we have,
+   as νe+νμ (open risk 6).  pass2 NuTau (160511) exists in the paths we have,
    so this is fixable.
 
 2. **The muon background is REAL DETECTOR DATA, not simulation.**  The muon
