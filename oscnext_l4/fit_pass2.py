@@ -505,8 +505,50 @@ def _earliest(ev, source, hlc_only, fiducial_only=False):
     return _rho(s["x"][i], s["y"][i])
 
 
+def _earliest_first_pulse(ev, source="cleaned", hlc_only=True):
+    """
+    Earliest DOM considering ONLY each DOM's leading pulse.
+
+    `_first_hlc` walks a DOM's pulses and takes the first HLC one, so a DOM
+    whose first pulse is SLC and whose second is HLC still counts.  The
+    original "FirstHLC<I3RecoPulse>" module may instead look at the leading
+    pulse alone and skip such a DOM.  The two differ exactly where a cleaned
+    DOM leads with an SLC pulse, which is the shape of the residual: rho
+    disagrees in 0.13% of events but fill_ratio, which sees the whole vertex
+    rather than just its rho, disagrees in 1.7%.
+    """
+    s = ev[source]
+    m = s.get("firstpulse")
+    if m is None or not m.any():
+        return np.nan
+    m = m.copy()
+    if hlc_only:
+        m &= s["hlc"]
+    if not m.any():
+        return np.nan
+    i = int(np.argmin(np.where(m, s["t"], np.inf)))
+    return _rho(s["x"][i], s["y"][i])
+
+
+def _earliest_tie_last(ev, source="cleaned", hlc_only=True):
+    """Same as ours but the LAST entry wins a tie, not the first."""
+    s = ev[source]
+    m = np.ones(s["t"].size, dtype=bool)
+    if hlc_only:
+        m &= s["hlc"]
+    if not m.any():
+        return np.nan
+    tmin = np.min(np.where(m, s["t"], np.inf))
+    idx = np.flatnonzero(m & (s["t"] == tmin))
+    i = int(idx[-1])
+    return _rho(s["x"][i], s["y"][i])
+
+
 RHO_VARIANTS = {
     "hlc_cleaned (ours)":  lambda ev: _earliest(ev, "cleaned", True),
+    "hlc_lead_pulse_only": lambda ev: _earliest_first_pulse(ev, "cleaned", True),
+    "lead_pulse_any":      lambda ev: _earliest_first_pulse(ev, "cleaned", False),
+    "hlc_tie_last":        lambda ev: _earliest_tie_last(ev, "cleaned", True),
     "hlc_uncleaned":       lambda ev: _earliest(ev, "uncleaned", True),
     "any_hit_cleaned":     lambda ev: _earliest(ev, "cleaned", False),
     "any_hit_uncleaned":   lambda ev: _earliest(ev, "uncleaned", False),
@@ -608,6 +650,13 @@ def _arrays(pulse_map, geometry, veto_doms, fid_doms):
             "t": f(t, float), "q": f(q, float),
             "dom": f(dom, np.int64), "string": st, "om": om,
             "hlc": f(hlc, bool), "veto": f(veto, bool), "fid": fid_arr,
+            # The DOM's FIRST pulse.  Pulses arrive in map order and in time
+            # order within a DOM, so this is the first occurrence of each dom
+            # index.  It exists to test whether "first HLC hit" means the first
+            # HLC pulse anywhere in a DOM (what _first_hlc does) or only a DOM
+            # whose leading pulse is already HLC.
+            "firstpulse": (np.r_[True, f(dom, np.int64)[1:] != f(dom, np.int64)[:-1]]
+                           if dom else np.zeros(0, dtype=bool)),
             # "everything that is NOT fiducial".  This is how the PRODUCTION
             # L3 script builds its veto series -- see the variant note below.
             # MEASURED: it is the SAME set as DeepCore_Filter's own
