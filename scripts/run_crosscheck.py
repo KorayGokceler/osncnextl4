@@ -25,6 +25,11 @@ ap.add_argument("--gcd", required=True)
 ap.add_argument("--outdir", default="L4_output/pass2_check")
 ap.add_argument("--n-files", type=int, default=0, help="0 = every file")
 ap.add_argument("--keep", action="store_true", help="do not delete the HDF5")
+ap.add_argument("--reuse-pass2", action="store_true",
+                help="reuse an existing pass2_<tag>.hdf5 answer key instead of "
+                     "booking it again, and never delete it.  The answer key "
+                     "comes from the pass2 L4 files and does not change, so "
+                     "only OUR side needs regenerating when the code changes.")
 # Anything this parser does not recognise is passed straight through to
 # process_L4.py.  nargs="*" cannot carry flags: argparse reads the next
 # "--flag" as one of its own options and fails.
@@ -56,15 +61,30 @@ for i, (f3, f4) in enumerate(pairs, 1):
     ref = os.path.join(a.outdir, "pass2_%s.hdf5" % tag)
     print("\n===== [%d/%d] %s =====" % (i, len(pairs), tag), flush=True)
 
-    steps = [
-        ["python", "scripts/process_L4.py", "--gcd", a.gcd, "--input", f3,
-         "--cleaned-pulses", cp, "--output-hdf5", ours, "--scan", "off"] + flags,
-        ["python", "scripts/compare_pass2.py", "book", "--gcd", a.gcd,
-         "--input", f4, "--cleaned-pulses", cp, "--output-hdf5", ref,
-         "--overwrite"],
-        ["python", "scripts/compare_pass2.py", "report", "--ours", ours,
-         "--pass2", ref, "--cleaned-pulses", cp],
-    ]
+    reused = a.reuse_pass2 and os.path.exists(ref)
+    if a.reuse_pass2 and not reused:
+        print("no answer key at %s -- booking it" % ref, flush=True)
+
+    # Our side is always recomputed: it is what the code change affects.  The
+    # answer key is read out of the pass2 L4 files and never changes, so with
+    # --reuse-pass2 an existing one is taken as is.
+    steps = [["python", "scripts/process_L4.py", "--gcd", a.gcd, "--input", f3,
+              "--cleaned-pulses", cp, "--output-hdf5", ours, "--scan", "off"]
+             + flags]
+    if not reused:
+        steps.append(["python", "scripts/compare_pass2.py", "book",
+                      "--gcd", a.gcd, "--input", f4, "--cleaned-pulses", cp,
+                      "--output-hdf5", ref, "--overwrite"])
+    steps.append(["python", "scripts/compare_pass2.py", "report",
+                  "--ours", ours, "--pass2", ref, "--cleaned-pulses", cp])
+
+    # process_L4.py does not take --overwrite, so a leftover from a killed run
+    # would make it exit.  Clear our side before writing it.
+    for stale in (ours, ours + ".badfiles.txt",
+                  ours.replace(".hdf5", ".meta.json")):
+        if os.path.exists(stale):
+            os.remove(stale)
+
     try:
         for cmd in steps:
             r = subprocess.run(cmd)
@@ -76,7 +96,8 @@ for i, (f3, f4) in enumerate(pairs, 1):
         print("FAILED %s -- %s" % (tag, exc), flush=True)
     finally:
         if not a.keep:
-            for f in (ours, ref):
+            doomed = [ours] if a.reuse_pass2 else [ours, ref]
+            for f in doomed:
                 for extra in (f, f + ".badfiles.txt", f.replace(".hdf5", ".meta.json")):
                     if os.path.exists(extra):
                         os.remove(extra)
