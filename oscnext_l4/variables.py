@@ -569,11 +569,23 @@ def _accumulated_time(frame, pulses_key, output_key, fraction=0.75,
 
     n_doms = 0
     times, charges = [], []
+    # The total is summed HERE, in map order, one pulse at a time -- because
+    # that is what the original does, in its first loop over the map:
+    #
+    #     variables.total_charge += current_charge;      // OMKey order
+    #
+    # while the cumulative sum below runs in TIME order.  Two different
+    # summation orders give totals that differ in the last bit, and
+    # `np.sum` differs again because it sums pairwise.  That matters: the
+    # quartile edge is 0.75 * total, so a last-bit shift moves the boundary
+    # and flips the index in events whose cumulative charge lands on it.
+    total = 0.0
     for _, pulses in iter_map(pmap):
         n_doms += 1
         for p in pulses:
             times.append(p.time)
             charges.append(p.charge)
+            total += p.charge
 
     # `if (map_of_pulses.size() <= 4) { PushFrame; return; }` -- with four or
     # fewer DOMs the original writes no Variables object at all, so the L4
@@ -581,15 +593,14 @@ def _accumulated_time(frame, pulses_key, output_key, fraction=0.75,
     if n_doms <= 4 or not times:
         return True
 
+    if not np.isfinite(total) or total <= 0:
+        return True
+
     t = np.asarray(times)
     q = np.asarray(charges)
     order = np.argsort(t, kind="stable")
     t, q = t[order], q[order]
-    total = q.sum()
-    if not np.isfinite(total) or total <= 0:
-        return True
-
-    cum = np.cumsum(q)
+    cum = np.cumsum(q)          # sequential, like the original's running sum
 
     if before_crossing:
         # The Q3 band: 0.5Q < cumulative <= 0.75Q, last pulse in it.
@@ -644,6 +655,7 @@ def _separation_in_cogs(frame, pulses_key, output_key,
 
     n_doms = 0
     hits = []
+    total = 0.0          # summed in map order, as the original does
     for omkey, pulses in iter_map(pmap):
         n_doms += 1
         if omkey not in geo.omgeo:
@@ -651,18 +663,19 @@ def _separation_in_cogs(frame, pulses_key, output_key,
         pos = geo.omgeo[omkey].position
         for p in pulses:
             hits.append((p.time, p.charge, pos.x, pos.y, pos.z))
+            total += p.charge
 
     # Same guard as accumulated_time: the original computes no Variables at
     # all for four or fewer DOMs.
     if n_doms <= 4 or not hits:
         return True
 
+    if not np.isfinite(total) or total <= 0:
+        return True
+
     hits.sort(key=lambda h: h[0])
     a = np.asarray(hits, dtype=float)
     q = a[:, 1]
-    total = q.sum()
-    if not np.isfinite(total) or total <= 0:
-        return True
 
     cum = np.cumsum(q)
     q1 = cum <= 0.25 * total
