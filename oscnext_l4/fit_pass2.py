@@ -224,7 +224,51 @@ def acc_prev_per_dom(ev, fraction=0.75):
     return _cum_fraction_time(t, q, fraction, mode="prev")
 
 
+def _acc_production(ev, tie="stable"):
+    """
+    The production rule EXACTLY, with a choice of tie-break.
+
+    `CalculateVariables.cxx` bins the time-sorted pulses into charge quartiles
+    and writes the variable for every pulse with 0.5Q < cumulative <= 0.75Q, so
+    the last such pulse survives.  That is what `variables._accumulated_time`
+    now does.
+
+    `tie` exists to TEST one claim: that the 0.16% of events still disagreeing
+    do so because the original sorts with `std::sort`, which is not stable, and
+    tied pulse times therefore land in an unspecified order.  If that is the
+    cause, changing the secondary sort key changes WHICH events disagree.  If
+    all three give the identical agreement fraction, there are no ties near the
+    boundary and the explanation is wrong.
+    """
+    c = ev["cleaned"]
+    t, q, dom = c["t"], c["q"], c["dom"]
+    if t.size == 0 or np.unique(dom).size <= 4:
+        return np.nan
+
+    # Summed in map order, one at a time, as the original's first loop does.
+    total = float(np.cumsum(q)[-1])
+    if not np.isfinite(total) or total <= 0:
+        return np.nan
+
+    if tie == "charge":
+        order = np.lexsort((q, t))          # tie -> smaller charge first
+    elif tie == "revcharge":
+        order = np.lexsort((-q, t))         # tie -> larger charge first
+    else:
+        order = np.argsort(t, kind="stable")
+    ts, qs = t[order], q[order]
+
+    cum = np.cumsum(qs)
+    in_q3 = (cum > 0.5 * total) & (cum <= 0.75 * total)
+    if not in_q3.any():
+        return 0.0                          # the struct default
+    return float(ts[int(np.flatnonzero(in_q3)[-1])] - ts[0])
+
+
 ACC_VARIANTS = {
+    "production (quartile)":     lambda ev: _acc_production(ev, "stable"),
+    "production_tie_charge":     lambda ev: _acc_production(ev, "charge"),
+    "production_tie_revcharge":  lambda ev: _acc_production(ev, "revcharge"),
     "all_pulses (ours)":   acc_all_pulses,
     "prev_entry":          acc_prev_entry,
     "prev_entry_per_dom":  acc_prev_per_dom,
