@@ -227,6 +227,68 @@ Their detector-data test sample overlaps their training runs slightly.  Not our
 problem -- we use no detector data -- but it matters when comparing our held-out
 numbers against theirs.
 
+### What is harvested, and the variable search behind it
+
+The live list is 16 variables plus `TRUTH_VARIABLES`: the five noise inputs, the
+ten muon inputs, and two more --
+
+    "L4_NoiseStraightCuts_Bool.value",
+    "L4_NoiseClassifier_ProbNu.value",
+
+The second is **the previous generation's own classifier score**, harvested from
+the L4 files.  That is the iteration of section 5 made visible: the L4 files
+being harvested already carry a model's output, and `apply_model.py` then writes
+the new one beside it.
+
+Below the live list sits the **whole set of variables they tested**, commented
+out and kept "for posterity".  Two of its notes are facts we did not have:
+
+    "IC2018_LE_L3_Vars.NchCleaned",
+    # Not using this, identical to `n_hit_doms` from hit multiplicity
+
+  -- `NchCleaned` and `n_hit_doms` are THE SAME QUANTITY.  We carry both, and
+  `n_hit_doms` is in `REGISTRY` as a candidate; it is not an independent one.
+
+    # "IC2018_LE_L3_Vars.NoiseEngine",
+    # Not using this ... is a bool that has been cut on so is single valued
+    # and thus has zero power
+
+  -- the general point is worth keeping: anything already cut on at L3 is
+  constant in the surviving sample and carries no information.
+
+The tested list also shows `fill_ratio` under BOTH spellings
+(`fill_radius_from_mean` and `fillradius_from_nch` in the same block), which is
+exactly why `data.ALTS` has to carry several.
+
+### The weight, finally traced
+
+The last block of the script is where `final_weight` comes from:
+
+    from icecube.oscNext.frame_objects.weighting import WEIGHT_DICT_KEY, FINAL_WEIGHT_KEY
+    weight_key = WEIGHT_DICT_KEY + "." + FINAL_WEIGHT_KEY
+
+so `I3MCWeightDict.final_weight` is `WEIGHT_DICT_KEY` + `FINAL_WEIGHT_KEY`, both
+constants of the production's own weighting module.  **`FINAL_WEIGHT_KEY`'s
+value is not yet known**, and it matters: our dump of a pass2
+`I3MCWeightDict` shows `weight` and `weight_no_osc` but no column literally
+called `final_weight`.  If `FINAL_WEIGHT_KEY == "weight"`, then the production's
+final weight is already in the files we are booking, and `data.genie_weight` can
+be compared against it event by event -- the open-risk-4 measurement, available
+immediately.
+
+Then, for classes that have a livetime, the weight is **overwritten**:
+
+    for this_classification, livetime_s in livetime_dict.items():
+        class_mask = classification == this_classification
+        weights[class_mask] = 1. / livetime_s      # 1 count, per livetime
+
+Whether `livetime_dict` covers only detector data or the noise simulation as
+well is not visible here (it comes from `harvest_i3_files`).  It matters,
+because vuvuzela IS generated over a fixed livetime, and our own measurement
+already found the noise weights to be exactly uniform at `1/N`.  If the
+production does the same, that uniformity is not an artefact of our weighting
+but a shared property.  **Unresolved.**
+
 ## 6. The trained models themselves
 
 `oscNext/resources/models/` carries the real pass2 models, dated 30 July 2021:
