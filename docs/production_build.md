@@ -173,11 +173,59 @@ So in the training workflow the model is applied to the TABLE, not to `.i3`.
 The tray-side application (`compute_L4_cut` in the L4 segment) is a separate
 path, for producing L4 files that L5 can consume.
 
-**The open question this should settle:** how the FIRST model was bootstrapped.
-`compute_L4_cut` is added unconditionally in the L4 segment and loads the
-models from `CLASSIFIER_MODEL_DIR`, but training needs L4 variables, which
-needs the L4 segment to have run.  Something breaks that circle and we do not
-know what.
+### `L4_model_data.py`, read — and it answers the bootstrapping question
+
+    processing_stage = "level4"
+
+The training table is harvested **from L4 files**, so L4 processing ran first.
+The circle is broken by ITERATION across model versions, not by a special first
+pass: the script carries `--special-case legacy`, documented as *"what was used
+for the oscNext L4 v01.01 classifier training"*.  So a v01.01 model existed,
+L4 files were produced with it, and the next generation was trained on those.
+The very first model is not reconstructible from what is here, and the `legacy`
+switch is the archaeology of the second.
+
+**The datasets it harvests — and this does not match ours:**
+
+    genie_dataset = "0000"        # "Default nominal set"
+
+    12%s -> 120000    nu_e     CLASSES["neutrino"]
+    14%s -> 140000    nu_mu    CLASSES["neutrino"]
+    16%s -> 160000    nu_tau   CLASSES["neutrino"]
+    888003            noise    CLASSES["noise"]
+    detector data, one run per month 2012-2018    CLASSES["traindata"]
+
+We train on **121122, 121291, 141154, 141292, 160511**; the released model was
+trained on **120000, 140000, 160000**.  The noise set 888003 is the same.
+Whether 12/14/16-0000 exist in the pass2 paths we have is **unchecked**, and
+whether the generation parameters differ from the 12xxxx sets we use is
+**unknown**.  This is the first real difference between our training and theirs
+that is not a deliberate choice.
+
+**ν_τ is in the signal**, as three sets sharing one class label -- which is what
+our move to role-based sample selection already reproduces.
+
+**The muon background is detector data, with the reasons stated:**
+
+    #TODO Have removed muon MC for now since (a) we don't have post SLC bug fix
+    # full detector MuonGun MC, (b) we never got a decent CORSIKA set and
+    # (c) we never actually used the MC trained muon classifier anyway
+    # (we used the data driven one instead for the sample)
+
+`use_corsika = False`, and the MuonGun block is commented out.  So our MuonGun
+muon BDT is not the production's -- theirs is data-driven.  The noise BDT is
+unaffected: it selects only the `neutrino` and `noise` classes.
+
+**A train/test leak the author documents in their own code:**
+
+    "subsample" : "test",
+    #TODO "test" subsample only select runs numbered ????50 (e.g. 2% of runs),
+    # but also a few of our training runs end in 50 so there is a small and
+    # undesirable overlap
+
+Their detector-data test sample overlaps their training runs slightly.  Not our
+problem -- we use no detector data -- but it matters when comparing our held-out
+numbers against theirs.
 
 ## 6. The trained models themselves
 
