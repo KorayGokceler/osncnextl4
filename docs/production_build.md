@@ -111,7 +111,67 @@ we took the list as given, and this is the reasoning behind it.
 **`L4_noise_cuts_vs_model.py`** compares the BDT against straight cuts, which is
 the argument for using a classifier at all.
 
-PENDING — the files themselves.
+### `L4_noise_model_train.py`, read
+
+Short and entirely declarative.  What it settles:
+
+**The five inputs, verbatim:**
+
+    L4_NOISE_MODEL_INPUT_VARIABLES = [
+        "IC2018_LE_L3_Vars.NchCleaned",
+        "L4_micro_count.STW_m3500p4000_DTW200",
+        "L4_iLineFit.speed",
+        "L4_fill_ratio.fill_ratio_from_mean",
+        "IC2018_LE_L3_Vars.FullTimeLengthRatio" ]
+
+**The hyperparameters**, which match `train_L4_classifier.PARAMS` to the digit,
+`feature_fraction 0.8` included.  `algorithm = "lightgbm"` -- the same engine,
+not a coincidence we have to defend.  `class_ratio = {k: 1.}` with
+`scale_weights=True`, and `seed=12345`.
+
+**THE WEIGHT IS READ, NOT COMPUTED.**
+
+    weight_key = "I3MCWeightDict.final_weight"
+
+The production does not weight at training time.  It reads a `final_weight`
+column that its own weighting chain (`frame_objects/weighting.py` ->
+`FINAL_WEIGHT_KEY`) wrote earlier.  Everything `data.genie_weight` does --
+OneWeight, the power law, NEvents * gen_ratio, the file count -- happened
+upstream, once, and was stored.
+
+*This is an opportunity, not a problem.*  pass2's `I3MCWeightDict` already gave
+us `gen_ratio` and the two agreed exactly; if it also carries `final_weight`,
+our `w_phys` can be compared against the production's own number event by
+event.  That would close open risk 4 by measurement.  **Check whether
+`final_weight` is in the booked columns.**
+
+**The train fractions, with the reasoning:**
+
+    "neutrino" : 0.02   # Was 0.3333 for older datasets (1.95e5 training
+                        # events).  1% with the new nominal dataset (0000)
+                        # gives a comparable 2.24e5.  Doubling to 2% to
+                        # address overtraining.
+    "noise"    : 0.3333 # We doubled the livetime for noise dataset 888003
+                        # since the original training, so this gives ~twice
+                        # as many training events now.  Keeping the fraction
+                        # rather than halving it, to increase stats, since
+                        # there was some overtraining previously.
+
+Note what the second comment says: **888003 is the noise set we are processing**,
+and its livetime was doubled after the original training.  So the noise
+statistics available to us are larger than the ones behind the released model.
+
+### `apply_model.py`, read
+
+    python apply_model.py -d <data.hdf5> -m <model.joblib> -k <key>
+
+It loads the classifier, **backs the data file up** (`.backup.hdf5`), reads it,
+predicts, adds one column per class named `<key>_<class>_pred`, and rewrites
+the same file.  Frames are never involved.
+
+So in the training workflow the model is applied to the TABLE, not to `.i3`.
+The tray-side application (`compute_L4_cut` in the L4 segment) is a separate
+path, for producing L4 files that L5 can consume.
 
 **The open question this should settle:** how the FIRST model was bootstrapped.
 `compute_L4_cut` is added unconditionally in the L4 segment and loads the
@@ -133,9 +193,19 @@ Each `.joblib` has a matching `.hdf5` that is a **symlink** into
 `/data/ana/LE/oscNext/pass2/resources/classifier_models/level4_noise/` -- so the
 sidecars are real files on /data, readable.
 
-There is also a 193-byte `README.txt` in that directory, unread.
+The 193-byte `README.txt` says what the `.hdf5` files are:
 
-PENDING — the sidecar's contents.  The sidecar should give the production's exact input list and any
+> The HDF5 files containing the **train/test data** for the classifier models
+> stored in this directory can be found in
+> `/data/ana/LE/oscNext/pass2/resources/classifier_models` on the Madison
+> datastore.
+
+So the sidecars are not metadata -- they are **the actual training and test
+events** the released models were fitted on.  That is stronger than expected:
+our training set can be compared against theirs directly, and our model can be
+evaluated on their held-out test set.
+
+PENDING — their contents.  The sidecar should give the production's exact input list and any
 scaling, which would be a stronger source than our reading of Tables 11/12.
 Whether the model can be compared against ours event by event.
 
