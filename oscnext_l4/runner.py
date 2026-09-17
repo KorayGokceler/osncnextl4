@@ -421,6 +421,43 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
     listdir = os.path.join(os.path.dirname(out), "_filelists")
     os.makedirs(listdir, exist_ok=True)
 
+    # CHANGING `jobs` BETWEEN RUNS IS SILENT CORRUPTION, so refuse it.
+    #
+    # Each worker writes L4_<name>_job<J>_part<C>.hdf5, and process_L4.py SKIPS
+    # a part that already exists so a crashed run resumes.  But which files
+    # worker J gets depends on `jobs`: at jobs=8 worker 1 starts at file 76, at
+    # jobs=16 at file 38.  The path is the same either way, so the stale part
+    # would be kept, the files it was supposed to hold would never be processed,
+    # and its meta.json would describe the wrong chunk.  Nothing would warn.
+    stale = []
+    for j, grp in enumerate(groups):
+        lst = os.path.join(listdir, "%s_job%d.txt" % (name, j))
+        if not os.path.exists(lst):
+            continue
+        try:
+            with open(lst) as fh:
+                previous = [l.strip() for l in fh if l.strip()]
+        except OSError:
+            continue
+        if previous == list(grp):
+            continue
+        base, ext = os.path.splitext(out)
+        if glob.glob("%s_job%d*%s" % (base, j, ext)):
+            stale.append(j)
+    if stale:
+        base, ext = os.path.splitext(out)
+        raise RuntimeError(
+            "%s: this sample was already processed with a DIFFERENT split "
+            "(workers %s would now get different files), and output from that "
+            "run is still there.\n"
+            "Resuming would keep the old parts under the new worker numbering: "
+            "some L3 files would never be processed, others would be counted "
+            "under the wrong chunk, and no error would be raised.\n"
+            "Either finish the run with the original `jobs`, or remove this "
+            "sample's output and start over:\n"
+            "    rm -rf %s_job*%s %s_job*%s.meta.json %s\n"
+            % (name, stale, base, ext, base, ext, listdir))
+
     procs, state = [], {}
     for j, grp in enumerate(groups):
         lst = os.path.join(listdir, "%s_job%d.txt" % (name, j))
