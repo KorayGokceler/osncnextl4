@@ -189,24 +189,36 @@ def l3_patterns(cfg):
     return list(l3) if isinstance(l3, (list, tuple)) else [l3]
 
 
-def l3_files(cfg):
-    """Every L3 file of a sample, de-duplicated, order preserved."""
+def l3_files(cfg, max_files=0):
+    """
+    Every L3 file of a sample, de-duplicated, order preserved.
+
+    max_files > 0 keeps only the first N.  The order is the sorted glob, so
+    the same N files are taken every time -- a partial run is reproducible and
+    can be extended later without reprocessing what is already there.
+    """
     out = []
     for pat in l3_patterns(cfg):
         out.extend(sorted(glob.glob(pat)))
-    return list(dict.fromkeys(out))
+    out = list(dict.fromkeys(out))
+    return out[:max_files] if max_files else out
 
 
 def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
-                run_optional=False, extra_args=None):
+                run_optional=False, extra_args=None, max_files=0):
     """
     Run process_L4.py for one sample and show live progress.
 
     chunk_files : how many L3 files go into one part (0 = a single part).
-                  >0 ise gercek yuzde/ETA ve cokme sonrasi devam.
-    n_frames    : >0 ise smoke test (chunk_files otomatik kapanir).
-    extra_args  : process_L4.py'ye oldugu gibi eklenecek ek bayraklar,
-                  orn. ["--micro-count-uncleaned"].
+                  >0 gives a real percentage/ETA and resumes after a crash.
+    n_frames    : >0 means a smoke test (chunk_files is turned off).
+    max_files   : >0 processes only the first N L3 files of the sample.  Some
+                  pass2 sets are enormous (noise 888003 is 10000 files) and a
+                  full run of one is hours of CPU and tens of GB; this is how
+                  you take a slice.  The first N of the sorted list, so adding
+                  more later does not reprocess what is done.
+    extra_args  : extra flags passed to process_L4.py verbatim,
+                  e.g. ["--micro-count-cleaned"].
     """
     cfg = _cfg("SAMPLES")[name]
     out = cfg["hdf5"] if n_frames == 0 else cfg["hdf5"].replace(".hdf5", "_smoke.hdf5")
@@ -215,8 +227,16 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
     if n_frames:
         chunk_files = 0                      # cannot be combined with --n
 
+    if max_files:
+        files = l3_files(cfg, max_files)
+        print("  [i] %s: limited to the first %d of %d L3 files"
+              % (name, len(files), len(l3_files(cfg))))
+        inputs = ["--input"] + files
+    else:
+        inputs = ["--input"] + l3_patterns(cfg)
+
     cmd = ([sys.executable, "-u", _cfg("PROCESS_PY"),
-            "--gcd", _cfg("GCD"), "--input"] + l3_patterns(cfg)
+            "--gcd", _cfg("GCD")] + inputs
            + ["--output-hdf5", out] + cfg["flags"])
     if n_frames:
         cmd += ["--n", str(n_frames), "--scan", "off"]
@@ -281,43 +301,63 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
 
 
 def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
-            extra_args=None):
+            extra_args=None, max_files=None):
     """
     Process every sample in turn -- one bar each, plus an overall bar.
 
     samples       : sample names to process (default: all of SAMPLES)
     chunk_files   : how many L3 files go into one part.  >0 gives a real
-                    yuzde/ETA ve cokme sonrasi kaldigi yerden devam.
+                    percentage/ETA and resumes after a crash.
     jobs          : SPEEDUP.  >1 processes each sample in N parallel workers
-                    (run_process_parallel).  cobalt paylasilan makine:
+                    (run_process_parallel).  cobalt is a SHARED machine:
                     8 is reasonable, 64 is not.
-    run_optional : also compute the non-BDT variables (I3TensorOfInertia,
+    run_optional  : also compute the non-BDT variables (I3TensorOfInertia,
                     separation_in_cogs).  Neither is in Table 11/12.
-    extra_args    : process_L4.py'ye oldugu gibi eklenecek ek bayraklar,
-                    orn. ["--micro-count-uncleaned"] (pass2 karsilastirmasi).
+    max_files     : cap the number of L3 files per sample.  Either one number
+                    for every sample, or a dict {sample: N} -- the pass2 sets
+                    are wildly different sizes (nue 608, numu 1590, noise
+                    10000), so per-sample is usually what you want:
+
+                        run_all(jobs=8, max_files={"noise": 1000})
+
+                    Samples not named in the dict are processed in full.
+    extra_args    : extra flags passed to process_L4.py verbatim,
+                    e.g. ["--micro-count-cleaned"].
 
     The default is jobs=1 -- the speedup is NOT automatic, it must be asked for.
     """
     names = list(samples or _cfg("SAMPLES"))
-    overall = _Bar("TOPLAM", total=len(names))
+
+    if isinstance(max_files, dict):
+        unknown = [k for k in max_files if k not in _cfg("SAMPLES")]
+        if unknown:
+            raise ValueError("max_files names sample(s) that do not exist: %s"
+                             % ", ".join(sorted(unknown)))
+        caps = dict(max_files)
+    else:
+        caps = {n: max_files for n in names} if max_files else {}
+
+    overall = _Bar("TOTAL", total=len(names))
     results = {}
     for i, name in enumerate(names):
         print("=" * 70)
         print(name)
         print("=" * 70)
+        cap = caps.get(name, 0) or 0
         if jobs > 1:
             results[name] = run_process_parallel(
                 name, jobs=jobs, chunk_files=chunk_files,
-                run_optional=run_optional, extra_args=extra_args)
+                run_optional=run_optional, extra_args=extra_args,
+                max_files=cap)
         else:
             results[name] = run_process(
                 name, chunk_files=chunk_files, run_optional=run_optional,
-                extra_args=extra_args)
+                extra_args=extra_args, max_files=cap)
         overall.update(i + 1, "%d/%d samples" % (i + 1, len(names)))
     ok = sum(v is not None for v in results.values())
-    overall.done("%d/%d tamam" % (ok, len(names)))
+    overall.done("%d/%d done" % (ok, len(names)))
     if ok < len(names):
-        print("\n[!] Basarisiz: %s"
+        print("\n[!] Failed: %s"
               % ", ".join(n for n, v in results.items() if v is None))
     return results
 
@@ -353,19 +393,23 @@ def _split(seq, n):
 
 
 def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
-                         run_optional=False, extra_args=None):
+                         run_optional=False, extra_args=None, max_files=0):
     """
-    Bir ornegi N paralel surecte isle.
+    Process one sample in N parallel workers.
 
     jobs        : how many process_L4.py workers
     chunk_files : part size each worker uses internally, so a crash can be
                   resumed from where it stopped
+    max_files   : >0 uses only the first N L3 files (see run_process)
     """
     cfg = _cfg("SAMPLES")[name]
     out = cfg["hdf5"]
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
-    files = l3_files(cfg)
+    files = l3_files(cfg, max_files)
+    if max_files:
+        print("  [i] %s: limited to the first %d of %d L3 files"
+              % (name, len(files), len(l3_files(cfg))))
     if not files:
         print("[!] %s: no L3 files -> %s"
               % (name, ", ".join(l3_patterns(cfg))))
