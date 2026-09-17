@@ -460,6 +460,20 @@ def n_l3_files(h5path):
     and the weights were 100 TIMES too large.  process_L4.py now writes
     <output>.meta.json next to every output; the right number is in there.
     """
+    return _n_l3_files_why(h5path)[0]
+
+
+def _n_l3_files_why(h5path):
+    """
+    (count, reason) -- reason is "ok", "smoke" or "no_meta".
+
+    The two failure reasons need DIFFERENT advice and used to share one
+    message.  "no_meta" means the output predates meta.json or the job died,
+    and the weights really may be wrong.  "smoke" means the file was produced
+    with --n, where an unusable divisor is EXPECTED and nothing is broken --
+    telling someone to re-run process_L4.py for that sends them after the
+    wrong thing.
+    """
     meta = h5path + ".meta.json"
     if os.path.exists(meta):
         try:
@@ -469,11 +483,11 @@ def n_l3_files(h5path):
             if v is None or m.get("n_l3_files_unreliable"):
                 # Smoke output produced with --n: the tray stops early, so
                 # the file count is unreliable and unusable as a divisor.
-                return None
-            return int(v)
+                return None, "smoke"
+            return int(v), "ok"
         except (OSError, ValueError, KeyError, TypeError):
             pass
-    return None
+    return None, "no_meta"
 
 
 def sample_files(name, SAMPLES, include_smoke=False):
@@ -539,23 +553,35 @@ def load_sample(name, SAMPLES, wanted, max_files=None):
     data = {k: np.concatenate([p[k] for p in parts]) for k in keys}
 
     # --- number of L3 files: the divisor of the weights ---
-    per_file = [n_l3_files(f) for f in files]
+    per_file, why = zip(*[_n_l3_files_why(f) for f in files])
+    per_file, why = list(per_file), list(why)
     if all(v is not None for v in per_file):
         n_l3 = sum(per_file)
         src = "meta.json"
     else:
         n_l3 = SAMPLES[name].get("n_l3_files") or len(files)
-        src = "SAMPLES['%s']['n_l3_files'] (no meta.json!)" % name
-        print("  [!] %s: some HDF5 files have no meta.json -> n_l3_files=%d (%s)"
-              % (name, n_l3, src))
-        print("      The weights may be WRONG.  Re-run process_L4.py with this")
-        print("      version, or verify n_l3_files by hand.")
+        src = "SAMPLES['%s']['n_l3_files']" % name
+        if all(w == "smoke" for w in why):
+            # Not a defect: --n stops the tray early, so no honest file count
+            # exists.  Say what it means rather than sending them to re-run.
+            print("  [i] %s: SMOKE output (--n) -> no usable L3 file count."
+                  % name)
+            print("      Falling back to the full glob (%d), so w_phys is the "
+                  "SHAPE only" % n_l3)
+            print("      and the absolute rate is meaningless here.  Do not "
+                  "compare it with Table 13; the production run will.")
+        else:
+            print("  [!] %s: some HDF5 files have no meta.json -> "
+                  "n_l3_files=%d (%s)" % (name, n_l3, src))
+            print("      The weights may be WRONG.  Re-run process_L4.py with "
+                  "this")
+            print("      version, or verify n_l3_files by hand.")
     data["_n_files"] = float(n_l3)
     data["_n_hdf5"] = len(files)
     # The CORSIKA weighting has to REOPEN the files (simweights reads the
     # HDF5 directly), so keep the list and the per-part L3 counts.
     data["_files"] = list(files)
-    data["_n_l3_per_file"] = [n_l3_files(f) for f in files]
+    data["_n_l3_per_file"] = per_file
 
     print("%-8s %8d events, %d HDF5, %d L3 files (%s)"
           % (name, len(data["Run"]), len(files), n_l3, src))
