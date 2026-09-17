@@ -335,9 +335,20 @@ def resolve_one(name, available):
 
 def load_one_file(path, wanted):
     """Read the wanted variables out of one HDF5 file -> {name: array}."""
-    with tables.open_file(path, "r") as h5:
-        available = {k: set(n.colnames) for k, n in _table_nodes(h5).items()}
+    # ONE open, not two.  This used to open the file, walk every node to build
+    # `available`, close it, and open it again to read -- twice the metadata
+    # walk per part, and there are 68 parts in a pass2 nue sample.
+    h5 = tables.open_file(path, "r")
+    try:
+        nodes = _table_nodes(h5)
+        available = {k: set(node.colnames) for k, node in nodes.items()}
+        return _read_resolved(h5, path, nodes, available, wanted)
+    finally:
+        h5.close()
 
+
+def _read_resolved(h5, path, nodes, available, wanted):
+    """The body of load_one_file, with the file already open."""
     need, unresolved = {}, []
     for name in wanted:
         hit = resolve_one(name, available)
@@ -361,92 +372,101 @@ def load_one_file(path, wanted):
                     print("      columns present: %s"
                           % (", ".join(cols[:10]) + (" ..." if len(cols) > 10 else "")))
 
-    with tables.open_file(path, "r") as h5:
-        nodes = _table_nodes(h5)
-        if "I3EventHeader" not in nodes:
-            raise RuntimeError("%s: no I3EventHeader table" % path)
+    if "I3EventHeader" not in nodes:
+        raise RuntimeError("%s: no I3EventHeader table" % path)
 
-        ref = nodes["I3EventHeader"]
-        run, ev, sub = _ids(ref)
-        n = len(run)
-        out = {"Run": run, "Event": ev, "SubEvent": sub}
+    ref = nodes["I3EventHeader"]
+    run, ev, sub = _ids(ref)
+    n = len(run)
+    out = {"Run": run, "Event": ev, "SubEvent": sub}
 
-        # Unresolved names are FILLED with NaN -- if the key were absent
-        # entirely the caller would get a KeyError.
-        for name in unresolved:
-            out[name] = np.full(n, np.nan)
+    # Unresolved names are FILLED with NaN -- if the key were absent
+    # entirely the caller would get a KeyError.
+    for name in unresolved:
+        out[name] = np.full(n, np.nan)
 
-        # Are there repeated Run/Event/SubEvent triples?
-        dup = _has_duplicate_ids(run, ev, sub)
-        if dup:
-            key = (_sample_tag(path), "__dup__")
-            if key not in _warned_unresolved:
-                _warned_unresolved.add(key)
-                print("  (i) %s: Run/Event/SubEvent triples repeat within the "
-                      "part (expected: one part holds several L3 files) -- "
-                      "matching goes through __I3Index__"
-                      % _sample_tag(path))
-        ref_key = None          # built on demand (expensive)
+    # Are there repeated Run/Event/SubEvent triples?
+    dup = _has_duplicate_ids(run, ev, sub)
+    if dup:
+        key = (_sample_tag(path), "__dup__")
+        if key not in _warned_unresolved:
+            _warned_unresolved.add(key)
+            print("  (i) %s: Run/Event/SubEvent triples repeat within the "
+                  "part (expected: one part holds several L3 files) -- "
+                  "matching goes through __I3Index__"
+                  % _sample_tag(path))
+    ref_key = None          # built on demand (expensive)
 
-        for tbl, cols in need.items():
-            node = nodes.get(tbl)
-            if node is None:
-                for name, _ in cols:
-                    out[name] = np.full(n, np.nan)
-                continue
+    for tbl, cols in need.items():
+        node = nodes.get(tbl)
+        if node is None:
+            for name, _ in cols:
+                out[name] = np.full(n, np.nan)
+            continue
 
+        # THE INDEX FIRST -- it is authoritative AND it is cheap.
+        #
+        # This used to test alignment first, which meant reading
+        # Run/Event/SubEvent out of EVERY table just to compare them:
+        # three full int64 columns per table, ten tables, on top of the
+        # ~25 data columns actually wanted.  On a pass2 nue part (74k
+        # events) that is more I/O for the ID check than for the data.
+        # The index costs two short columns and answers the same question,
+        # and where a table IS aligned it returns start = 0,1,2,... which
+        # is what the alignment branch did anyway.
+        idx = None
+        inode = _index_node(h5, tbl)
+        if inode is not None and len(inode) == n \
+                and "exists" in inode.colnames and "start" in inode.colnames:
+            ex = np.asarray(inode.col("exists")).astype(bool)
+            st = np.asarray(inode.col("start"), dtype=np.int64)
+            idx = np.where(ex, st, -1)
+            idx[idx >= node.nrows] = -1      # defensive, no column read
+        else:
+            # No index: fall back to comparing the identifiers, which
+            # needs them read after all.
             r2, e2, s2 = _ids(node)
             same = (len(r2) == n and np.array_equal(r2, run)
                     and np.array_equal(e2, ev) and np.array_equal(s2, sub))
-
             if same:
-                idx = None                       # aligned: use directly
+                idx = None                   # aligned: use directly
+            elif dup:
+                # 2) No index AND repeating triples -> reliable matching
+                #    is IMPOSSIBLE.  Leave NaN and SAY SO, rather than
+                #    matching wrongly in silence.
+                key = (_sample_tag(path), "__ambig__" + tbl)
+                if key not in _warned_unresolved:
+                    _warned_unresolved.add(key)
+                    print("  [!] %s: no __I3Index__ and Run/Event/SubEvent "
+                          "repeats -> no reliable matching, NaN"
+                          % tbl)
+                idx = np.full(n, -1, dtype=np.int64)
             else:
-                idx = None
-                # 1) THE RIGHT WAY: hdfwriter's frame index
-                inode = _index_node(h5, tbl)
-                if inode is not None and len(inode) == n \
-                        and "exists" in inode.colnames and "start" in inode.colnames:
-                    ex = np.asarray(inode.col("exists")).astype(bool)
-                    st = np.asarray(inode.col("start"), dtype=np.int64)
-                    idx = np.where(ex, st, -1)
-                    idx[idx >= len(r2)] = -1     # defensive
-                elif dup:
-                    # 2) No index AND repeating triples -> reliable matching
-                    #    is IMPOSSIBLE.  Leave NaN and SAY SO, rather than
-                    #    matching wrongly in silence.
-                    key = (_sample_tag(path), "__ambig__" + tbl)
-                    if key not in _warned_unresolved:
-                        _warned_unresolved.add(key)
-                        print("  [!] %s: no __I3Index__ and Run/Event/SubEvent "
-                              "repeats -> no reliable matching, NaN"
-                              % tbl)
-                    idx = np.full(n, -1, dtype=np.int64)
-                else:
-                    # 3) No index but the triples are unique -> dict match
-                    if ref_key is None:
-                        ref_key = {k: i for i, k in
-                                   enumerate(zip(run.tolist(), ev.tolist(),
-                                                 sub.tolist()))}
-                    idx = np.full(n, -1, dtype=np.int64)
-                    for j, k in enumerate(zip(r2.tolist(), e2.tolist(),
-                                              s2.tolist())):
-                        i = ref_key.get(k)
-                        if i is not None:
-                            idx[i] = j
+                # No index but the triples are unique -> dict match
+                if ref_key is None:
+                    ref_key = {k: i for i, k in
+                               enumerate(zip(run.tolist(), ev.tolist(),
+                                             sub.tolist()))}
+                idx = np.full(n, -1, dtype=np.int64)
+                for j, k in enumerate(zip(r2.tolist(), e2.tolist(),
+                                          s2.tolist())):
+                    i = ref_key.get(k)
+                    if i is not None:
+                        idx[i] = j
 
-            for name, col in cols:
-                if col not in node.colnames:
-                    out[name] = np.full(n, np.nan)
-                    continue
-                v = np.asarray(node.col(col), dtype=np.float64)
-                if idx is None:
-                    out[name] = v
-                else:
-                    a = np.full(n, np.nan)
-                    ok = idx >= 0
-                    a[ok] = v[idx[ok]]
-                    out[name] = a
+        for name, col in cols:
+            if col not in node.colnames:
+                out[name] = np.full(n, np.nan)
+                continue
+            v = np.asarray(node.col(col), dtype=np.float64)
+            if idx is None:
+                out[name] = v
+            else:
+                a = np.full(n, np.nan)
+                ok = idx >= 0
+                a[ok] = v[idx[ok]]
+                out[name] = a
+
     return out
 
 
