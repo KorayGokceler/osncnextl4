@@ -289,6 +289,52 @@ already found the noise weights to be exactly uniform at `1/N`.  If the
 production does the same, that uniformity is not an artefact of our weighting
 but a shared property.  **Unresolved.**
 
+### `final_weight` is just the file division -- and that opens a question
+
+`weighting.py` settles the constants and the arithmetic:
+
+    WEIGHT_DICT_KEY      = "I3MCWeightDict"
+    WEIGHT_KEY           = "weight"
+    UNMERGED_WEIGHT_KEY  = "unmerged_weight"
+    MERGED_WEIGHT_KEY    = "merged_weight"
+    FINAL_WEIGHT_KEY     = "final_weight"
+
+    weight_dict[UNMERGED_WEIGHT_KEY] = weight_dict[WEIGHT_KEY]          # 228
+    weight_dict[MERGED_WEIGHT_KEY]   = unmerged / num_merged_files      # 231
+    weight_dict[WEIGHT_KEY]          = weight_dict[MERGED_WEIGHT_KEY]   # 234
+    ...
+    final_weight = weight_dict[WEIGHT_KEY] / float(num_files)           # 182
+    weight_dict[FINAL_WEIGHT_KEY] = final_weight                        # 185
+
+So `final_weight` is the stored `weight` divided by the file count -- exactly the
+division `data.py` does with `_n_files`.  And line 190 does the same for the ML
+power law:
+
+    weight_dict[NU_SINGLE_POWERLAW_STEM+"_final_weight"] = \
+        weight_dict[NU_SINGLE_POWERLAW_WEIGHT_KEY] / float(num_files)
+
+**pass2's L3 files carry `SinglePowerLawFlux_weight`** -- our own dump showed it.
+So the production's un-divided ML training weight is already in the files we are
+booking, and `w_phys` can be compared against
+`SinglePowerLawFlux_weight / n_l3_files` directly.
+
+**BUT THERE IS A DISCREPANCY TO RESOLVE FIRST.**  `L4_noise_model_train.py`
+trains with
+
+    weight_key = "I3MCWeightDict.final_weight"
+
+which is the PHYSICS weight (atmospheric flux, oscillations), **not**
+`SinglePowerLawFlux_final_weight`.  Our `data.genie_weight` applies the single
+power law `NORM * E^-3`, on the grounds -- recorded in CLAUDE.md -- that
+`weighting.py` adds it *"for unbiased samples for training machine learning
+algorithms"*.  Both cannot be what the noise BDT was trained on.
+
+Either `WEIGHT_KEY` already holds the single power law for these datasets, or
+the noise classifier was trained on physics-weighted events and our E^-3 choice
+is a real deviation that changes the training set's shape.  **This is the most
+consequential open question in this document.**  It is settled by reading how
+`weight_dict[WEIGHT_KEY]` is first filled, above line 228 of `weighting.py`.
+
 ## 6. The trained models themselves
 
 `oscNext/resources/models/` carries the real pass2 models, dated 30 July 2021:
