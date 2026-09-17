@@ -289,6 +289,15 @@ ALTS = {
                        ("L4_fill_ratio", "fill_ratio_from_mean"),
                        ("L4_fill_ratio", "fillRatioFromMean"),
                        ("L4_fill_ratio", "FillRatioFromMean")],
+    # The primary neutrino's PDG code.  pass3's I3MCWeightDict has
+    # PrimaryNeutrinoType; pass2's was written by an older genie-icetray and
+    # does not.  genie_weight needs the SIGN of this to split neutrino from
+    # antineutrino, and a wrong or missing value is a silent 2.33x error on
+    # antineutrinos -- so only spellings that are unambiguously the primary
+    # neutrino's type belong here, never a related-looking one.
+    "pdg":            [("I3MCWeightDict", "PrimaryNeutrinoType"),
+                       ("I3MCWeightDict", "InIceNeutrinoType"),
+                       ("I3MCWeightDict", "NuType")],
 }
 
 _warned_unresolved = set()
@@ -632,7 +641,30 @@ def genie_weight(d):
     n_flux = d.get("n_flux_events", np.full_like(E, np.nan)).copy()
     missing = ~np.isfinite(n_flux)
     if missing.any():
-        frac = np.where(d["pdg"] < 0, NUBAR_FRAC, NU_FRAC)
+        # The fallback needs the neutrino/antineutrino split, so it needs pdg.
+        #
+        # THIS MUST NOT DEGRADE QUIETLY.  `np.where(NaN < 0, ...)` is False, so
+        # an absent or all-NaN pdg would hand EVERY event the neutrino ratio
+        # (0.7) -- antineutrinos would be weighted 0.7/0.3 = 2.33x too heavy,
+        # with nothing in the output to show for it.  pass2 is exactly where
+        # this bites: its GENIE L3 has no I3GenieInfo, so the fallback is the
+        # only path, and its I3MCWeightDict spells the type differently.
+        pdg = d.get("pdg")
+        pdg_ok = pdg is not None and np.isfinite(np.asarray(pdg, dtype=np.float64)).any()
+        if not pdg_ok:
+            raise KeyError(
+                "genie_weight needs `pdg` and it is absent or entirely NaN, "
+                "while n_flux_events is missing for %d of %d events.\n"
+                "The fallback (NEvents * gen_ratio) splits on neutrino vs "
+                "antineutrino, so without pdg every event would silently get "
+                "the neutrino ratio %.1f and antineutrinos would come out "
+                "%.2fx too heavy.\n"
+                "Find what this production calls the primary neutrino type in "
+                "I3MCWeightDict and add it to data.ALTS[\"pdg\"]:\n"
+                "    from oscnext_l4.data import dump_tables\n"
+                "    print(sorted(dump_tables(H5)[\"I3MCWeightDict\"][1]))"
+                % (missing.sum(), missing.size, NU_FRAC, NU_FRAC / NUBAR_FRAC))
+        frac = np.where(np.asarray(pdg) < 0, NUBAR_FRAC, NU_FRAC)
         n_flux[missing] = (d["NEvents"] * frac)[missing]
         print("  [i] n_flux_events missing in %d of %d events -> NEvents * "
               "(%.1f/%.1f)" % (missing.sum(), missing.size, NU_FRAC,
