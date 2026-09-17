@@ -96,6 +96,10 @@ AUX = {
     "NEvents":       ("I3MCWeightDict", "NEvents"),
     "pdg":           ("I3MCWeightDict", "PrimaryNeutrinoType"),
     "n_flux_events": ("L4_n_flux_events", "value"),
+    # The production divides by NEvents * gen_ratio.  pass2's I3MCWeightDict
+    # STORES gen_ratio, so it can be read instead of reconstructed from the
+    # neutrino's sign -- see genie_weight.
+    "gen_ratio":     ("I3MCWeightDict", "gen_ratio"),
     # Verified in the earlier LightGBM notebook: the column is "weight".
     # "value" was a wrong assumption and left the noise weight entirely NaN.
     # Both are in ALTS.
@@ -123,6 +127,7 @@ AUX_SCHEMES = {
     "NEvents":       ("genie",),
     "pdg":           ("genie",),
     "n_flux_events": ("genie",),
+    "gen_ratio":     ("genie",),
     "noise_weight":  ("noise",),
     "cwm_Weight":       ("corsika",),
     "cwm_NEvents":      ("corsika",),
@@ -296,8 +301,7 @@ ALTS = {
     # antineutrinos -- so only spellings that are unambiguously the primary
     # neutrino's type belong here, never a related-looking one.
     "pdg":            [("I3MCWeightDict", "PrimaryNeutrinoType"),
-                       ("I3MCWeightDict", "InIceNeutrinoType"),
-                       ("I3MCWeightDict", "NuType")],
+                       ("MCInIcePrimary", "pdg_encoding")],
 }
 
 _warned_unresolved = set()
@@ -641,30 +645,43 @@ def genie_weight(d):
     n_flux = d.get("n_flux_events", np.full_like(E, np.nan)).copy()
     missing = ~np.isfinite(n_flux)
     if missing.any():
-        # The fallback needs the neutrino/antineutrino split, so it needs pdg.
+        # The denominator is NEvents * gen_ratio.  THREE ways to get
+        # gen_ratio, best first -- and the worst of them must not happen
+        # silently.
         #
-        # THIS MUST NOT DEGRADE QUIETLY.  `np.where(NaN < 0, ...)` is False, so
-        # an absent or all-NaN pdg would hand EVERY event the neutrino ratio
-        # (0.7) -- antineutrinos would be weighted 0.7/0.3 = 2.33x too heavy,
-        # with nothing in the output to show for it.  pass2 is exactly where
-        # this bites: its GENIE L3 has no I3GenieInfo, so the fallback is the
-        # only path, and its I3MCWeightDict spells the type differently.
-        pdg = d.get("pdg")
-        pdg_ok = pdg is not None and np.isfinite(np.asarray(pdg, dtype=np.float64)).any()
-        if not pdg_ok:
-            raise KeyError(
-                "genie_weight needs `pdg` and it is absent or entirely NaN, "
-                "while n_flux_events is missing for %d of %d events.\n"
-                "The fallback (NEvents * gen_ratio) splits on neutrino vs "
-                "antineutrino, so without pdg every event would silently get "
-                "the neutrino ratio %.1f and antineutrinos would come out "
-                "%.2fx too heavy.\n"
-                "Find what this production calls the primary neutrino type in "
-                "I3MCWeightDict and add it to data.ALTS[\"pdg\"]:\n"
-                "    from oscnext_l4.data import dump_tables\n"
-                "    print(sorted(dump_tables(H5)[\"I3MCWeightDict\"][1]))"
-                % (missing.sum(), missing.size, NU_FRAC, NU_FRAC / NUBAR_FRAC))
-        frac = np.where(np.asarray(pdg) < 0, NUBAR_FRAC, NU_FRAC)
+        # 1. READ IT.  pass2's I3MCWeightDict has a `gen_ratio` column: the
+        #    exact number the production divided by, no convention to guess.
+        # 2. Derive it from the neutrino's sign (NU_FRAC / NUBAR_FRAC).  This
+        #    reconstructs what route 1 states outright, and is what pass3 needs
+        #    since its dict has no gen_ratio column.
+        # 3. Refuse.  `np.where(NaN < 0, ...)` is False, so an absent pdg would
+        #    hand EVERY event the neutrino ratio and antineutrinos would come
+        #    out NU_FRAC/NUBAR_FRAC = 2.33x too heavy, with nothing in the
+        #    output to show for it.  That is not an acceptable default.
+        stored = d.get("gen_ratio")
+        if stored is not None and np.isfinite(np.asarray(stored, dtype=np.float64)).any():
+            frac = np.asarray(stored, dtype=np.float64)
+            print("  [i] gen_ratio read from I3MCWeightDict "
+                  "(min %.3f, max %.3f)" % (np.nanmin(frac), np.nanmax(frac)))
+        else:
+            pdg = d.get("pdg")
+            if pdg is None or not np.isfinite(np.asarray(pdg, dtype=np.float64)).any():
+                raise KeyError(
+                    "genie_weight cannot determine gen_ratio: neither a "
+                    "`gen_ratio` column nor a usable `pdg`, while "
+                    "n_flux_events is missing for %d of %d events.\n"
+                    "Without it every event would silently get the neutrino "
+                    "ratio %.1f and antineutrinos would come out %.2fx too "
+                    "heavy.\n"
+                    "See what this production stores and extend data.AUX / "
+                    "data.ALTS:\n"
+                    "    from oscnext_l4.data import dump_tables\n"
+                    "    print(sorted(dump_tables(H5)[\"I3MCWeightDict\"][1]))"
+                    % (missing.sum(), missing.size, NU_FRAC,
+                       NU_FRAC / NUBAR_FRAC))
+            frac = np.where(np.asarray(pdg) < 0, NUBAR_FRAC, NU_FRAC)
+            print("  [i] gen_ratio derived from pdg (%.1f / %.1f)"
+                  % (NU_FRAC, NUBAR_FRAC))
         n_flux[missing] = (d["NEvents"] * frac)[missing]
         print("  [i] n_flux_events missing in %d of %d events -> NEvents * "
               "(%.1f/%.1f)" % (missing.sum(), missing.size, NU_FRAC,

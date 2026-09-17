@@ -1136,6 +1136,35 @@ the matching level4 file were dumped, so this is **verified**, not assumed:
 - **Not every L3 file has an L4 partner**: 121122 file `000000` exists at L3 and
   not at L4.  `pair_files()` reports such orphans rather than skipping quietly.
 
+### pass2's `I3MCWeightDict` is a DIFFERENT dictionary (dumped, verified)
+
+Not a superset of pass3's -- an older genie-icetray wrote it, and the weight
+chain has to adapt.  Three findings, in order of how much they matter:
+
+- **There is NO neutrino type column.**  No `PrimaryNeutrinoType`, no
+  `InIceNeutrinoType`.  `TargetPDGCode` is the target NUCLEUS and
+  `InteractionType` is CC/NC -- neither is the neutrino.  `MCInIcePrimary`
+  IS in the frame though (it is absent at pass3, the mirror image), and its
+  `pdg_encoding` is the primary's type; that is `ALTS["pdg"]`'s second entry.
+- **`gen_ratio` IS a column, and reading it beats reconstructing it.**  The
+  production divides by `NEvents * gen_ratio`; this code used to rebuild that
+  ratio from the neutrino's sign (0.7 / 0.3).  pass2 stores the number
+  outright, so `genie_weight` now READS it and only falls back to the sign when
+  the column is absent (which is pass3's case).  The two were checked against
+  each other and give identical weights.
+  **Neither may fail silently:** `np.where(NaN < 0, ...)` is False, so a
+  missing pdg would have given every event the neutrino ratio and made
+  antineutrinos 2.33x too heavy with nothing in the output to show for it.
+  With neither route available `genie_weight` now raises.
+- **The production's OWN training weight is in the file**, unused so far:
+  `SinglePowerLawFlux_norm`, `_index`, `_flux`, `_weight`, plus `weight` and
+  `weight_no_osc`.  `SinglePowerLawFlux_*` is exactly the single power law
+  `weighting.py` adds "for unbiased samples for training machine learning
+  algorithms" -- our `NORM = 2e-2`, `GAMMA = -3.0`.  So a pass2 run can check
+  `genie_weight` against the production's own number event by event, the same
+  way the L4 variables were checked against the pass2 L4 files.  That would
+  close open risk 4 by measurement instead of by argument.  Not done yet.
+
 ### The fitting scaffolding is GONE (recover it from the tag)
 
 `oscnext_l4/fit_pass2.py` and the `fit` / `fit-report` subcommands existed to
