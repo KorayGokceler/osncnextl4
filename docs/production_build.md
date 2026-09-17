@@ -74,10 +74,72 @@ is currently the wrong file.  **Unresolved; read DeepCoreCuts and settle it.**
 
 ## 3. How a level was actually run
 
-PENDING — the command line, and the cluster submission around it.  The
-`--tmp-dir` and `--gridftp` flags say this ran per-file on a grid; the fridge
-should carry the submission scripts that prove it and show the real
-concurrency.
+### The environment: py2, and the fridge on top
+
+The build sits on **`py2-v3.1.1`**, not the `py3-v4.4.2` in daily use here, so
+running any of this means loading a different cvmfs environment first.  Then
+the fridge, which is a separate tree entirely:
+
+    fridge/
+        setup_fridge.sh                     <- the real setup
+        processing/samples/oscNext/
+            setup_oscNext.sh                <- delegates to it, via ../../..
+        utils/                              <- utils.hdf5_tools, filesys_tools, ...
+
+`setup_oscNext.sh` does nothing but `source $FRIDGE_DIR/setup_fridge.sh`.  Its
+commented-out former body is still informative:
+
+    export PYTHONUSERBASE=$I3_BUILD/local
+    # "Let python know where packages installed via pip into the icetray
+    #  the build dir can be found"
+
+So python packages that icetray does not carry were pip-installed **into the
+build directory**.  That block also required `I3_BUILD` to be set first; it
+being commented out means the fridge setup no longer depends on env-shell
+having run.
+
+PENDING — `setup_fridge.sh` itself.
+
+### The command
+
+From `oscNext_master.run_oscNext_command_line`'s argparse:
+
+    python $B/build/oscNext/resources/scripts/run_oscNext.py \
+        -t <genie|noise|muongun|corsika|data>   # data type, drives weighting
+        -i <input.i3.zst>                       # ONE input file
+        -g <gcd>
+        -o <output.i3.zst>                      # optional
+        --hdf5file <output.hdf5>                # optional, SAME data as -o
+        -l 3 4 5                                # levels, MUST be sequential
+        -d <dataset>                            # required for corsika
+        --file-num <n>                          # for unique event headers
+        --tmp-dir /scratch                       # RECOMMENDED
+        --fix-sim-headers
+        --gridftp
+
+Three things this says about the shape of the production:
+
+- **One file per invocation.**  There is no file list, no chunking, no worker
+  pool -- `-i` takes a single path.  Scale came from running many of these at
+  once on a grid, which `--gridftp` ("useful for clusters without access to the
+  IceCube datastore") confirms.  Our `jobs=16` on one machine is the small
+  imitation of that.
+- **`.i3` and HDF5 are written together**, from the same pass: the help text for
+  `--hdf5file` says *"will contain the same data as the output file, but in
+  HDF5 file format"*.  Our default writes only HDF5.
+- **`--tmp-dir` is the pattern we lack.**  *"Output/HDF5 files will be written
+  to a tmp directory during processing, and only moved to their final locations
+  once everything has completed successfully."*  A crash leaves nothing
+  half-written.  Ours leaves an unopenable partial HDF5 that `--retries` then
+  has to delete.  Worth copying.
+
+Levels are chained in ONE tray (`oscNext_processing` loops over them and adds
+each segment), with `assert np.all(np.diff(processing_levels) == 1)`, so L2 to
+L5 is a single pass rather than a file written per level.
+
+PENDING — the cluster submission wrapper.  The only candidates found under the
+oscNext tree are `processing/submit_sanity_checks.py` and
+`tania_submit_step2.py`; neither is obviously the L1-L5 production submitter.
 
 ## 4. `oscNext_cuts.py` — what a "level cut" means
 
