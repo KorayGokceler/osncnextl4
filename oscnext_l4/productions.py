@@ -107,11 +107,18 @@ PASS2_SAMPLES_ALL = {
                     weight="muongun"),
 }
 
-# What a noise-BDT run needs: the two signal sets and the noise background.
-# Kept for a deliberately narrow run; it is NOT the pass2 default any more.
-# The muon BDT is now reachable at pass2 (VICH is verified at 100.00% and
-# MuonGun has a weighter), so a pass2 run loads everything unless asked not to.
-PASS2_NOISE_BDT = ("nue", "numu", "noise")
+# What a noise-BDT run needs, stated as ROLES rather than as names: every
+# signal set, plus the noise background.  The muon background is the only thing
+# it can skip.
+#
+# This used to be the tuple ("nue", "numu", "noise"), which was written when
+# pass3 was the only production and pass3 has no NuTau set.  At pass2 NuTau
+# (160511) EXISTS and is signal -- the production's own L4_model_data.py
+# harvests 12xxxx, 14xxxx and 16xxxx alike -- so a name list silently dropped
+# it.  Roles do not have that failure mode: a production that adds a signal set
+# gets it, one that does not have it is unaffected.
+NOISE_BDT_ROLES = ("signal", "noise_bg")
+MUON_BDT_ROLES = ("signal", "muon_bg")
 
 
 PRODUCTIONS = {
@@ -124,16 +131,23 @@ PRODUCTIONS = {
 }
 
 
-def select(production, hdf_base, samples=None, count_files=True):
+def select(production, hdf_base, samples=None, roles=None, count_files=True):
     """
     Point the pipeline at one production -> (GCD, SAMPLES).
 
     production : "pass3" or "pass2"
     hdf_base   : where the HDF5 output goes; each sample gets its own
                  subdirectory, so two productions never overwrite each other.
-    samples    : which samples to include (default: all of them).  Pass
-                 PASS2_NOISE_BDT to leave out the sets the noise classifier
-                 does not use.
+    roles      : keep only samples with these `kind`s -- the portable way to
+                 say what a run needs, since the roles are the same in both
+                 productions while the names are not:
+
+                     select("pass2", HDF_BASE, roles=NOISE_BDT_ROLES)
+
+                 picks up pass2's NuTau automatically, where a name list would
+                 have to be edited per production.
+    samples    : an explicit name list, when you really do mean these sets.
+                 Combined with `roles` it is an intersection.
     count_files: glob each pattern to report how many L3 files were found.
                  Turn it off on a slow filesystem.
 
@@ -154,6 +168,15 @@ def select(production, hdf_base, samples=None, count_files=True):
         raise ValueError("%s has no sample(s) %s -- it has %s"
                          % (production, unknown, sorted(spec["samples"])))
 
+    if roles:
+        roles = tuple(roles)
+        known = {c.get("kind") for c in spec["samples"].values()}
+        unknown_roles = [r for r in roles if r not in known]
+        if unknown_roles:
+            raise ValueError("%s has no sample with role(s) %s -- it has %s"
+                             % (production, unknown_roles, sorted(known)))
+        names = [n for n in names if spec["samples"][n].get("kind") in roles]
+
     out = {}
     for name in names:
         cfg = dict(spec["samples"][name])
@@ -164,6 +187,8 @@ def select(production, hdf_base, samples=None, count_files=True):
         out[name] = cfg
 
     print("production: %s" % production)
+    if roles:
+        print("  roles          : %s" % ", ".join(roles))
     print("  GCD            : %s" % spec["gcd"])
     if spec["cleaned_pulses"]:
         print("  cleaned pulses : %s" % spec["cleaned_pulses"])

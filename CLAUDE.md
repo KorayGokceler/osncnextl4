@@ -139,9 +139,14 @@ Supporting files:
   stores the vuvuzela weight in 1/ns and pass2 in Hz, and getting it wrong does
   not raise -- it scales every noise rate by 1e9.  Notebook cell 3 carries
   `PRODUCTION = "pass2"|"pass3"`; the output trees are suffixed so the two
-  never overwrite each other (pass3 keeps its bare names).  A pass2 run loads
-  `PASS2_NOISE_BDT` (nue, numu, noise) and section 6 skips the muon BDT when no
-  muon background is loaded.
+  never overwrite each other (pass3 keeps its bare names).  What a run loads is
+  said in ROLES -- `select(..., roles=NOISE_BDT_ROLES)` is signal + noise_bg,
+  `MUON_BDT_ROLES` is signal + muon_bg -- so no branch is needed for a set one
+  production has and the other does not: pass2's NuTau comes in as signal,
+  pass3 simply has one fewer.  Section 6 skips the muon BDT when no muon
+  background is loaded.  (The old `PASS2_NOISE_BDT = ("nue", "numu", "noise")`
+  was a name list written when pass3 was the only production, and it silently
+  dropped pass2's NuTau.)
 - `scripts/diagnose_env.py` — what is and is not in the environment.
 - `docs/pipeline.md` — which file runs when.
 - `docs/technical_note_comparison.md` — exactly what we write to HDF5, compared
@@ -1177,8 +1182,9 @@ measured the accumulated_time residual.
 
 **For a pass2 training run:** there is no CORSIKA at pass2 in the paths we have
 -- the muon background is MuonGun, so the pass3 CORSIKA weighting (open risk
-3d) does not carry over.  The noise BDT is unaffected.  NuTau (160511) exists
-at pass2, but the signal definition is still nue+numu (open risk 6).
+3d) does not carry over -- `data.muongun_weight` handles it instead.  The noise
+BDT is unaffected.  NuTau (160511) exists at pass2 and IS now part of the
+signal, in both classifiers, because the samples are selected by role.
 
 ## Verified against the PRODUCTION SOURCE (oscNext_meta V01-00-07)
 
