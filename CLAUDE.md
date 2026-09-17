@@ -187,6 +187,9 @@ sklearn/joblib, only `lightgbm` + `numpy`.
       `py3-v4.4.2/RHEL_9_x86_64_v2`.  No `oscNext` project, no `slc-veto`, no
       `tau_bdt`, no `LowEnVariables` -- but `hdfwriter` IS present (deprecated).
       Running this pipeline on cvmfs needs no change; it is what it runs on.
+      A local build DOES exist at `/data/user/$USER/icetray_build/build` and
+      nothing here has run on it (environment trap 6); "no local build anywhere"
+      was wrong.
 - [x] IceTray/lightgbm import layer (`oscnext_l4/env.py` + `setup_env.sh`)
 - [x] Robust against corrupt input files (`--scan` + `--retries`)
 - [x] nue processed (100 files → 256,799 events), CORSIKA (500 files → 6,462)
@@ -940,6 +943,30 @@ raises a clear error when the segment that produces its variable is called
 Build search order (`setup_env.sh` and `env.find_env_shells()`):
 `$OSCNEXT_I3_BUILD` → `$I3_BUILD` → `/data/user/$USER/icetray_build/build` →
 `/data/user/$USER/*/build` → `~/*/build` → cvmfs metaprojects.
+
+**6. TWO environments existed, and which one you got depended on how you
+started.**  A LOCAL build does exist at `/data/user/$USER/icetray_build/build`
+-- an earlier version of this file said there was none, which was wrong.  It
+sits third in the search order, ABOVE cvmfs, and the second entry does not
+catch a cvmfs shell: there `I3_BUILD` points at `.../v1.17.0/share/icetray`,
+which holds no `env-shell.sh`.  So a Jupyter started by hand from the cvmfs
+metaproject ran on cvmfs while `./setup_env.sh run ...` reached for the local
+build, and env-shell refused with
+
+    I3_BUILD CHANGED
+    It appears that you are attempting to load an icetray environment
+    different than the one already loaded
+
+**Fixed:** `setup_env.sh` now checks whether icetray already imports and, if it
+does, runs the command in the environment you are in rather than looking for a
+build at all.  `shell` says so and exits instead of nesting; `kernel` registers
+from the loaded environment, which is what makes the notebook's kernel match
+whatever produced the data.
+
+The pipeline's measurements were all made on cvmfs -- `sys.executable`,
+`I3_BUILD` and `icetray.__file__` were checked together and all three are under
+`/cvmfs/.../py3-v4.4.2/RHEL_9_x86_64_v2/`.  What the local build contains has
+not been looked at.
 
 ## Corrupt input files (solved)
 

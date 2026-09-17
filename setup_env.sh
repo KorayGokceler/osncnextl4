@@ -103,24 +103,62 @@ report() {
     echo "=================================================================="
 }
 
+# Is an icetray environment ALREADY loaded?
+#
+# WHY THIS EXISTS: env-shell.sh refuses to run inside a different build --
+#
+#     I3_BUILD CHANGED
+#     It appears that you are attempting to load an icetray environment
+#     different than the one already loaded
+#
+# and that is exactly what happened: a shell opened from the cvmfs metaproject
+# has I3_BUILD pointing at .../share/icetray, which holds no env-shell.sh, so
+# find_env_shell fell past it to a LOCAL build under /data/user and tried to
+# load that instead.  Two different environments depending on how you started.
+#
+# When icetray already imports there is nothing to load: run the command here.
+already_inside() {
+    python -c "import icecube" >/dev/null 2>&1
+}
+
+run_here_or_in_shell() {
+    if already_inside; then
+        echo "-> icetray is already loaded ($(python -c "import sys; print(sys.executable)")); running directly" >&2
+        exec "$@"
+    fi
+    es="$(find_env_shell)" || { echo "env-shell.sh not found"; exit 1; }
+    exec "$es" -- "$@"
+}
+
 case "${1:-report}" in
   report)
     report
     ;;
   shell)
+    if already_inside; then
+        echo "icetray is already loaded here:"
+        python -c "import sys, icecube.icetray as i; print('  python :', sys.executable); print('  icetray:', i.__file__)"
+        echo "Opening a second one would be a DIFFERENT environment.  Nothing to do."
+        exit 0
+    fi
     es="$(find_env_shell)" || { echo "env-shell.sh not found"; exit 1; }
     echo "-> $es"
     exec "$es"
     ;;
   run)
     shift
-    es="$(find_env_shell)" || { echo "env-shell.sh not found"; exit 1; }
-    exec "$es" -- "$@"
+    run_here_or_in_shell "$@"
     ;;
   kernel)
     # Register the Jupyter kernel FROM INSIDE ICETRAY.  This is the only
     # correct way for the notebook to see icetray: the python in kernel.json
     # must be the python inside env-shell.
+    if already_inside; then
+        python -m ipykernel install --user \
+            --name icetray --display-name "IceTray (oscNext L4)" \
+          && echo "Registered from the environment already loaded."
+        exit $?
+    fi
     es="$(find_env_shell)" || { echo "env-shell.sh not found"; exit 1; }
     "$es" -- python -m ipykernel install --user \
         --name icetray --display-name "IceTray (oscNext L4)" \
@@ -128,8 +166,7 @@ case "${1:-report}" in
     ;;
   lab)
     shift
-    es="$(find_env_shell)" || { echo "env-shell.sh not found"; exit 1; }
-    exec "$es" -- jupyter lab --no-browser --port "${1:-8888}"
+    run_here_or_in_shell jupyter lab --no-browser --port "${1:-8888}"
     ;;
   *)
     sed -n '2,20p' "$0"
