@@ -235,7 +235,12 @@ def check_registry(found, names, verbose=True):
             alt_used.append((n, hit, first))
 
     if verbose:
-        print("found: %d/%d" % (len(ok), len(names)))
+        if not names:
+            print("found: 0/0   [!] nothing was checked -- the caller passed an")
+            print("             empty list.  That reads like a pass and is not")
+            print("             one; check how the column list was built.")
+        else:
+            print("found: %d/%d" % (len(ok), len(names)))
         for n, hit, first in alt_used:
             print("  [i] %-22s %s[%s]  (first candidate %s[%s] was absent)"
                   % (n, hit[0], hit[1], first[0], first[1]))
