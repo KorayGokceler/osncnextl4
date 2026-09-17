@@ -56,13 +56,13 @@ PASS3_GCD = ("/cvmfs/icecube.opensciencegrid.org/data/GCD/"
 
 PASS3_SAMPLES = {
     "nue":     dict(l3="/data/ana/LE/oscNext/pass3/genie/level3/23800/*.i3.zst",
-                    flags=["--mc", "--genie"], kind="signal"),
+                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
     "numu":    dict(l3="/data/ana/LE/oscNext/pass3/genie/level3/23799/*.i3.zst",
-                    flags=["--mc", "--genie"], kind="signal"),
+                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
     "corsika": dict(l3="/data/ana/LE/oscNext/pass3/corsika/level3/23694/*.i3.zst",
-                    flags=["--corsika"], kind="muon_bg"),
+                    flags=["--corsika"], kind="muon_bg", weight="corsika"),
     "noise":   dict(l3="/data/ana/LE/oscNext/pass3/noise/level3/23813/*.i3.zst",
-                    flags=["--noise"], kind="noise_bg"),
+                    flags=["--noise"], kind="noise_bg", weight="noise"),
 }
 
 
@@ -83,28 +83,34 @@ _P2 = "/data/ana/LE/oscNext/pass2"
 _GENIE_L3 = _P2 + "/genie/level3/%s/oscNext_genie_level3_v02.00_pass2.%s.*.i3.zst"
 
 # NuE and NuMu are each TWO datasets at pass2, so `l3` is a list here.
-# MuonGun and NuTau are defined but not in the default set: the noise BDT does
-# not use them, and a pass2 muon BDT has its own open question (there is no
-# CORSIKA, so the pass3 weighting does not carry over -- CLAUDE.md open risk
-# 3d).  VICH_nch, a muon input, is also still unverified.
+#
+# `weight` names the weighting SCHEME, not the sample -- that is what makes one
+# code serve both productions.  Both productions have a `muon_bg`, but pass3's
+# is CORSIKA and pass2's is MuonGun, and they need different input columns and
+# a different formula.  Keying anything downstream on the SAMPLE NAME breaks the
+# moment a production names its sets differently; keying on the scheme does not.
 PASS2_SAMPLES_ALL = {
     "nue":     dict(l3=[_GENIE_L3 % ("121122", "121122"),
                         _GENIE_L3 % ("121291", "121291")],
-                    flags=["--mc", "--genie"], kind="signal"),
+                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
     "numu":    dict(l3=[_GENIE_L3 % ("141154", "141154"),
                         _GENIE_L3 % ("141292", "141292")],
-                    flags=["--mc", "--genie"], kind="signal"),
+                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
     "noise":   dict(l3=_P2 + "/noise/level3/888003/"
                             "oscNext_noise_level3_v02.00_pass2.888003.*.i3.zst",
-                    flags=["--noise"], kind="noise_bg"),
+                    flags=["--noise"], kind="noise_bg", weight="noise"),
     "nutau":   dict(l3=_GENIE_L3 % ("160511", "160511"),
-                    flags=["--mc", "--genie"], kind="signal"),
+                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
     "muongun": dict(l3=_P2 + "/muongun/level3/139008/"
                             "oscNext_muongun_level3_v02.00_pass2.139008.*.i3.zst",
-                    flags=["--mc", "--muongun"], kind="muon_bg"),
+                    flags=["--mc", "--muongun"], kind="muon_bg",
+                    weight="muongun"),
 }
 
 # What a noise-BDT run needs: the two signal sets and the noise background.
+# Kept for a deliberately narrow run; it is NOT the pass2 default any more.
+# The muon BDT is now reachable at pass2 (VICH is verified at 100.00% and
+# MuonGun has a weighter), so a pass2 run loads everything unless asked not to.
 PASS2_NOISE_BDT = ("nue", "numu", "noise")
 
 

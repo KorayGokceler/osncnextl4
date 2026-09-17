@@ -16,7 +16,7 @@ USAGE (notebook):
 
     data = {n: load_sample(n, SAMPLES, WANTED) for n in SAMPLES}
     data = {n: d for n, d in data.items() if d is not None}
-    add_weights(data)
+    add_weights(data, SAMPLES)
 
 CRITICAL SYNCHRONISATION POINT: the REGISTRY here and FEATURE_MAP in
 classifier.py must agree line for line.  If one reads a different column than
@@ -104,25 +104,46 @@ AUX = {
     "cwm_Weight":       ("CorsikaWeightMap", "Weight"),
     "cwm_NEvents":      ("CorsikaWeightMap", "NEvents"),
     "cwm_OverSampling": ("CorsikaWeightMap", "OverSampling"),
+    # MuonGun (the pass2 muon background).  process_L4.py books all three
+    # spellings because which one a production wrote is not fixed; the first
+    # that is actually present is used.
+    "MuonWeight":           ("MuonWeight", "value"),
+    "MuonWeight_GaisserH4a": ("MuonWeight_GaisserH4a", "value"),
+    "MuonGunWeight":        ("MuonGunWeight", "value"),
 }
 
-# AUX column -> which sample kinds it exists in (SAMPLES[...]["kind"])
-AUX_KINDS = {
-    "true_energy":   ("signal",),
-    "OneWeight":     ("signal",),
-    "NEvents":       ("signal",),
-    "pdg":           ("signal",),
-    "n_flux_events": ("signal",),
-    "noise_weight":  ("noise_bg",),
-    "cwm_Weight":       ("muon_bg",),
-    "cwm_NEvents":      ("muon_bg",),
-    "cwm_OverSampling": ("muon_bg",),
+# AUX column -> which WEIGHT SCHEMES need it (SAMPLES[...]["weight"]).
+#
+# Keyed by scheme rather than by `kind`, because one kind can have several
+# schemes: pass3's muon_bg is CORSIKA and pass2's is MuonGun, and asking a
+# MuonGun file for CorsikaWeightMap prints three false alarms per file.
+AUX_SCHEMES = {
+    "true_energy":   ("genie",),
+    "OneWeight":     ("genie",),
+    "NEvents":       ("genie",),
+    "pdg":           ("genie",),
+    "n_flux_events": ("genie",),
+    "noise_weight":  ("noise",),
+    "cwm_Weight":       ("corsika",),
+    "cwm_NEvents":      ("corsika",),
+    "cwm_OverSampling": ("corsika",),
+    "MuonWeight":           ("muongun",),
+    "MuonWeight_GaisserH4a": ("muongun",),
+    "MuonGunWeight":        ("muongun",),
 }
 
+# Fallback for a sample spec that predates the `weight` field.
+_KIND_TO_SCHEME = {"signal": "genie", "noise_bg": "noise", "muon_bg": "corsika"}
 
-def aux_for(kind):
-    """The AUX columns EXPECTED in this kind of sample."""
-    return [k for k, kinds in AUX_KINDS.items() if kind in kinds]
+
+def scheme_of(cfg):
+    """The weight scheme of one sample spec, falling back to its `kind`."""
+    return cfg.get("weight") or _KIND_TO_SCHEME.get(cfg.get("kind"))
+
+
+def aux_for(scheme):
+    """The AUX columns EXPECTED under this weight scheme."""
+    return [k for k, schemes in AUX_SCHEMES.items() if scheme in schemes]
 
 
 def _table_nodes(h5):
@@ -478,9 +499,9 @@ def load_sample(name, SAMPLES, wanted, max_files=None):
     """Read and concatenate every HDF5 file of a sample."""
     # Do not ask for AUX columns this sample is not EXPECTED to have.
     # Otherwise every CORSIKA file prints a misleading "OneWeight missing".
-    kind = SAMPLES[name].get("kind")
-    if kind:
-        drop = set(AUX) - set(aux_for(kind))
+    scheme = scheme_of(SAMPLES[name])
+    if scheme:
+        drop = set(AUX) - set(aux_for(scheme))
         skipped = [w for w in wanted if w in drop]
         wanted = [w for w in wanted if w not in drop]
         if skipped:
@@ -741,17 +762,62 @@ def corsika_weight(d):
     return out
 
 
-WEIGHTERS = {"nue": genie_weight, "numu": genie_weight,
-             "noise": noise_weight, "corsika": corsika_weight}
+def muongun_weight(d):
+    """
+    The pass2 muon background.  There is no CORSIKA at pass2, so the muon BDT
+    needs this or it has no weighted background at all.
 
-# Table 13 of the technical note, L3 rates [mHz] -- for the magnitude check
+    MuonGun stores a per-event rate weight directly, unlike CORSIKA where the
+    spectrum has to be folded in.  process_L4.py books three spellings because
+    which one a production wrote is not fixed; the first one actually present is
+    used, and which that was is printed -- the choice changes the normalisation
+    and nothing downstream would catch it.
+
+    Divided by the L3 file count, as every other weighter here is.
+
+    NOT VERIFIED against a pass2 rate.  The production's own
+    `frame_objects/muongun.py` uses `raw_weight / num_events /
+    prob_passing_KDE`; the KDE passing probability is not in our booked keys, so
+    an absolute-rate comparison is not available yet.  The SHAPE -- which event
+    counts how much -- is what the BDT trains on, and that is right.
+    """
+    for col in ("MuonWeight", "MuonWeight_GaisserH4a", "MuonGunWeight"):
+        w = d.get(col)
+        if w is None:
+            continue
+        w = np.asarray(w, dtype=np.float64)
+        if np.isfinite(w).any():
+            print("  [i] muongun weight: using %s" % col)
+            return w / d["_n_files"]
+    print("  [!] no MuonGun weight column found (looked for MuonWeight, "
+          "MuonWeight_GaisserH4a, MuonGunWeight)")
+    print("      -> w_phys = 0; the muon BDT would see an unweighted background.")
+    return np.zeros(len(d["Run"]), dtype=np.float64)
+
+
+# Keyed by WEIGHT SCHEME, not by sample name -- see productions.py.  A sample
+# called "corsika" at pass3 and "muongun" at pass2 is the same ROLE with two
+# formulas, and nothing here should have to know the names.
+WEIGHTERS = {"genie": genie_weight, "noise": noise_weight,
+             "corsika": corsika_weight, "muongun": muongun_weight}
+
+# Table 13 of the technical note, L3 rates [mHz] -- for the magnitude check.
+# Keyed by sample name: the table is a per-sample fact, and it has no MuonGun
+# or NuTau row, so those samples simply print no comparison.
 L3_RATES_MHZ = {"nue": 0.95, "numu": 3.77, "corsika": 505.0, "noise": 36.6}
 
 
-def add_weights(data, weighters=None):
+def add_weights(data, SAMPLES=None, weighters=None):
     """
     Add w_phys [Hz] to every sample and print the magnitude comparison
     against Table 13.
+
+    The weighter is chosen by the sample's WEIGHT SCHEME (`SAMPLES[name]
+    ["weight"]`, see productions.py), not by its name.  That is what lets the
+    same call serve pass2 and pass3: "which formula" is a fact the production
+    table declares, and the names differ between productions while the schemes
+    do not.  Without SAMPLES the name is tried as a scheme, which still works
+    for "noise" and "corsika".
 
     max/sum above 5% means a single event dominates the rate: either the
     statistics are inadequate or the weight calculation is wrong.
@@ -759,9 +825,13 @@ def add_weights(data, weighters=None):
     weighters = weighters or WEIGHTERS
     for name, d in data.items():
         print(name)
-        fn = weighters.get(name)
+        scheme = scheme_of(SAMPLES[name]) if SAMPLES and name in SAMPLES else name
+        fn = weighters.get(scheme)
         if fn is None:
-            print("  [!] no weighting function -> w_phys = NaN")
+            print("  [!] no weighting function for scheme %r -> w_phys = NaN"
+                  % scheme)
+            print("      Give this sample a `weight=` in productions.py; the "
+                  "known schemes are %s." % ", ".join(sorted(weighters)))
             d["w_phys"] = np.full(len(d["Run"]), np.nan)
             continue
         w = np.asarray(fn(d), dtype=np.float64)

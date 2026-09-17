@@ -123,7 +123,16 @@ Supporting files:
 - `oscnext_l4/data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
   `check_feature_map`, `load_sample`, `add_weights`,
   `set_noise_weight_unit`.
-- `oscnext_l4/productions.py` — **which production the notebook is pointed at.**
+- `oscnext_l4/productions.py` — **which production the notebook is pointed at,
+  and the ONE place that knows a per-production fact.**  Every sample declares
+  `kind` (its ROLE: signal / noise_bg / muon_bg) and `weight` (its weighting
+  SCHEME: genie / noise / corsika / muongun).  Everything downstream keys on
+  those, never on the sample NAME -- which is what lets one code serve both
+  productions, because the roles are the same while the names are not (pass3's
+  muon background is `corsika`, pass2's is `muongun`).  `data.add_weights`
+  takes SAMPLES and resolves the weighter through `scheme_of`, and
+  `AUX_SCHEMES` says which weight columns to ask a file for -- keyed by scheme,
+  since CORSIKA and MuonGun are both `muon_bg` and want different columns.
   `select("pass2"|"pass3", HDF_BASE)` returns `(GCD, SAMPLES)` and sets the
   GCD, the sample paths, the `--cleaned-pulses` flag and the **noise weight
   unit** together.  That last one is the reason the function exists: pass3
@@ -604,10 +613,14 @@ sklearn/joblib, only `lightgbm` + `numpy`.
    reading of Tables 11/12.  Python 2 is why `oscNext_L4.py` in the GitHub port
    is still entirely commented out with `#TODO migrate`.
 
-6. **No ντ and no real detector data** — the signal is defined as νe+νμ
-   (ντ CC is ~3%), and the muon BDT's background is CORSIKA rather than real
-   data.  How much that substitution shifts things will become clear once the
-   data/MC agreement check is in place.
+6. **No real detector data (and ν_τ is now IN at pass2).**  The muon BDT's
+   background is simulation rather than the real data the production used --
+   see "Five real differences" item 2, which is the larger half of this risk.
+   The ν_τ half is closed at pass2: the notebook now takes its signal sets by
+   ROLE (`kind == "signal"`) rather than from a hardcoded `["nue", "numu"]`,
+   so pass2's NuTau (160511) is included, as `L4_model_data.py` does.  pass3
+   has no NuTau set in the paths we have, so a pass3 run is still νe+νμ --
+   by what the production offers, not by a branch in our code.
 
 ## Booking/read audit — the bugs found
 
