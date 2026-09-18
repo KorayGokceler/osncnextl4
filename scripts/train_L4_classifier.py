@@ -99,15 +99,15 @@ PARAMS = {
 
 EARLY_STOPPING = 100
 
-# LightGBM's default is OpenMP's, i.e. EVERY core -- 64 on cobalt, where 22
-# people share the machine.  It also buys little here: the noise BDT has FIVE
-# features, and histogram building parallelises largely over features, so the
-# extra threads mostly contend.  Capped, and overridable with --num-threads.
+# Threads: LEFT TO LIGHTGBM, which takes every core.  A cap was tried here and
+# removed -- on this cluster the scheduler throttles a job that actually gets in
+# the way, so capping by hand only gives away speed.  --num-threads is kept for
+# when you do want to be polite, or to compare.
 #
 # CAREFUL: `deterministic=True` in PARAMS guarantees reproducibility for a
-# GIVEN thread count.  Changing this changes floating-point summation order, so
-# a model trained with a different value can differ in the last bits.
-DEFAULT_THREADS = min(16, os.cpu_count() or 1)
+# GIVEN thread count.  Two runs at different values can differ in the last bits,
+# because the floating-point summation order changes.
+DEFAULT_THREADS = 0          # 0 = LightGBM's own default (all cores)
 
 # Reference cut values, v00.07 pass2.  These are the note's LightGBM
 # probabilities, so they carry over to a LightGBM model -- unlike a pybdt
@@ -390,10 +390,12 @@ def main():
     ap.add_argument("--no-plots", action="store_true")
     ap.add_argument("--seed", type=int, default=12345)
     ap.add_argument("--num-threads", type=int, default=DEFAULT_THREADS,
-                    help="LightGBM threads (default %d).  LightGBM otherwise "
-                         "takes EVERY core -- 64 on cobalt, which is rude on a "
-                         "shared machine and buys little with 5 features."
-                         % DEFAULT_THREADS)
+                    help="LightGBM threads; 0 (default) means all cores")
+    ap.add_argument("--log-every", type=int, default=50,
+                    help="print the validation metric every N iterations "
+                         "(0 = silent).  Training on the pass2 sample runs "
+                         "millions of rows and takes minutes, so silence is "
+                         "indistinguishable from a hang.")
     args = ap.parse_args()
 
     target = args.target_rejection
@@ -405,9 +407,10 @@ def main():
     sig, bg = y == 1, y == 0
 
     p = dict(PARAMS[args.tag])
-    p["num_threads"] = args.num_threads
-    print("LightGBM threads: %d (of %d cores)"
-          % (args.num_threads, os.cpu_count() or 0))
+    if args.num_threads:
+        p["num_threads"] = args.num_threads
+    print("LightGBM threads: %s (machine has %d cores)"
+          % (args.num_threads or "all", os.cpu_count() or 0))
     n_rounds = p.pop("num_boost_round", 2000)
     if args.num_boost_round is not None:
         n_rounds = args.num_boost_round
@@ -457,7 +460,10 @@ def main():
 
     dtrain = lgb.Dataset(X[fit], label=y[fit], weight=w[fit],
                          feature_name=features, free_raw_data=False)
-    callbacks = [lgb.log_evaluation(0)]
+    # log_evaluation(0) is SILENT.  That was fine when training took seconds on
+    # 165k rows; on the pass2 sample it is 8.8M rows and minutes, where no
+    # output is indistinguishable from a hang.
+    callbacks = [lgb.log_evaluation(args.log_every)]
     valid_sets = None
     if va is not None:
         valid_sets = [lgb.Dataset(X[va], label=y[va], weight=w[va],
