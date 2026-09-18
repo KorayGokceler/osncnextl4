@@ -4,12 +4,17 @@ Produce the presentation figures that need nothing but files already on disk.
 
     python presentation/make_figures.py
 
-Reads
-    L4_output/models/L4_noise_model.json     the trained model's metadata
-    L4_output/ds/L4_noise_dataset.npz        the training set
-    L4_output/models/noise_*.png             the plots train_L4_classifier wrote
+    python presentation/make_figures.py --production pass2
+
+Reads (<suf> is "" for pass3 and "_pass2" for pass2 -- the same rule the
+notebook's cell 3 applies, so the two productions never overwrite each other)
+    L4_output/models<suf>/L4_noise_model.json   the trained model's metadata
+    L4_output/ds<suf>/L4_noise_dataset.npz      the training set
+    L4_output/models<suf>/noise_*.png           the plots train_L4_classifier wrote
 
 Writes into presentation/figures/
+    4.png                       input distributions, signal vs background,
+                                the figure to hold beside the note's Fig 13
     feature_importance.png      gain split                       (slide 10)
     input_correlation_signal.png      rank correlation of the 5 inputs,
     input_correlation_background.png  one file per class               (slide 7)
@@ -28,6 +33,7 @@ import sys
 import json
 import shutil
 import argparse
+import subprocess
 
 import numpy as np
 import matplotlib
@@ -171,6 +177,38 @@ def input_correlation(npz_path, out_dir):
     return len(made)
 
 
+def input_distributions(npz_path, figures, tag):
+    """Delegate to scripts/plot_inputs.py rather than reimplement it.
+
+    That script owns the axis choices taken from the note (Figure 13's
+    logarithmic iLineFit axis, the bounded ratios) and the per-panel AUC and
+    NaN annotations.  A second copy here would drift from it, and this figure
+    is precisely the one the deck holds beside Figure 13 -- it has to be the
+    same plot the analysis looked at, not a lookalike.
+    """
+    script = os.path.join(REPO, "scripts", "plot_inputs.py")
+    if not os.path.exists(script):
+        print("  [!] not found: %s" % script)
+        return False
+    r = subprocess.run([sys.executable, script, npz_path,
+                        "--outdir", figures, "--tag", tag],
+                       capture_output=True, text=True)
+    sys.stdout.write("".join("    " + l + "\n"
+                             for l in r.stdout.strip().split("\n") if l))
+    if r.returncode != 0:
+        print("  [!] plot_inputs.py failed:\n%s" % (r.stderr or "")[-1500:])
+        return False
+    src = os.path.join(figures, "%s_inputs.png" % tag)
+    if not os.path.exists(src):
+        print("  [!] plot_inputs.py wrote nothing at %s" % src)
+        return False
+    # The deck includes it as 4.png (FIGURES.md: the numeric names are
+    # historical and carry no meaning); keep the descriptive name too.
+    shutil.copyfile(src, os.path.join(figures, "4.png"))
+    print("  -> %s" % os.path.join(figures, "4.png"))
+    return True
+
+
 def copy_as(src, dst):
     if not os.path.exists(src):
         print("  [!] not found: %s" % src)
@@ -189,23 +227,39 @@ def main():
                     help="L4_output directory (default: $OSCNEXT_OUT_ROOT, "
                          "else <repo>/L4_output)")
     ap.add_argument("--tag", default="noise", help="classifier tag (noise|muon)")
+    ap.add_argument("--production", default="pass3", choices=("pass2", "pass3"),
+                    help="which production's output tree to read.  pass3 keeps "
+                         "the bare directory names it has always used; pass2 "
+                         "reads ds_pass2/ and models_pass2/, exactly as cell 3 "
+                         "of the notebook writes them.")
     ap.add_argument("--figures", default=os.path.join(HERE, "figures"),
                     help="where the figures are written")
     args = ap.parse_args()
 
     out_root = args.out_root or default_out_root()
-    models = os.path.join(out_root, "models")
-    ds = os.path.join(out_root, "ds", "L4_%s_dataset.npz" % args.tag)
+    suf = "" if args.production == "pass3" else "_" + args.production
+    models = os.path.join(out_root, "models" + suf)
+    ds = os.path.join(out_root, "ds" + suf, "L4_%s_dataset.npz" % args.tag)
     meta = os.path.join(models, "L4_%s_model.json" % args.tag)
     os.makedirs(args.figures, exist_ok=True)
 
+    print("production  : %s" % args.production)
     print("output root : %s" % out_root)
+    print("models      : %s" % models)
+    print("dataset     : %s" % ds)
     print("figures     : %s" % args.figures)
     print()
 
     ok = 0
 
-    print("1. feature importance")
+    print("1. input distributions (slide 5, beside the note's Figure 13)")
+    if os.path.exists(ds):
+        ok += input_distributions(ds, args.figures, args.tag)
+    else:
+        print("  [!] not found: %s" % ds)
+        print("      section 6 of the notebook writes it")
+
+    print("\n2. feature importance")
     if os.path.exists(meta):
         ok += feature_importance(meta, os.path.join(args.figures,
                                                     "feature_importance.png"))
@@ -213,21 +267,21 @@ def main():
         print("  [!] not found: %s" % meta)
         print("      the training writes it -- run train_L4_classifier.py first")
 
-    print("\n2. input correlation")
+    print("\n3. input correlation")
     if os.path.exists(ds):
         ok += input_correlation(ds, args.figures)
     else:
         print("  [!] not found: %s" % ds)
         print("      section 6 of the notebook writes it")
 
-    print("\n3. plots written by the training")
+    print("\n4. plots written by the training")
     ok += copy_as(os.path.join(models, "%s_cuts.png" % args.tag),
                   os.path.join(args.figures, "lightgbm_cuts.png"))
     ok += copy_as(os.path.join(models, "%s_dist.png" % args.tag),
                   os.path.join(args.figures, "lightgbm_score_dist.png"))
 
-    print("\n%d of 5 figures produced." % ok)
-    if ok < 5:
+    print("\n%d of 6 figures produced." % ok)
+    if ok < 6:
         print("The deck compiles either way -- a missing figure becomes a box "
               "naming the file.")
     return 0

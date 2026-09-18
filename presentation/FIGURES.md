@@ -27,6 +27,10 @@ Generated from the deck, so it cannot drift.  A file that is not in
 ever replaced, check the slide it lands on rather than trusting the number.
 `make_figures.py` still writes its own outputs under their descriptive names.
 
+**`4.png` is no longer renamed by hand.**  `make_figures.py` produces it from
+`scripts/plot_inputs.py` and writes both names, so the figure the deck shows is
+the same one the analysis looked at rather than a lookalike that can drift.
+
 **No longer used:**
 
 - oscnext_levels.png (slide 2 has no figure any more)
@@ -72,26 +76,42 @@ as inside env-shell:
 
 ```bash
 cd ~/l4/osncnextl4
-python presentation/make_figures.py
+python presentation/make_figures.py --production pass2    # or pass3
 ```
+
+**`--production` is not optional in practice.**  pass3 keeps the bare `ds/` and
+`models/` directories it has always used; pass2 writes `ds_pass2/` and
+`models_pass2/`, exactly as cell 3 of the notebook does, so the two never
+overwrite each other.  Without the flag the script reads the pass3 tree and
+reports everything missing on a machine where only pass2 has been run.
 
 It writes into `presentation/figures/` and reports what it could and could not
 find, so it is safe to run before the training has been redone:
 
 | figure | from | slide |
 |---|---|---|
+| `4.png` + `noise_inputs.png` | `L4_noise_dataset.npz` via `scripts/plot_inputs.py` | 5 |
 | `feature_importance.png` | `L4_noise_model.json` → `importance_gain` | 8 |
 | `input_correlation_signal.png` | `L4_noise_dataset.npz` | 7 |
 | `input_correlation_background.png` | `L4_noise_dataset.npz` | 7 |
 | `lightgbm_cuts.png` | copied from `noise_cuts.png` | 13 |
 | `lightgbm_score_dist.png` | copied from `noise_dist.png` | 12 |
 
+The first one needs only the `.npz`, so it can be produced while a training is
+still running.  Its panels carry two things no other figure in the deck shows:
+the single-variable AUC, which is the honest companion to the gain plot on
+slide 8 -- a variable can rank high there while separating little by itself --
+and the NaN fraction, since LightGBM routes missing values silently and an
+entirely NaN input would train without complaint and be invisible everywhere
+else.
+
 The last two are written by the training, so if they are reported missing:
 
 ```bash
 python scripts/train_L4_classifier.py --tag noise \
-    --dataset L4_output/ds/L4_noise_dataset.npz --outdir L4_output/models
-python presentation/make_figures.py          # then copy them across
+    --dataset /data/user/$USER/L4_output/ds_pass2/L4_noise_dataset.npz \
+    --outdir  /data/user/$USER/L4_output/models_pass2
+python presentation/make_figures.py --production pass2   # then copy them across
 ```
 
 Options: `--tag muon` once the muon classifier exists, `--out-root` if
@@ -139,7 +159,7 @@ only" -- the muon BDT is not trained.
 
 | what | where | why |
 |---|---|---|
-| **Figure 13** (noise BDT input distributions) | note p.36-37 | **the single most valuable screenshot.** Put it beside your `noise_inputs.png` on slide 6 -- same five variables, same style. That side-by-side is the strongest validation image in the talk. |
+| **Figure 13** (noise BDT input distributions) | note p.36-37 | **the single most valuable screenshot.** Put it beside `4.png` on slide 5 -- same five variables, same style. That side-by-side is the strongest validation image in the talk. |
 | **Figure 12** | note p.36 | the remaining input distributions, same purpose |
 | the L4 noise score distribution / cut figure | note §3.6.2 | compare with your `lightgbm_score_dist.png` |
 | DeepCore geometry, or the selection-chain diagram | note §2-3 | `oscnext_levels.png`, slide 2 context |
