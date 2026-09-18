@@ -99,6 +99,16 @@ PARAMS = {
 
 EARLY_STOPPING = 100
 
+# LightGBM's default is OpenMP's, i.e. EVERY core -- 64 on cobalt, where 22
+# people share the machine.  It also buys little here: the noise BDT has FIVE
+# features, and histogram building parallelises largely over features, so the
+# extra threads mostly contend.  Capped, and overridable with --num-threads.
+#
+# CAREFUL: `deterministic=True` in PARAMS guarantees reproducibility for a
+# GIVEN thread count.  Changing this changes floating-point summation order, so
+# a model trained with a different value can differ in the last bits.
+DEFAULT_THREADS = min(16, os.cpu_count() or 1)
+
 # Reference cut values, v00.07 pass2.  These are the note's LightGBM
 # probabilities, so they carry over to a LightGBM model -- unlike a pybdt
 # score, which lives on a different scale entirely.
@@ -379,6 +389,11 @@ def main():
                     default="weight")
     ap.add_argument("--no-plots", action="store_true")
     ap.add_argument("--seed", type=int, default=12345)
+    ap.add_argument("--num-threads", type=int, default=DEFAULT_THREADS,
+                    help="LightGBM threads (default %d).  LightGBM otherwise "
+                         "takes EVERY core -- 64 on cobalt, which is rude on a "
+                         "shared machine and buys little with 5 features."
+                         % DEFAULT_THREADS)
     args = ap.parse_args()
 
     target = args.target_rejection
@@ -390,6 +405,9 @@ def main():
     sig, bg = y == 1, y == 0
 
     p = dict(PARAMS[args.tag])
+    p["num_threads"] = args.num_threads
+    print("LightGBM threads: %d (of %d cores)"
+          % (args.num_threads, os.cpu_count() or 0))
     n_rounds = p.pop("num_boost_round", 2000)
     if args.num_boost_round is not None:
         n_rounds = args.num_boost_round
