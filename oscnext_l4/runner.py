@@ -591,3 +591,204 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         b.done(msg)
     print("-> %s  (%s)" % (out, msg))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Detector data: one run at a time, because the GCD is per run
+# ---------------------------------------------------------------------------
+
+def run_gcd_pairs(cfg, fraction=0.0):
+    """
+    Pair each L3 pattern of a sample with its own GCD -> [(label, gcd, files)].
+
+    Only a sample that declares a `gcd` LIST has per-run GCDs; everything else
+    shares the production's single GCD and does not come through here.
+    """
+    pats = l3_patterns(cfg)
+    gcds = cfg.get("gcd")
+    if not isinstance(gcds, (list, tuple)) or len(gcds) != len(pats):
+        raise ValueError(
+            "this sample has no per-pattern `gcd` list (l3 has %d patterns, "
+            "gcd is %r) -- use run_process/run_process_parallel instead"
+            % (len(pats), gcds))
+
+    out, missing = [], []
+    for pat, gpat in zip(pats, gcds):
+        files = sorted(glob.glob(pat))
+        if fraction and fraction < 1:
+            step = max(1, int(round(1.0 / fraction)))
+            files = files[::step]
+        found = sorted(glob.glob(gpat))
+        # A run directory holds exactly one GCD.  Two would mean the glob is
+        # catching something else, and silently taking the first would process
+        # the run against the wrong detector state -- which is the whole reason
+        # detector data cannot use the MC's averaged GCD.
+        if len(found) != 1 or not files:
+            missing.append((pat, gpat, len(files), len(found)))
+            continue
+        label = _run_label(pat)
+        out.append((label, found[0], files))
+
+    if missing:
+        print("  [!] %d run(s) skipped:" % len(missing))
+        for pat, gpat, nf, ng in missing:
+            why = []
+            if not nf:
+                why.append("no L3 file")
+            if ng != 1:
+                why.append("%d GCD matches (expected 1)" % ng)
+            print("      %s -- %s" % (_run_label(pat), ", ".join(why)))
+            print("        l3 : %s" % pat)
+            print("        gcd: %s" % gpat)
+    return out
+
+
+def _run_label(pattern):
+    """`Run00120200` out of a path, else a stable fallback."""
+    m = re.search(r"(Run\d+)", pattern)
+    return m.group(1) if m else re.sub(r"\W+", "_", pattern)[-24:]
+
+
+def run_process_per_run(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
+                        run_optional=False, extra_args=None, fraction=0.0,
+                        runs=None):
+    """
+    Process a sample ONE RUN AT A TIME, each against its own GCD.
+
+    WHY THIS EXISTS.  Detector data cannot use the averaged MC GCD: the dead
+    DOMs and the calibration are exactly what changes from run to run, and the
+    L3 data files do not carry their own G/C/D frames (checked -- a pass2 L3
+    data file holds only TrayInfo, DAQ and Physics).  process_L4.py takes a
+    single --gcd, so the run is the unit of work.  That is also the shape the
+    production ran in: run_oscNext.py takes ONE input file per invocation.
+
+    The run is a better unit than a worker index anyway.  run_process_parallel
+    has to refuse a changed `jobs` because its output paths are numbered by
+    worker, so the same path means different files at a different split.  Here
+    the output is named after the RUN, so `jobs` is free to change between
+    invocations, an interrupted production resumes by simply running again,
+    and one bad run can be redone on its own.
+
+    It also makes the cross-check constraint hold for free: (Run, Event,
+    SubEvent) is unique within one run's output, so pass2.match() can pair
+    these files without the repeated-triple problem.
+
+    runs        : process only these labels, e.g. ["Run00120200"].  Default
+                  is every run the sample declares.
+    jobs        : how many runs are processed CONCURRENTLY.
+    fraction    : 0 < f <= 1 takes that share of each run's files.
+    """
+    import threading as _th
+
+    cfg = _cfg("SAMPLES")[name]
+    out = cfg["hdf5"]
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    base, ext = os.path.splitext(out)
+
+    pairs = run_gcd_pairs(cfg, fraction)
+    if runs:
+        want = set(runs)
+        pairs = [p for p in pairs if p[0] in want]
+    if not pairs:
+        print("[!] %s: nothing to process" % name)
+        return None
+
+    n_files = sum(len(f) for _, _, f in pairs)
+    print("%s: %d runs, %d L3 files, %d at a time" % (name, len(pairs),
+                                                      n_files, jobs))
+    for label, gcd, files in pairs:
+        print("    %-12s %4d files   gcd %s" % (label, len(files),
+                                                os.path.basename(gcd)))
+
+    listdir = os.path.join(os.path.dirname(out), "_filelists")
+    os.makedirs(listdir, exist_ok=True)
+
+    b = _Bar(name, total=n_files) if bar else None
+    lock = _th.Lock()
+    state = {}
+    failed = []
+    done_runs = [0]                 # a list so the reader closure can bump it
+    t0 = time.time()
+
+    def launch(label, gcd, files):
+        lst = os.path.join(listdir, "%s_%s.txt" % (name, label))
+        with open(lst, "w") as fh:
+            fh.write("\n".join(files) + "\n")
+        cmd = [sys.executable, "-u", _cfg("PROCESS_PY"),
+               "--gcd", gcd,
+               "--input-list", lst,
+               "--scan", "off",
+               "--output-hdf5", "%s_%s%s" % (base, label, ext)] + cfg["flags"]
+        if chunk_files:
+            cmd += ["--chunk-files", str(chunk_files)]
+        if run_optional:
+            cmd += ["--run-optional"]
+        if extra_args:
+            cmd += list(extra_args)
+        state[label] = {"done": 0, "total": len(files), "booked": 0, "tail": []}
+        return subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+    def reader(label, p):
+        for line in p.stdout:
+            line = line.rstrip("\n")
+            st = state[label]
+            st["tail"].append(line)
+            if len(st["tail"]) > 60:
+                del st["tail"][:30]
+            m = _CHUNK_RE.match(line)
+            if m:
+                _, _, fdone, _, booked, _ = m.groups()
+                with lock:
+                    st["done"] = int(fdone)
+                    st["booked"] = int(booked)
+                    if b:
+                        d = sum(v["done"] for v in state.values())
+                        bk = sum(v["booked"] for v in state.values())
+                        b.update(d, "%d/%d runs  events %d"
+                                 % (done_runs[0], len(pairs), bk))
+        p.wait()
+        with lock:
+            done_runs[0] += 1
+            if p.returncode != 0:
+                failed.append(label)
+
+    # A pool rather than "launch them all": 18 runs at jobs=16 would otherwise
+    # start 18 processes.  Slots free up as runs finish.
+    #
+    # Every thread is JOINED before the results are read.  Reaping on
+    # `p.poll()` alone is not enough -- the reader is still draining the pipe
+    # and still appending to `failed` for a moment after the process exits, so
+    # reading `failed` at that point can miss a failure.
+    started, queue = [], list(pairs)
+    while queue or any(p.poll() is None for _, p, _ in started):
+        while queue and sum(1 for _, p, _ in started
+                            if p.poll() is None) < max(1, jobs):
+            label, gcd, files = queue.pop(0)
+            proc = launch(label, gcd, files)
+            th = _th.Thread(target=reader, args=(label, proc), daemon=True)
+            th.start()
+            started.append((label, proc, th))
+        time.sleep(1.0)              # a short sleep keeps this from spinning
+    for _, _, th in started:
+        th.join()
+
+    dt = time.time() - t0
+    parts = sorted(glob.glob("%s_Run*%s" % (base, ext)))
+    sz = sum(os.path.getsize(f) for f in parts) / 1e6
+    msg = "%.1f MB, %d files, %.0f s" % (sz, len(parts), dt)
+
+    if failed:
+        if b:
+            b.fail("failed runs: %s" % sorted(failed))
+        for label in sorted(failed):
+            print("\n--- %s FAILED ---" % label)
+            print("\n".join(state[label]["tail"][-log_tail:]))
+        print("\nRe-run just those:  run_process_per_run(%r, runs=%s)"
+              % (name, sorted(failed)))
+        return None
+
+    if b:
+        b.done(msg)
+    print("-> %s_Run*%s  (%s)" % (base, ext, msg))
+    return out
