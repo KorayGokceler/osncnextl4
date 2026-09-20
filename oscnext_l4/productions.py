@@ -144,19 +144,38 @@ PASS2_MUON_DATA_RUNS = tuple(
 
 # Detector data L3 -- the layout is VERIFIED on disk, not assumed:
 #
-#   /data/ana/LE/oscNext/pass2/data/level3/IC86.12/Run00120200/*.i3.zst
+#   .../data/level3/IC86.12/Run00120200/
+#       Level2pass2_IC86.2012_data_Run00120200_0527_1_20_GCD.i3.zst
+#       oscNext_data_IC86.12_level3_v02.00_pass2_Run00120200_Subrun00000000.i3.zst
+#       oscNext_data_..._Subrun00000000.hdf5
+#       oscNext_data_..._Subrun00000000.json
 #
 # one directory per season, one per run inside it, and the season number is
 # the year: IC86.NN holds the runs taken in 20NN.  A season carries about a
 # thousand runs (IC86.12 has 1010); the note picked three of them per year.
 #
-# Measured file counts for the note's 18 runs: 592 to 1138 each, 13,125 in
-# total -- so this is a production run of a different size from the MC sets,
-# and worth splitting across workers from the start.
-_P2_DATA_L3 = _P2 + "/data/level3/IC86.%02d/Run%08d/*.i3.zst"
+# THE PATTERN CANNOT BE `*.i3.zst`.  Each subrun contributes THREE files and
+# the run's GCD is `*_GCD.i3.zst`, so that glob would hand I3Reader a GCD as
+# if it were an input and count three entries per subrun.  It also makes the
+# file counts three times what they are: a directory listing of 634 entries is
+# about 211 L3 files, and the note's 18 runs come to roughly 4,400 rather than
+# the 13,125 a naive `ls | wc -l` suggests.
+_P2_DATA_L3 = (_P2 + "/data/level3/IC86.%02d/Run%08d/"
+                     "oscNext_data_*_level3_*_Run%08d_Subrun*.i3.zst")
+
+# The GCD lives in the run directory, one per run -- detector data cannot use
+# the averaged MC GCD, because the dead DOMs and the calibration are what
+# changes from run to run.  Its name carries fields that vary per run
+# (`_0527_1_20_` above), so it is GLOBBED rather than constructed.
+_P2_DATA_GCD = _P2 + "/data/level3/IC86.%02d/Run%08d/*_GCD.i3.zst"
 
 PASS2_MUON_DATA_L3 = [
-    _P2_DATA_L3 % (year - 2000, run)
+    _P2_DATA_L3 % (year - 2000, run, run)
+    for year in sorted(PASS2_MUON_DATA_RUNS_BY_YEAR)
+    for run in PASS2_MUON_DATA_RUNS_BY_YEAR[year]]
+
+PASS2_MUON_DATA_GCD = [
+    _P2_DATA_GCD % (year - 2000, run)
     for year in sorted(PASS2_MUON_DATA_RUNS_BY_YEAR)
     for run in PASS2_MUON_DATA_RUNS_BY_YEAR[year]]
 
@@ -187,8 +206,11 @@ PASS2_SAMPLES_ALL = {
     # be STACKED: one is measured and one is simulated, and a model trained on
     # the union learns the difference between them as much as the physics.
     # Section 6 of the notebook picks one and says which.
-    "data":    dict(l3=PASS2_MUON_DATA_L3, flags=[], kind="muon_bg",
-                    weight="data"),
+    # `gcd` is a LIST here, one per L3 pattern, and it is the only sample with
+    # the field: every MC set shares one averaged GCD, detector data cannot.
+    # Nothing consumes it yet -- see the note below on how a run is processed.
+    "data":    dict(l3=PASS2_MUON_DATA_L3, gcd=PASS2_MUON_DATA_GCD,
+                    flags=[], kind="muon_bg", weight="data"),
 }
 
 # What a noise-BDT run needs, stated as ROLES rather than as names: every
