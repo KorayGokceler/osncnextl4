@@ -189,23 +189,50 @@ def l3_patterns(cfg):
     return list(l3) if isinstance(l3, (list, tuple)) else [l3]
 
 
-def l3_files(cfg, max_files=0):
+def l3_files(cfg, max_files=0, fraction=0.0):
     """
     Every L3 file of a sample, de-duplicated, order preserved.
 
-    max_files > 0 keeps only the first N.  The order is the sorted glob, so
-    the same N files are taken every time -- a partial run is reproducible and
-    can be extended later without reprocessing what is already there.
+    max_files > 0 keeps only the first N of the WHOLE list.  The order is the
+    sorted glob, so the same N files are taken every time -- a partial run is
+    reproducible and can be extended later without reprocessing what is
+    already there.
+
+    fraction (0 < f <= 1) keeps a share of EACH PATTERN instead, and for a
+    multi-pattern sample that is the only safe way to take a slice.
+
+    WHY BOTH EXIST.  A sample whose `l3` is one glob is a single set and
+    `max_files` slices it fine.  pass2's detector data is EIGHTEEN globs, one
+    per run, ordered by year -- so `max_files` there would take all of 2012
+    and 2013 and nothing of 2017.  That is precisely the seasonal dependence
+    the note's run list was chosen to avoid: the atmospheric muon flux varies
+    with the season, and a background drawn from one part of the calendar
+    teaches the classifier that part rather than the muon.  `fraction` keeps
+    every run represented in proportion.
+
+    It takes a STRIDE (`files[::step]`), not the first half, because files
+    within a run are time-ordered -- the first half of a run is the first half
+    of its night, while a stride spans the whole of it.  Going from a fraction
+    to the full set is still a superset, so a slice can be extended to
+    everything without reprocessing; going from one fraction to another
+    intermediate one is not, and would.
     """
+    if fraction and not (0 < fraction <= 1):
+        raise ValueError("fraction must be in (0, 1], not %r" % (fraction,))
     out = []
     for pat in l3_patterns(cfg):
-        out.extend(sorted(glob.glob(pat)))
+        got = sorted(glob.glob(pat))
+        if fraction and fraction < 1:
+            step = max(1, int(round(1.0 / fraction)))
+            got = got[::step]
+        out.extend(got)
     out = list(dict.fromkeys(out))
     return out[:max_files] if max_files else out
 
 
 def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
-                run_optional=False, extra_args=None, max_files=0):
+                run_optional=False, extra_args=None, max_files=0,
+                fraction=0.0):
     """
     Run process_L4.py for one sample and show live progress.
 
@@ -217,6 +244,11 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
                   full run of one is hours of CPU and tens of GB; this is how
                   you take a slice.  The first N of the sorted list, so adding
                   more later does not reprocess what is done.
+    fraction    : 0 < f <= 1 takes that share of EACH L3 pattern (see
+                  l3_files).  For a multi-pattern sample -- pass2's detector
+                  data is one pattern per run -- this is the slice to use;
+                  max_files would take whole runs from the front of the list
+                  and drop the later years entirely.
     extra_args  : extra flags passed to process_L4.py verbatim,
                   e.g. ["--micro-count-cleaned"].
     """
@@ -227,10 +259,16 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
     if n_frames:
         chunk_files = 0                      # cannot be combined with --n
 
-    if max_files:
-        files = l3_files(cfg, max_files)
-        print("  [i] %s: limited to the first %d of %d L3 files"
-              % (name, len(files), len(l3_files(cfg))))
+    if max_files or fraction:
+        files = l3_files(cfg, max_files, fraction)
+        how = []
+        if fraction:
+            how.append("%.0f%% of each of the %d pattern(s)"
+                       % (100 * fraction, len(l3_patterns(cfg))))
+        if max_files:
+            how.append("first %d overall" % max_files)
+        print("  [i] %s: %d of %d L3 files (%s)"
+              % (name, len(files), len(l3_files(cfg)), ", ".join(how)))
         inputs = ["--input"] + files
     else:
         inputs = ["--input"] + l3_patterns(cfg)
@@ -301,7 +339,7 @@ def run_process(name, n_frames=0, chunk_files=10, log_tail=15, bar=True,
 
 
 def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
-            extra_args=None, max_files=None):
+            extra_args=None, max_files=None, fraction=None):
     """
     Process every sample in turn -- one bar each, plus an overall bar.
 
@@ -321,6 +359,17 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
                         run_all(jobs=8, max_files={"noise": 1000})
 
                     Samples not named in the dict are processed in full.
+    fraction      : take a SHARE OF EACH L3 PATTERN instead of a count, as one
+                    number or a dict {sample: f}.  Use this, not max_files,
+                    for a sample whose `l3` is several patterns:
+
+                        run_all(jobs=16, fraction={"data": 0.5})
+
+                    pass2's detector data is one pattern per run, ordered by
+                    year, so max_files there would take all of 2012-2013 and
+                    none of 2017 -- the seasonal bias the note's run list was
+                    chosen to avoid.  `fraction` halves every run instead, so
+                    all six years stay represented in proportion.
     extra_args    : extra flags passed to process_L4.py verbatim,
                     e.g. ["--micro-count-cleaned"].
 
@@ -337,6 +386,15 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
     else:
         caps = {n: max_files for n in names} if max_files else {}
 
+    if isinstance(fraction, dict):
+        unknown = [k for k in fraction if k not in _cfg("SAMPLES")]
+        if unknown:
+            raise ValueError("fraction names sample(s) that do not exist: %s"
+                             % ", ".join(sorted(unknown)))
+        fracs = dict(fraction)
+    else:
+        fracs = {n: fraction for n in names} if fraction else {}
+
     overall = _Bar("TOTAL", total=len(names))
     results = {}
     for i, name in enumerate(names):
@@ -344,15 +402,16 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
         print(name)
         print("=" * 70)
         cap = caps.get(name, 0) or 0
+        frac = fracs.get(name, 0.0) or 0.0
         if jobs > 1:
             results[name] = run_process_parallel(
                 name, jobs=jobs, chunk_files=chunk_files,
                 run_optional=run_optional, extra_args=extra_args,
-                max_files=cap)
+                max_files=cap, fraction=frac)
         else:
             results[name] = run_process(
                 name, chunk_files=chunk_files, run_optional=run_optional,
-                extra_args=extra_args, max_files=cap)
+                extra_args=extra_args, max_files=cap, fraction=frac)
         overall.update(i + 1, "%d/%d samples" % (i + 1, len(names)))
     ok = sum(v is not None for v in results.values())
     overall.done("%d/%d done" % (ok, len(names)))
@@ -393,7 +452,8 @@ def _split(seq, n):
 
 
 def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
-                         run_optional=False, extra_args=None, max_files=0):
+                         run_optional=False, extra_args=None, max_files=0,
+                fraction=0.0):
     """
     Process one sample in N parallel workers.
 
@@ -401,13 +461,15 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
     chunk_files : part size each worker uses internally, so a crash can be
                   resumed from where it stopped
     max_files   : >0 uses only the first N L3 files (see run_process)
+    fraction    : 0 < f <= 1 takes that share of EACH pattern (see l3_files) --
+                  the right knob for a sample with one pattern per run
     """
     cfg = _cfg("SAMPLES")[name]
     out = cfg["hdf5"]
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
-    files = l3_files(cfg, max_files)
-    if max_files:
+    files = l3_files(cfg, max_files, fraction)
+    if max_files or fraction:
         print("  [i] %s: limited to the first %d of %d L3 files"
               % (name, len(files), len(l3_files(cfg))))
     if not files:
