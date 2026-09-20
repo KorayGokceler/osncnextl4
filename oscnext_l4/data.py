@@ -660,6 +660,64 @@ def set_noise_weight_unit(unit):
     return NOISE_NS_SCALE
 
 
+# ---------------------------------------------------------------------------
+# Detector data
+# ---------------------------------------------------------------------------
+#
+# The production weights each detector-data event by 1 / livetime_s, applied
+# after harvesting, so its histograms come out in Hz like the MC.  The
+# livetime is NOT a column in anything we book -- it is a property of the runs
+# that went in -- so it has to be declared, the same way the vuvuzela unit is.
+#
+# LEAVING IT UNSET DOES NOT BLOCK TRAINING, and that is not a convenience, it
+# is arithmetic: `build_dataset` normalises each class to unit sum
+# (`wb /= wb.sum()`) before it writes the .npz.  Detector-data events all carry
+# the SAME weight whatever the livetime is, so every constant gives bitwise
+# identical training weights.  The livetime changes exactly one thing: whether
+# the printed rate is in Hz or in arbitrary units.  So the muon BDT can be
+# trained before the livetime question is settled, and only the Table 13
+# comparison has to wait for it.
+DATA_LIVETIME_S = None
+
+
+def set_data_livetime(seconds):
+    """
+    Declare the total livetime [s] of the detector-data runs that were booked.
+
+    Must cover exactly the runs that ended up in the HDF5 -- a livetime for 18
+    runs against events from 17 is a silent normalisation error, which is why
+    this is an explicit call rather than a lookup.
+    """
+    global DATA_LIVETIME_S
+    if seconds is not None and not (seconds > 0):
+        raise ValueError("livetime must be positive, not %r" % (seconds,))
+    DATA_LIVETIME_S = seconds
+    print("  [i] detector data livetime: %s"
+          % ("%.6g s (%.2f days)" % (seconds, seconds / 86400.0)
+             if seconds else "UNSET -- rates will be arbitrary"))
+    return DATA_LIVETIME_S
+
+
+def data_weight(d):
+    """
+    Detector data: 1 / livetime per event.
+
+    Uniform by construction -- every event in a run of fixed livetime counts
+    the same -- so this is the one weighter with no per-event input at all.
+    """
+    n = len(d["Run"])
+    if DATA_LIVETIME_S:
+        print("  [i] data weight: 1/%.6g s over %d events"
+              % (DATA_LIVETIME_S, n))
+        return np.full(n, 1.0 / DATA_LIVETIME_S, dtype=np.float64)
+    print("  [!] data livetime UNSET -> every event weighted 1.0.")
+    print("      The TRAINING is unaffected (build_dataset normalises each")
+    print("      class to unit sum), but the printed rate is NOT in Hz and")
+    print("      must not be compared with Table 13.  Set it with")
+    print("      data.set_data_livetime(seconds).")
+    return np.ones(n, dtype=np.float64)
+
+
 def genie_weight(d):
     """
     w [Hz] = OneWeight * flux(E) / n_flux / n_files,  flux = NORM * E^GAMMA.
@@ -899,7 +957,8 @@ def muongun_weight(d):
 # called "corsika" at pass3 and "muongun" at pass2 is the same ROLE with two
 # formulas, and nothing here should have to know the names.
 WEIGHTERS = {"genie": genie_weight, "noise": noise_weight,
-             "corsika": corsika_weight, "muongun": muongun_weight}
+             "corsika": corsika_weight, "muongun": muongun_weight,
+             "data": data_weight}
 
 # Table 13 of the technical note, L3 rates [mHz] -- for the magnitude check.
 # Keyed by sample name: the table is a per-sample fact, and it has no MuonGun

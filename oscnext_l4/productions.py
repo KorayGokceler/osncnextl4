@@ -89,24 +89,6 @@ _GENIE_L3 = _P2 + "/genie/level3/%s/oscNext_genie_level3_v02.00_pass2.%s.*.i3.zs
 # is CORSIKA and pass2's is MuonGun, and they need different input columns and
 # a different formula.  Keying anything downstream on the SAMPLE NAME breaks the
 # moment a production names its sets differently; keying on the scheme does not.
-PASS2_SAMPLES_ALL = {
-    "nue":     dict(l3=[_GENIE_L3 % ("121122", "121122"),
-                        _GENIE_L3 % ("121291", "121291")],
-                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
-    "numu":    dict(l3=[_GENIE_L3 % ("141154", "141154"),
-                        _GENIE_L3 % ("141292", "141292")],
-                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
-    "noise":   dict(l3=_P2 + "/noise/level3/888003/"
-                            "oscNext_noise_level3_v02.00_pass2.888003.*.i3.zst",
-                    flags=["--noise"], kind="noise_bg", weight="noise"),
-    "nutau":   dict(l3=_GENIE_L3 % ("160511", "160511"),
-                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
-    "muongun": dict(l3=_P2 + "/muongun/level3/139008/"
-                            "oscNext_muongun_level3_v02.00_pass2.139008.*.i3.zst",
-                    flags=["--mc", "--muongun"], kind="muon_bg",
-                    weight="muongun"),
-}
-
 # ---------------------------------------------------------------------------
 # The muon classifier's background: DETECTOR DATA, and exactly which runs
 # ---------------------------------------------------------------------------
@@ -160,6 +142,54 @@ PASS2_MUON_DATA_RUNS = tuple(
     r for year in sorted(PASS2_MUON_DATA_RUNS_BY_YEAR)
     for r in PASS2_MUON_DATA_RUNS_BY_YEAR[year])
 
+# Detector data L3 -- the layout is VERIFIED on disk, not assumed:
+#
+#   /data/ana/LE/oscNext/pass2/data/level3/IC86.12/Run00120200/*.i3.zst
+#
+# one directory per season, one per run inside it, and the season number is
+# the year: IC86.NN holds the runs taken in 20NN.  A season carries about a
+# thousand runs (IC86.12 has 1010); the note picked three of them per year.
+#
+# Measured file counts for the note's 18 runs: 592 to 1138 each, 13,125 in
+# total -- so this is a production run of a different size from the MC sets,
+# and worth splitting across workers from the start.
+_P2_DATA_L3 = _P2 + "/data/level3/IC86.%02d/Run%08d/*.i3.zst"
+
+PASS2_MUON_DATA_L3 = [
+    _P2_DATA_L3 % (year - 2000, run)
+    for year in sorted(PASS2_MUON_DATA_RUNS_BY_YEAR)
+    for run in PASS2_MUON_DATA_RUNS_BY_YEAR[year]]
+
+
+PASS2_SAMPLES_ALL = {
+    "nue":     dict(l3=[_GENIE_L3 % ("121122", "121122"),
+                        _GENIE_L3 % ("121291", "121291")],
+                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
+    "numu":    dict(l3=[_GENIE_L3 % ("141154", "141154"),
+                        _GENIE_L3 % ("141292", "141292")],
+                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
+    "noise":   dict(l3=_P2 + "/noise/level3/888003/"
+                            "oscNext_noise_level3_v02.00_pass2.888003.*.i3.zst",
+                    flags=["--noise"], kind="noise_bg", weight="noise"),
+    "nutau":   dict(l3=_GENIE_L3 % ("160511", "160511"),
+                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
+    "muongun": dict(l3=_P2 + "/muongun/level3/139008/"
+                            "oscNext_muongun_level3_v02.00_pass2.139008.*.i3.zst",
+                    flags=["--mc", "--muongun"], kind="muon_bg",
+                    weight="muongun"),
+    # Real detector data -- the production's ACTUAL muon background, and the
+    # only sample here with NO MC flag: no truth, no MC weight dict, nothing
+    # to propagate.  process_L4.py needs no change for it; an empty `flags`
+    # is exactly what "this is data" means to build_key_list.
+    #
+    # It shares the muon_bg role with MuonGun ON PURPOSE, so that a muon-BDT
+    # run picks up whichever the production offers -- but the two must never
+    # be STACKED: one is measured and one is simulated, and a model trained on
+    # the union learns the difference between them as much as the physics.
+    # Section 6 of the notebook picks one and says which.
+    "data":    dict(l3=PASS2_MUON_DATA_L3, flags=[], kind="muon_bg",
+                    weight="data"),
+}
 
 # What a noise-BDT run needs, stated as ROLES rather than as names: every
 # signal set, plus the noise background.  The muon background is the only thing
