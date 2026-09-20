@@ -363,6 +363,79 @@ These will not match exactly in pass3; the **order of magnitude** should.
 
 ---
 
+## 2.7 The muon classifier's training sample — the note names the runs
+
+Section 3.6.3 (p.39) is the only place any source we have states outright what
+the muon BDT is trained on, and it settles three things at once.
+
+**The background is detector data, not simulation, and it is data that has
+already passed the noise cut.**  Quoted:
+
+> For this classifier, detector data (**following L4 noise cut**) is used as
+> the background sample used for training, as it is **99% muons at this stage**
+> and is considered more robust than using MuonGun MC at this processing level.
+> The signal training sample is **still GENIE MC**.  This also allows
+> unsimulated event populations (such as muon bundles) to be removed by the
+> classifier.  Note that a classifier was also trained using MuonGun MC for the
+> background sample, which **achieved similar performance but was not used** in
+> the sample.
+
+Three consequences, in order of how easy they are to get wrong:
+
+1. **The noise cut comes first.**  The background is data at
+   `L4_NoiseClassifier_ProbNu > 0.7`; that cut is what makes it 99% muon.
+   Train on data that has not been through it and the muon BDT spends part of
+   its capacity re-learning noise rejection, on a population the noise BDT has
+   already removed.  The note's own figures agree: Figures 19-24 all carry
+   `L4_NoiseClassifier_ProbNu > 0.7` in their cut box.  This is CLAUDE.md open
+   risk 5i, now confirmed from the note as well as from the fridge.
+2. **The signal side stays GENIE MC.**  It is a data-vs-MC classifier by
+   construction.
+3. **MuonGun was tried and performed "similarly".**  So a MuonGun-trained model
+   is not wrong, it is simply not the production's -- and it cannot learn the
+   populations that are not simulated, which is the stated reason for
+   preferring data.
+
+**The 18 runs, listed outright** (p.39, and now
+`productions.PASS2_MUON_DATA_RUNS`):
+
+| year | runs |
+|---|---|
+| 2012 | 120200, 120700, 121650 |
+| 2013 | 122650, 123250, 124650 |
+| 2014 | 125150, 125700, 126300 |
+| 2015 | 126850, 127400, 127850 |
+| 2016 | 128000, 128550, 129050 |
+| 2017 | 129650, 130150, 130700 |
+
+> ... selected to cover years roughly equally in order to avoid strong
+> dependence of the muon rejection on the specific season due to muon flux
+> seasonal variations.
+
+**The even coverage is the point, not a detail.**  The atmospheric muon flux
+varies seasonally with the temperature of the stratosphere, so a background
+drawn from one part of the year teaches the classifier that season as much as
+the muon.  Three runs per year over six years is the note's answer to that, and
+a substitute list should keep the property rather than the count.
+
+**This disagrees with the fridge, and the note wins for pass2.**
+`L4_model_data.py` harvests *"one run per month 2012-2018"* -- a later, larger
+list.  Where the two differ, the note is what the published Table 13 numbers
+were produced with; the fridge script is the state of the code at a later date.
+
+**What the muon classifier achieved** (p.46), i.e. what to measure ours
+against: it rejects **over 94%** of atmospheric muons relative to the rates
+before the L4 cuts, while keeping **over 80%** of all neutrinos -- best for
+ν_τ CC at **92.1%**, worst for ν_μ CC at **82.5%**, which the note attributes
+to the similarity between a muon from a ν_μ CC interaction and an atmospheric
+one.  The resulting sample is roughly **100:10:1** muon:neutrino:noise.  The
+per-channel numbers are the last column of Table 13 in 2.6 above.
+
+Figure 21 is the muon classifier's **feature importance**, so our own gain plot
+has a published counterpart to sit beside -- the same comparison the noise
+model's does not have.
+
+
 # Priority order
 
 1. **`accumulated_time` reference time** (2.1) -- the fraction and the series

@@ -107,6 +107,60 @@ PASS2_SAMPLES_ALL = {
                     weight="muongun"),
 }
 
+# ---------------------------------------------------------------------------
+# The muon classifier's background: DETECTOR DATA, and exactly which runs
+# ---------------------------------------------------------------------------
+#
+# Technical note v00.07 sec. 3.6.3 (p.39) names them, so this is not a choice
+# of ours -- it is the production's list, quoted:
+#
+#   "For this classifier, detector data (following L4 noise cut) is used as the
+#    background sample used for training, as it is 99% muons at this stage and
+#    is considered more robust than using MuonGun MC at this processing level.
+#    The signal training sample is still GENIE MC.  This also allows
+#    unsimulated event populations (such as muon bundles) to be removed by the
+#    classifier.  Note that a classifier was also trained using MuonGun MC for
+#    the background sample, which achieved similar performance but was not used
+#    in the sample."
+#
+#   "The background sample is comprised of the following data runs, which were
+#    selected to cover years roughly equally in order to avoid strong
+#    dependence of the muon rejection on the specific season due to muon flux
+#    seasonal variations."
+#
+# Three per year, 2012-2017.  The even coverage is the POINT of the list: the
+# atmospheric muon flux varies seasonally, so a background drawn from one part
+# of the year teaches the classifier that season rather than the muon.
+#
+# TWO CONDITIONS COME WITH IT, and neither is optional:
+#
+#   1. "following L4 noise cut" -- the background is data that has ALREADY
+#      passed the noise classifier at 0.7.  That is what makes it 99% muon.
+#      Training on data that has not been through the noise cut trains the muon
+#      BDT partly on noise, which the noise BDT has already removed.  The
+#      note's own figures say the same in their cut box: Figures 19-21 all
+#      carry `L4_NoiseClassifier_ProbNu > 0.7`.
+#   2. The signal side stays GENIE MC.  This is a data-vs-MC classifier by
+#      construction, not a data/data or MC/MC one.
+#
+# The fridge's `L4_model_data.py` says "one run per month 2012-2018", which is
+# a LATER and larger list than the note's 18.  Where they differ the note is
+# what the published pass2 numbers (Table 13) were produced with; the fridge
+# script is the state of the code at a later date.
+PASS2_MUON_DATA_RUNS_BY_YEAR = {
+    2012: (120200, 120700, 121650),
+    2013: (122650, 123250, 124650),
+    2014: (125150, 125700, 126300),
+    2015: (126850, 127400, 127850),
+    2016: (128000, 128550, 129050),
+    2017: (129650, 130150, 130700),
+}
+
+PASS2_MUON_DATA_RUNS = tuple(
+    r for year in sorted(PASS2_MUON_DATA_RUNS_BY_YEAR)
+    for r in PASS2_MUON_DATA_RUNS_BY_YEAR[year])
+
+
 # What a noise-BDT run needs, stated as ROLES rather than as names: every
 # signal set, plus the noise background.  The muon background is the only thing
 # it can skip.
