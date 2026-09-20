@@ -32,6 +32,7 @@ import re
 import sys
 import glob
 import time
+import json
 import shlex
 import subprocess
 
@@ -524,6 +525,19 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
             stale.append(j)
     if stale:
         base, ext = os.path.splitext(out)
+        # How much of this sample is already on disk.  Without it the message
+        # reads as "something is broken", and the obvious response is the rm
+        # it suggests -- which throws away a finished sample and hours of CPU.
+        # Usually the sample is DONE and simply should not have been asked for
+        # again, so say that first and name the way to leave it out.
+        done_parts = sorted(glob.glob("%s_job*%s" % (base, ext)))
+        done_files = 0
+        for part in done_parts:
+            try:
+                with open(part + ".meta.json") as fh:
+                    done_files += int(json.load(fh).get("n_l3_files") or 0)
+            except Exception:
+                pass
         raise RuntimeError(
             "%s: this sample was already processed with a DIFFERENT split "
             "(workers %s would now get different files), and output from that "
@@ -531,10 +545,17 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
             "Resuming would keep the old parts under the new worker numbering: "
             "some L3 files would never be processed, others would be counted "
             "under the wrong chunk, and no error would be raised.\n"
-            "Either finish the run with the original `jobs`, or remove this "
-            "sample's output and start over:\n"
+            "\n"
+            "Already on disk: %d part(s) covering %d of this sample's %d L3 "
+            "files.\n"
+            "\n"
+            "IF THAT SAMPLE IS FINISHED, do not reprocess it -- leave it out:\n"
+            "    run_all(samples=[...without %r...], jobs=%d, ...)\n"
+            "Otherwise either finish the run with the ORIGINAL `jobs`, or "
+            "discard its output and start over:\n"
             "    rm -rf %s_job*%s %s_job*%s.meta.json %s\n"
-            % (name, stale, base, ext, base, ext, listdir))
+            % (name, stale, len(done_parts), done_files, len(files),
+               name, jobs, base, ext, base, ext, listdir))
 
     procs, state = [], {}
     for j, grp in enumerate(groups):
