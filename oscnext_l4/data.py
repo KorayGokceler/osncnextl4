@@ -146,6 +146,13 @@ def scheme_of(cfg):
     return cfg.get("weight") or _KIND_TO_SCHEME.get(cfg.get("kind"))
 
 
+# Schemes with NO weight columns by design, so that an empty aux list can be
+# told apart from a caller that built its list wrongly.  Detector data is the
+# case: its weight is 1/livetime, a property of the runs, and there is nothing
+# per-event to read.
+SCHEMES_WITHOUT_AUX = ("data",)
+
+
 def aux_for(scheme):
     """The AUX columns EXPECTED under this weight scheme."""
     return [k for k, schemes in AUX_SCHEMES.items() if scheme in schemes]
@@ -216,13 +223,18 @@ def dump_tables(h5path, only=None, max_cols=40):
             print("      ... (+%d columns)" % (len(cols) - max_cols))
     return found
 
-def check_registry(found, names, verbose=True):
+def check_registry(found, names, verbose=True, scheme=None):
     """
     Do the registry's columns actually exist in the HDF5 file?
 
     ALTS is tried too, so whichever variant loading will use is the one
     reported here.  (It used to consult REGISTRY only, and said "column
     missing" even when ALTS resolved a variant fine.)
+
+    `scheme`, when the names came from aux_for(), lets an EMPTY list be told
+    apart from a caller that built one wrongly: detector data has no weight
+    columns at all, and reporting that as a mistake would be a false alarm on
+    the one sample where nothing is wrong.
 
     found: the dump_tables output, {table: (nrows, [columns])}
     Returns the list of the ones not found.
@@ -241,9 +253,15 @@ def check_registry(found, names, verbose=True):
 
     if verbose:
         if not names:
-            print("found: 0/0   [!] nothing was checked -- the caller passed an")
-            print("             empty list.  That reads like a pass and is not")
-            print("             one; check how the column list was built.")
+            if scheme in SCHEMES_WITHOUT_AUX:
+                print("found: 0/0   (scheme %r has no weight columns by "
+                      "design)" % scheme)
+            else:
+                print("found: 0/0   [!] nothing was checked -- the caller "
+                      "passed an")
+                print("             empty list.  That reads like a pass and is "
+                      "not")
+                print("             one; check how the column list was built.")
         else:
             print("found: %d/%d" % (len(ok), len(names)))
         for n, hit, first in alt_used:

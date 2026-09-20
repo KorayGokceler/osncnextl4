@@ -370,6 +370,9 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
                     none of 2017 -- the seasonal bias the note's run list was
                     chosen to avoid.  `fraction` halves every run instead, so
                     all six years stay represented in proportion.
+
+    A sample with a per-run GCD (detector data) is routed to
+    run_process_per_run automatically -- see the note at the dispatch.
     extra_args    : extra flags passed to process_L4.py verbatim,
                     e.g. ["--micro-count-cleaned"].
 
@@ -403,6 +406,19 @@ def run_all(samples=None, chunk_files=10, jobs=1, run_optional=False,
         print("=" * 70)
         cap = caps.get(name, 0) or 0
         frac = fracs.get(name, 0.0) or 0.0
+        # A sample that declares a per-pattern `gcd` LIST has one GCD per run
+        # and cannot be processed in a single invocation -- detector data is
+        # the case.  Dispatching on the SPEC rather than on the sample name
+        # keeps the notebook production-agnostic: the same run_all() call
+        # serves pass2 and pass3 and does not have to know that one of them
+        # has a detector-data set and the other does not.
+        if isinstance(_cfg("SAMPLES")[name].get("gcd"), (list, tuple)):
+            results[name] = run_process_per_run(
+                name, jobs=jobs, chunk_files=chunk_files,
+                run_optional=run_optional, extra_args=extra_args,
+                fraction=frac)
+            overall.update(i + 1, "%d/%d samples" % (i + 1, len(names)))
+            continue
         if jobs > 1:
             results[name] = run_process_parallel(
                 name, jobs=jobs, chunk_files=chunk_files,
