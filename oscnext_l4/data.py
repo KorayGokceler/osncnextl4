@@ -820,6 +820,131 @@ def livetime_from_headers(paths, verbose=True):
     return total, spans
 
 
+# Where the Good Run Lists live.  pass2 FIRST: our detector data is pass2, and
+# `level2` is the original processing of the same runs -- its livetimes are for
+# a different reconstruction of the same detector time and are not the ones
+# these files were made under.
+GRL_PATTERNS = (
+    "/data/exp/IceCube/%(y)d/filtered/level2pass2/IC86_%(y)d_GoodRunInfo.txt",
+    "/data/exp/IceCube/%(y)d/filtered/level2/IC86_%(y)d_GoodRunInfo.txt",
+)
+
+
+def _parse_grl(path):
+    """One Good Run List -> {run: (livetime_s, good_i3)}.
+
+    Columns are resolved BY HEADER NAME, not by position: the lists are
+    maintained per season and the layout is not guaranteed to be identical
+    across six years, while the names are.  A file whose header cannot be
+    found contributes nothing and says so, rather than being read at offsets
+    that happen to parse.
+    """
+    with open(path) as fh:
+        lines = fh.read().splitlines()
+
+    idx = None
+    for line in lines:
+        tok = line.split()
+        if "RunNum" in tok and any(t.startswith("LiveTime") for t in tok):
+            idx = {t: i for i, t in enumerate(tok)}
+            break
+    if idx is None:
+        return {}, "no header row with RunNum and LiveTime"
+
+    i_run = idx["RunNum"]
+    i_lt = next(i for t, i in idx.items() if t.startswith("LiveTime"))
+    i_good = idx.get("Good_i3")
+
+    out = {}
+    for line in lines:
+        tok = line.split()
+        if len(tok) <= max(i_run, i_lt):
+            continue
+        try:
+            run = int(tok[i_run])
+            lt = float(tok[i_lt])
+        except ValueError:
+            continue                      # header or comment
+        good = None
+        if i_good is not None and len(tok) > i_good:
+            try:
+                good = int(tok[i_good])
+            except ValueError:
+                good = None
+        out[run] = (lt, good)
+    return out, None
+
+
+def livetime_from_grl(runs, years=None, patterns=GRL_PATTERNS, verbose=True):
+    """
+    Exact detector livetime [s] for these runs -> (total, {run: seconds}).
+
+    THIS IS THE SOURCE, where livetime_from_headers is an estimate: the Good
+    Run List carries the livetime with dead time already subtracted, which
+    nothing in our files can reconstruct.
+
+    A run the lists do not contain is REPORTED AND EXCLUDED, never assumed.
+    Silently dropping one would divide by a livetime that does not cover the
+    events being divided, and the resulting rate would simply be too high with
+    nothing to show for it.
+    """
+    runs = sorted(set(int(r) for r in runs))
+    years = years or range(2011, 2024)
+
+    table, read, failed = {}, [], []
+    for y in years:
+        for pat in patterns:
+            path = pat % {"y": y}
+            if not os.path.exists(path):
+                continue
+            got, why = _parse_grl(path)
+            if why:
+                failed.append((path, why))
+                continue
+            # first pattern wins: pass2 before the original level2
+            for r, v in got.items():
+                table.setdefault(r, v)
+            read.append((path, len(got)))
+            break
+
+    found, missing, not_good = {}, [], []
+    for r in runs:
+        if r not in table:
+            missing.append(r)
+            continue
+        lt, good = table[r]
+        found[r] = lt
+        if good is not None and good != 1:
+            not_good.append((r, good))
+
+    total = float(sum(found.values()))
+    if verbose:
+        print("  read %d Good Run List(s)" % len(read))
+        for path, n in read:
+            print("      %-72s %6d runs" % (path, n))
+        for path, why in failed:
+            print("  [!] %s -- %s" % (path, why))
+        print("  %-10s %12s" % ("run", "livetime [s]"))
+        for r in runs:
+            if r in found:
+                print("  %-10d %12.1f" % (r, found[r]))
+            else:
+                print("  %-10d %12s" % (r, "NOT FOUND"))
+        print("  %-10s %12.1f  (%.2f days, %d of %d runs)"
+              % ("TOTAL", total, total / 86400.0, len(found), len(runs)))
+        if not_good:
+            print("  [!] %d run(s) not flagged Good_i3 == 1: %s"
+                  % (len(not_good), ", ".join("%d (%s)" % x for x in not_good)))
+        if missing:
+            print("  [!] %d run(s) ABSENT from the lists and EXCLUDED from "
+                  "the total:" % len(missing))
+            print("      %s" % ", ".join(str(r) for r in missing))
+            print("      Their events are still in the sample, so the rate "
+                  "computed from this livetime is TOO HIGH.  Find the right "
+                  "list before quoting it.")
+    return total, found
+
+
 def data_weight(d):
     """
     Detector data: 1 / livetime per event.
