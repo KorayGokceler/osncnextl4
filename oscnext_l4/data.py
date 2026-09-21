@@ -716,6 +716,110 @@ def set_data_livetime(seconds):
     return DATA_LIVETIME_S
 
 
+# Column candidates for the event time.  hdfwriter expands I3EventHeader's
+# I3Time objects into an MJD day plus seconds and nanoseconds within that day;
+# our own booker (_TIME_FIELDS) uses the same spelling.
+_MJD_COLS = ("time_start_mjd_day", "time_start_mjd_sec", "time_start_mjd_ns")
+
+
+def livetime_from_headers(paths, verbose=True):
+    """
+    Detector livetime [s] from the booked event times -> (total, {run: span}).
+
+    WHAT THIS IS, AND WHAT IT IS NOT.  It measures the span from the FIRST to
+    the LAST processed event of each run, summed over runs.  That is not the
+    run's livetime by definition -- it misses the head before the first event
+    and the tail after the last, and it includes whatever dead time sits in
+    between.  At the Level 3 data rate of roughly 0.6 Hz the head and tail are
+    seconds on a run of hours, so the estimate is good to well under a percent
+    from that side; the dead time is the real uncertainty and this does not
+    correct for it.  THE GOOD RUN LIST IS THE EXACT SOURCE.  Use this when it
+    is not to hand, and say which one a quoted rate came from.
+
+    The per-run event RATE is printed because it is the diagnostic that costs
+    nothing: every run is the same detector seeing the same sky, so the rates
+    should agree to within the seasonal variation.  One run far off means
+    subruns are missing from it -- the span would still be right while the
+    count is short, which biases the rate low and nothing else would show it.
+
+    Runs are summed rather than merged: the runs are far apart in time, so a
+    global max-minus-min would return years.
+    """
+    import tables
+
+    per_run = {}
+    counts = {}
+    skipped = []
+    for path in paths:
+        try:
+            h5 = tables.open_file(path, "r")
+        except Exception as exc:
+            skipped.append((path, str(exc)))
+            continue
+        try:
+            try:
+                tbl = h5.get_node("/I3EventHeader")
+            except Exception:
+                skipped.append((path, "no /I3EventHeader"))
+                continue
+            have = set(tbl.colnames)
+            if not set(_MJD_COLS) <= have:
+                skipped.append((path, "no MJD columns (has: %s)"
+                                % ", ".join(sorted(have))))
+                continue
+            run = np.asarray(tbl.col("Run"), dtype=np.int64)
+            t = (np.asarray(tbl.col(_MJD_COLS[0]), dtype=np.float64) * 86400.0
+                 + np.asarray(tbl.col(_MJD_COLS[1]), dtype=np.float64)
+                 + np.asarray(tbl.col(_MJD_COLS[2]), dtype=np.float64) * 1e-9)
+        finally:
+            h5.close()
+        for r in np.unique(run):
+            m = run == r
+            lo, hi = float(t[m].min()), float(t[m].max())
+            if r in per_run:
+                a, z = per_run[r]
+                per_run[r] = (min(a, lo), max(z, hi))
+            else:
+                per_run[r] = (lo, hi)
+            counts[r] = counts.get(r, 0) + int(m.sum())
+
+    spans = {r: z - a for r, (a, z) in per_run.items()}
+    total = float(sum(spans.values()))
+
+    if verbose:
+        if skipped:
+            print("  [!] %d file(s) contributed nothing:" % len(skipped))
+            for path, why in skipped[:5]:
+                print("      %s -- %s" % (os.path.basename(path), why))
+        print("  %-10s %12s %10s %10s" % ("run", "events", "span [s]", "rate [Hz]"))
+        for r in sorted(spans):
+            sp = spans[r]
+            print("  %-10d %12d %10.0f %10.3f"
+                  % (r, counts[r], sp, counts[r] / sp if sp > 0 else float("nan")))
+        print("  %-10s %12d %10.0f  (%.2f days)"
+              % ("TOTAL", sum(counts.values()), total, total / 86400.0))
+
+        # Compared with the MEDIAN, not with the extremes: one bad run must not
+        # be able to hide another by widening the range it is judged against.
+        # The seasonal variation of the atmospheric muon flux is a ten percent
+        # effect, so a run 30% off is not a season, it is missing subruns --
+        # whose span stays right while the count falls short, which nothing
+        # else here would reveal.
+        rates = {r: counts[r] / spans[r] for r in spans if spans[r] > 0}
+        if len(rates) > 2:
+            med = float(np.median(list(rates.values())))
+            odd = [(r, v) for r, v in sorted(rates.items())
+                   if not (0.7 * med <= v <= 1.3 * med)]
+            print("  median rate: %.3f Hz" % med)
+            if odd:
+                print("  [!] %d run(s) more than 30%% off the median -- check "
+                      "them for missing subruns:" % len(odd))
+                for r, v in odd:
+                    print("      %-10d %.3f Hz  (%.0f%% of median)"
+                          % (r, v, 100 * v / med))
+    return total, spans
+
+
 def data_weight(d):
     """
     Detector data: 1 / livetime per event.
