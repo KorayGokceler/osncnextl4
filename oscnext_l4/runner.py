@@ -677,6 +677,19 @@ def run_gcd_pairs(cfg, fraction=0.0):
             print("      %s -- %s" % (_run_label(pat), ", ".join(why)))
             print("        l3 : %s" % pat)
             print("        gcd: %s" % gpat)
+            # When the GCD glob matched nothing, the reason is almost always
+            # the pattern rather than a missing file -- the 2015 runs carry
+            # `_GCD.i3.gz` where the rest carry `.i3.zst`.  Printing what is
+            # actually there turns that from a manual investigation into a
+            # glance.
+            if ng == 0:
+                near = sorted(glob.glob(os.path.join(
+                    os.path.dirname(gpat), "*GCD*")))
+                if near:
+                    print("        but the directory holds: %s"
+                          % ", ".join(os.path.basename(f) for f in near[:3]))
+                else:
+                    print("        and nothing matching *GCD* is there at all")
     return out
 
 

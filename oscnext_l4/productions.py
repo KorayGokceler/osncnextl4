@@ -167,7 +167,15 @@ _P2_DATA_L3 = (_P2 + "/data/level3/IC86.%02d/Run%08d/"
 # the averaged MC GCD, because the dead DOMs and the calibration are what
 # changes from run to run.  Its name carries fields that vary per run
 # (`_0527_1_20_` above), so it is GLOBBED rather than constructed.
-_P2_DATA_GCD = _P2 + "/data/level3/IC86.%02d/Run%08d/*_GCD.i3.zst"
+#
+# THE EXTENSION IS NOT CONSTANT.  Most runs carry `_GCD.i3.zst`, but the
+# 2015 and early-2016 runs carry `_GCD.i3.gz` -- the L3 files beside them are
+# `.i3.zst` either way, so nothing else gives it away.  A `.i3.zst` pattern
+# silently matched nothing there and dropped ALL of 2015 and two thirds of
+# 2016, which is exactly the seasonal gap the note's run list exists to
+# prevent.  Matching `.i3*` covers both; `_GCD.i3` is specific enough that
+# nothing else in the directory can match.
+_P2_DATA_GCD = _P2 + "/data/level3/IC86.%02d/Run%08d/*_GCD.i3*"
 
 PASS2_MUON_DATA_L3 = [
     _P2_DATA_L3 % (year - 2000, run, run)
