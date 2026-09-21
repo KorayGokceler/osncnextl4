@@ -735,6 +735,9 @@ def run_process_per_run(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
     os.makedirs(os.path.dirname(out), exist_ok=True)
     base, ext = os.path.splitext(out)
 
+    listdir = os.path.join(os.path.dirname(out), "_filelists")
+    os.makedirs(listdir, exist_ok=True)
+
     pairs = run_gcd_pairs(cfg, fraction)
     if runs:
         want = set(runs)
@@ -743,15 +746,55 @@ def run_process_per_run(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         print("[!] %s: nothing to process" % name)
         return None
 
+    # CHANGING `fraction` BETWEEN RUNS IS SILENT CORRUPTION, so refuse it.
+    #
+    # The run is a stable unit with respect to `jobs` -- that is why this path
+    # needs no worker-split guard -- but it is NOT stable with respect to
+    # `fraction`.  process_L4.py skips a part that already exists, and
+    # `..._Run00120200_part000.hdf5` holds files [0, 2, 4, ...] after a
+    # fraction=0.5 run and files [0..9] after a full one.  Same path, different
+    # contents: the stale part would be kept, the files it should have held
+    # would never be processed, and nothing would warn.
+    #
+    # The file list each run was produced from is already on disk, so the
+    # check is a comparison rather than a heuristic.
+    stale = []
+    for label, _gcd, files in pairs:
+        lst = os.path.join(listdir, "%s_%s.txt" % (name, label))
+        if not os.path.exists(lst):
+            continue
+        try:
+            with open(lst) as fh:
+                previous = [l.strip() for l in fh if l.strip()]
+        except OSError:
+            continue
+        if previous == list(files):
+            continue
+        if glob.glob("%s_%s*%s" % (base, label, ext)):
+            stale.append((label, len(previous), len(files)))
+    if stale:
+        lines = "\n".join("      %-12s produced from %d files, would now get %d"
+                           % (l, a, c) for l, a, c in stale)
+        raise RuntimeError(
+            "%s: %d run(s) were produced from a DIFFERENT file list, and that "
+            "output is still there.\n%s\n"
+            "\n"
+            "process_L4.py skips a part that already exists, so resuming would "
+            "keep parts whose contents no longer match their name: some L3 "
+            "files would never be processed and no error would be raised.  "
+            "This is what changing `fraction` between runs does.\n"
+            "\n"
+            "Either keep the fraction the run was produced with, or discard "
+            "that output and redo it:\n"
+            "    rm -rf %s_Run*%s %s_Run*%s.meta.json %s\n"
+            % (name, len(stale), lines, base, ext, base, ext, listdir))
+
     n_files = sum(len(f) for _, _, f in pairs)
     print("%s: %d runs, %d L3 files, %d at a time" % (name, len(pairs),
                                                       n_files, jobs))
     for label, gcd, files in pairs:
         print("    %-12s %4d files   gcd %s" % (label, len(files),
                                                 os.path.basename(gcd)))
-
-    listdir = os.path.join(os.path.dirname(out), "_filelists")
-    os.makedirs(listdir, exist_ok=True)
 
     b = _Bar(name, total=n_files) if bar else None
     lock = _th.Lock()
