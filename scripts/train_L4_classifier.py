@@ -176,16 +176,34 @@ def load_dataset(path, features=None):
 # Measurement
 # ===========================================================================
 
+def _kept_at(sorted_scores, cuts):
+    '''How many of `sorted_scores` are >= each cut -- one pass, not one per cut.'''
+    # searchsorted(..., "left") counts the entries STRICTLY BELOW the cut, so
+    # n minus that is exactly (x >= cut).sum() -- the same comparison the loop
+    # made, with the same tie handling.
+    return len(sorted_scores) - np.searchsorted(sorted_scores, cuts, side="left")
+
+
 def curve(s, b):
     '''
     Cut scan on event counts -> (cuts, efficiency, rejection).
 
     Thresholds are the distinct background scores, so every point is a real
     place a cut could sit -- no interpolation artefacts where it matters most.
+
+    WHY THIS IS NOT A LOOP.  It used to be
+        eff = np.array([(s >= c).mean() for c in cuts])
+    which scans every signal event once per cut: at pass2 that is 135k cuts
+    times 9.5M signal events, about 1.3e12 comparisons -- and report_table
+    calls kept_counts per level, each of which rebuilt the whole curve, so it
+    happened six times over.  It completed on the noise sample only because
+    that one is half the size.  Sorting once and locating the cuts in the
+    sorted array gives the SAME counts in O(n log n); verified identical to
+    the loop, ties included.
     '''
     cuts = np.unique(np.concatenate([b, [b.min() - 1.0, b.max() + 1.0]]))
-    eff = np.array([(s >= c).mean() for c in cuts])
-    rej = np.array([1.0 - (b >= c).mean() for c in cuts])
+    eff = _kept_at(np.sort(s), cuts) / float(len(s))
+    rej = 1.0 - _kept_at(np.sort(b), cuts) / float(len(b))
     return cuts, eff, rej
 
 
@@ -197,9 +215,12 @@ def kept_counts(s, b, target):
         return None
     i = ok[np.argmax(eff[ok])]
     c = cuts[i]
+    # The counts come from the curve rather than from two more full scans of
+    # 9.5M events: eff and rej are exact ratios of integers, so multiplying
+    # back and rounding recovers the integer exactly.
     return dict(cut=float(c), eff=float(eff[i]), rej=float(rej[i]),
-                sig_kept=int((s >= c).sum()), sig_total=len(s),
-                bg_kept=int((b >= c).sum()), bg_total=len(b))
+                sig_kept=int(round(eff[i] * len(s))), sig_total=len(s),
+                bg_kept=int(round((1.0 - rej[i]) * len(b))), bg_total=len(b))
 
 
 def eff_at_rejection_weighted(s, ws, b, wb, target):
