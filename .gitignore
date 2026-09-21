@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------
-# CIKTILAR -- asla commit edilmez
+# OUTPUTS -- never committed
 # ---------------------------------------------------------------------------
-# Tum islenmis veri, modeller ve grafikler buraya gider
+# All processed data, models and plots go here
 L4_output/
 
-# Yanlislikla baska yere yazilirsa diye tur bazinda da engelle
+# Blocked by type as well, in case something is written elsewhere by mistake
 *.hdf5
 *.h5
 *.i3
@@ -15,22 +15,26 @@ L4_output/
 *.joblib
 *.pkl
 
-# LightGBM model dosyalari (L4_output disinda uretilirse)
+# LightGBM model files (if produced outside L4_output)
 L4_*_model.txt
 L4_*_model.json
 L4_*_report.json
 
-# Grafikler
+# Plots
 *.png
 *.pdf
-# dokumantasyon gorselleri istisna
+# exception: documentation images
 !docs/*.png
-# teknik notlar / referans belgeler istisna
+# exception: technical notes and reference documents
 !reference/*.pdf
-# derlenmis sunum istisna
+# exception: the compiled deck
 !presentation/oscnext_l4_noise_bdt.pdf
+# exception: the weekly update scripts.  The markdown beside each PDF is the
+# source (presentation/make_update_pdf.py builds it), so tracking the PDF
+# cannot hide a stale one -- it shows up as a diff.
+!presentation/updates/*.pdf
 
-# Job listeleri / loglar
+# Job lists and logs
 L4_jobs.txt
 *.log
 *.out
