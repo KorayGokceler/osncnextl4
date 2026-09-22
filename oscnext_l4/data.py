@@ -18,10 +18,13 @@ USAGE (notebook):
     data = {n: d for n, d in data.items() if d is not None}
     add_weights(data, SAMPLES)
 
-CRITICAL SYNCHRONISATION POINT: the REGISTRY here and FEATURE_MAP in
-classifier.py must agree line for line.  If one reads a different column than
-the other, the model produces wrong predictions SILENTLY -- it does not raise.
-check_feature_map() checks this in code.
+The variable table (REGISTRY, ALTS, AUX, AUX_SCHEMES and the two BDT input
+lists) is NOT written here: it is config/variables.json, one row per variable
+carrying both its HDF5 column and its frame field, loaded by varmap.  That is
+the fix for the critical synchronisation point -- training reads a column out
+of an HDF5 file and the tray reads a field out of a frame, and if the two ever
+name different quantities the model produces wrong predictions SILENTLY.  One
+row cannot be edited apart; check_feature_map() still checks what remains.
 """
 
 import os
@@ -35,110 +38,29 @@ import tables
 IDX = ("Run", "Event", "SubEvent")
 
 
-# BDT variable name -> (HDF5 table, column)
-L3V     = "IC2018_LE_L3_Vars"
-HITSTAT = "SRTTWSplitInIcePulsesDCHitStatistics"
-HITMULT = "SRTTWSplitInIcePulsesDCHitMultiplicity"
-
-REGISTRY = {
-    # --- noise BDT (Table 11) ---
-    "NchCleaned":          (L3V, "NchCleaned"),
-    "micro_count":         ("L4_micro_count", "STW_m3500p4000_DTW200"),
-    # The pass3 hdfwriter column is "lf_vel" (classifier.FEATURE_MAP agrees);
-    # "LFVel" was the old assumption.  Table 11 of the note names the variable
-    # "L4_iLineFit.speed" (an I3Particle field).  All three are in ALTS.
-    "iLineFit_speed":      ("L4_iLineFitParams", "lf_vel"),
-    # VERIFIED against real pass3 HDF5 output: the column is
-    # "fillratio_from_mean" -- no underscore.  Table 11 writes
-    # "fill_ratio_from_mean"; the hdfwriter converter names it differently.
-    # Both are in ALTS.
-    "fill_ratio":          ("L4_fill_ratio", "fillratio_from_mean"),
-    "FullTimeLengthRatio": ("L4_FullTimeLengthRatio", "value"),
-
-    # --- muon BDT (Table 12) ---
-    "ICVetoHits":       (L3V, "ICVetoHits"),
-    "RTVeto250Hits":    (L3V, "RTVeto250Hits"),
-    "NAbove200Hits":    (L3V, "NAbove200Hits"),
-    "VICH_nch":         ("L4_VICH_nch", "value"),
-    "accumulated_time": ("L4_accumulated_time", "value"),
-    "first_hlc_rho":    ("L4_first_hlc_rho", "value"),
-    "cog_z":            (HITSTAT, "cog_z"),
-    "z_sigma":          (HITSTAT, "z_sigma"),
-    "z_travel":         (HITSTAT, "z_travel"),
-
-    # --- candidates / for scans ---
-    "n_hit_doms":       (HITMULT, "n_hit_doms"),
-    "C2HR6":            (L3V, "C2HR6"),
-    "CausalVetoHits":   (L3V, "CausalVetoHits"),
-    "VertexGuessZ":     (L3V, "VertexGuessZ"),
-    "DCFiducialHits":   (L3V, "DCFiducialHits"),
-}
-
-NOISE_FEATURES = ["NchCleaned", "micro_count", "iLineFit_speed",
-                  "fill_ratio", "FullTimeLengthRatio"]
-
-# Table 12 lists 10 variables.  NchCleaned is an input to BOTH the noise and
-# the muon BDT -- it was missing from the muon list in the first version.
-MUON_FEATURES = ["ICVetoHits", "RTVeto250Hits", "NchCleaned", "NAbove200Hits",
-                 "VICH_nch",
-                 "accumulated_time", "first_hlc_rho", "cog_z", "z_sigma",
-                 "z_travel"]
-
-# Extra columns needed for the weight calculation (NOT BDT inputs)
+# The variable table lives in config/variables.json, one row per variable
+# carrying BOTH its HDF5 side and its frame side.  varmap turns it into the
+# views below; the rationale for every spelling is in config/README.md.
 #
-# CAREFUL: not all of these exist in every sample.  noise_weight is only in
-# the vuvuzela noise MC, OneWeight/PrimaryNeutrino* only in GENIE.  Checking
-# all of them against a single sample produces FALSE ALARMS -- select the
-# relevant ones with aux_for(kind).
-AUX = {
-    "true_energy":   ("I3MCWeightDict", "PrimaryNeutrinoEnergy"),
-    "OneWeight":     ("I3MCWeightDict", "OneWeight"),
-    "NEvents":       ("I3MCWeightDict", "NEvents"),
-    "pdg":           ("I3MCWeightDict", "PrimaryNeutrinoType"),
-    "n_flux_events": ("L4_n_flux_events", "value"),
-    # The production divides by NEvents * gen_ratio.  pass2's I3MCWeightDict
-    # STORES gen_ratio, so it can be read instead of reconstructed from the
-    # neutrino's sign -- see genie_weight.
-    "gen_ratio":     ("I3MCWeightDict", "gen_ratio"),
-    # Verified in the earlier LightGBM notebook: the column is "weight".
-    # "value" was a wrong assumption and left the noise weight entirely NaN.
-    # Both are in ALTS.
-    "noise_weight":  ("noise_weight", "weight"),
-    # CORSIKA -- for the manual formula when simweights is absent
-    "cwm_Weight":       ("CorsikaWeightMap", "Weight"),
-    "cwm_NEvents":      ("CorsikaWeightMap", "NEvents"),
-    "cwm_OverSampling": ("CorsikaWeightMap", "OverSampling"),
-    # MuonGun (the pass2 muon background).  process_L4.py books all three
-    # spellings because which one a production wrote is not fixed; the first
-    # that is actually present is used.
-    "MuonWeight":           ("MuonWeight", "value"),
-    "MuonWeight_GaisserH4a": ("MuonWeight_GaisserH4a", "value"),
-    "MuonGunWeight":        ("MuonGunWeight", "value"),
-}
-
-# AUX column -> which WEIGHT SCHEMES need it (SAMPLES[...]["weight"]).
+#   REGISTRY      variable      -> (HDF5 table, column)   -- BDT inputs
+#   ALTS          variable      -> every pair naming the same quantity
+#   AUX           weight column -> (HDF5 table, column)   -- NOT BDT inputs
+#   AUX_SCHEMES   weight column -> the schemes that need it
 #
-# Keyed by scheme rather than by `kind`, because one kind can have several
-# schemes: pass3's muon_bg is CORSIKA and pass2's is MuonGun, and asking a
-# MuonGun file for CorsikaWeightMap prints three false alarms per file.
-AUX_SCHEMES = {
-    "true_energy":   ("genie",),
-    "OneWeight":     ("genie",),
-    "NEvents":       ("genie",),
-    "pdg":           ("genie",),
-    "n_flux_events": ("genie",),
-    "gen_ratio":     ("genie",),
-    "noise_weight":  ("noise",),
-    "cwm_Weight":       ("corsika",),
-    "cwm_NEvents":      ("corsika",),
-    "cwm_OverSampling": ("corsika",),
-    "MuonWeight":           ("muongun",),
-    "MuonWeight_GaisserH4a": ("muongun",),
-    "MuonGunWeight":        ("muongun",),
-}
-
-# Fallback for a sample spec that predates the `weight` field.
-_KIND_TO_SCHEME = {"signal": "genie", "noise_bg": "noise", "muon_bg": "corsika"}
+# CAREFUL with AUX: not all of these exist in every sample.  noise_weight is
+# only in the vuvuzela noise MC, OneWeight/PrimaryNeutrino* only in GENIE.
+# Checking all of them against a single sample produces FALSE ALARMS -- select
+# the relevant ones with aux_for(scheme).
+#
+# SCHEMES_WITHOUT_AUX are the schemes with NO weight columns by design, so that
+# an empty aux list can be told apart from a caller that built its list
+# wrongly.  Detector data is the case: its weight is 1/livetime, a property of
+# the runs, and there is nothing per-event to read.
+from .varmap import (REGISTRY, ALTS, AUX, AUX_SCHEMES,          # noqa: F401
+                     NOISE_FEATURES, MUON_FEATURES,
+                     KIND_TO_SCHEME as _KIND_TO_SCHEME,
+                     SCHEMES_WITHOUT_AUX)
+from . import varmap as _varmap
 
 
 def scheme_of(cfg):
@@ -146,11 +68,6 @@ def scheme_of(cfg):
     return cfg.get("weight") or _KIND_TO_SCHEME.get(cfg.get("kind"))
 
 
-# Schemes with NO weight columns by design, so that an empty aux list can be
-# told apart from a caller that built its list wrongly.  Detector data is the
-# case: its weight is 1/livetime, a property of the runs, and there is nothing
-# per-event to read.
-SCHEMES_WITHOUT_AUX = ("data",)
 
 
 def aux_for(scheme):
@@ -293,34 +210,6 @@ def _has_duplicate_ids(r, e, s):
     return len(np.unique(arr)) < len(arr)
 
 
-# Name variations: column names differ between meta-project and pass versions.
-# Whichever one is ACTUALLY in the file is used; if none is, NaN plus a warning.
-ALTS = {
-    "iLineFit_speed": [("L4_iLineFitParams", "lf_vel"),
-                       ("L4_iLineFitParams", "LFVel"),
-                       ("L4_iLineFit", "speed")],       # the name used in Table 11
-    "micro_count":    [("L4_micro_count", "STW_m3500p4000_DTW200"),
-                       ("L4_micro_count", "STW7500_DTW200")],
-    # Table 11 says "L4_fill_ratio.fill_ratio_from_mean".  hdfwriter's
-    # I3FillRatioInfo converter names it differently across versions.
-    # EVERY ENTRY BELOW IS THE SAME QUANTITY (fill ratio about the mean) --
-    # DIFFERENT quantities such as from_rms / from_nch are deliberately left
-    # out, otherwise a different piece of physics would be read silently.
-    "noise_weight":   [("noise_weight", "weight"),
-                       ("noise_weight", "value")],
-    "fill_ratio":     [("L4_fill_ratio", "fillratio_from_mean"),
-                       ("L4_fill_ratio", "fill_ratio_from_mean"),
-                       ("L4_fill_ratio", "fillRatioFromMean"),
-                       ("L4_fill_ratio", "FillRatioFromMean")],
-    # The primary neutrino's PDG code.  pass3's I3MCWeightDict has
-    # PrimaryNeutrinoType; pass2's was written by an older genie-icetray and
-    # does not.  genie_weight needs the SIGN of this to split neutrino from
-    # antineutrino, and a wrong or missing value is a silent 2.33x error on
-    # antineutrinos -- so only spellings that are unambiguously the primary
-    # neutrino's type belong here, never a related-looking one.
-    "pdg":            [("I3MCWeightDict", "PrimaryNeutrinoType"),
-                       ("MCInIcePrimary", "pdg_encoding")],
-}
 
 _warned_unresolved = set()
 
@@ -1262,144 +1151,24 @@ def add_weights(data, SAMPLES=None, weighters=None):
 
 
 # ---------------------------------------------------------------------------
-# REGISTRY <-> FEATURE_MAP consistency
+# The two sides of a variable
 # ---------------------------------------------------------------------------
-
-def read_feature_map(path=None):
-    """
-    Read FEATURE_MAP out of classifier.py **with AST**.
-
-    It is not imported because that module depends on icetray; parsing means
-    this check also runs in a plain python kernel.
-    """
-    import ast
-    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "classifier.py")
-    if not os.path.exists(path):
-        return None
-    tree = ast.parse(open(path).read())
-
-    ns = {}          # module-level string constants (L3V, HITSTAT, ...)
-    fmap = None
-
-    def ev(node):
-        if isinstance(node, ast.Constant):
-            return node.value
-        if isinstance(node, ast.Name):
-            return ns[node.id]
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            return ev(node.left) + ev(node.right)
-        if isinstance(node, (ast.Tuple, ast.List)):
-            return tuple(ev(e) for e in node.elts)
-        raise ValueError
-
-    for node in tree.body:
-        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-            continue
-        tgt = node.targets[0]
-        if not isinstance(tgt, ast.Name):
-            continue
-        if tgt.id == "FEATURE_MAP" and isinstance(node.value, ast.Dict):
-            fmap = {}
-            for k, v in zip(node.value.keys, node.value.values):
-                try:
-                    fmap[ev(k)] = tuple(ev(v))
-                except (ValueError, KeyError, TypeError):
-                    pass
-        else:
-            try:
-                ns[tgt.id] = ev(node.value)
-            except (ValueError, KeyError, TypeError):
-                pass
-    return fmap
-
-
-def read_column_alts(path=None):
-    """
-    Read classifier.COLUMN_ALTS with AST.
-
-    That module tries field-name variants on the frame side.  The HDF5 column
-    name and the frame field name DO NOT HAVE TO MATCH -- the hdfwriter
-    converter may rename (e.g. fill_ratio_from_mean -> fillratio_from_mean).
-    So the consistency check has to know both sides' alternatives, otherwise a
-    legitimate name difference is reported as a "conflict".
-    """
-    import ast
-    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "classifier.py")
-    if not os.path.exists(path):
-        return {}
-    tree = ast.parse(open(path).read())
-    for node in tree.body:
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id == "COLUMN_ALTS"
-                and isinstance(node.value, ast.Dict)):
-            out = {}
-            for k, v in zip(node.value.keys, node.value.values):
-                try:
-                    out[tuple(ast.literal_eval(k))] = list(ast.literal_eval(v))
-                except Exception:
-                    pass
-            return out
-    return {}
-
 
 def check_feature_map(verbose=True):
     """
-    Do classifier.FEATURE_MAP and REGISTRY agree?
+    Does every variable's HDF5 side still name the same quantity as its frame
+    side, and does every BDT input have both?
 
     If training reads one column and frame application another, the model
-    produces nonsense silently -- it does not raise.  Hence the check in code.
-    Returns the list of mismatches (empty = consistent, None = unreadable).
+    produces nonsense silently -- it does not raise.  Hence the check.
+
+    It used to compare two hand-written dicts in two modules, parsing
+    classifier.py with AST because that module needs icetray.  Both sides now
+    come from ONE row in config/variables.json, so there is no second file to
+    parse and no way to edit one side alone.  Kept as a function because the
+    two sides can still be made to name different quantities BY HAND, and
+    because the notebook calls it.
+
+    Returns the list of conflicts (empty = consistent).
     """
-    fmap = read_feature_map()
-    if not fmap:
-        if verbose:
-            print("[!] FEATURE_MAP could not be read (classifier.py is missing "
-                  "or its format changed)")
-        return None
-
-    # DANGEROUS: same name, DIFFERENT column -> training and application diverge
-    conflict = []
-    # Harmless: present in FEATURE_MAP but not in REGISTRY.  FEATURE_MAP is a
-    # superset (it also holds candidate variables), which is expected.
-    only_fmap = []
-
-    colalts = read_column_alts()
-
-    def _accepts(pair, extra_cols):
-        """(table, column) plus the alternative column names for that pair."""
-        tbl, col = pair
-        return {(tbl, col)} | {(tbl, c) for c in extra_cols}
-
-    for name, pair in sorted(fmap.items()):
-        mine = REGISTRY.get(name)
-        if mine is None:
-            only_fmap.append(name)
-            continue
-        # Do the (table, column) sets each side accepts intersect?
-        mine_set = set(ALTS.get(name, [tuple(mine)]))
-        fmap_set = _accepts(tuple(pair), colalts.get(tuple(pair), []))
-        if not (mine_set & fmap_set):
-            conflict.append((name, tuple(mine), tuple(pair)))
-
-    for name in sorted(set(NOISE_FEATURES) | set(MUON_FEATURES)):
-        if name in REGISTRY and name not in fmap:
-            conflict.append((name, tuple(REGISTRY[name]), "ABSENT from FEATURE_MAP"))
-
-    if verbose:
-        if conflict:
-            print("[!] CONFLICT -- same variable, different column.")
-            print("    Training reads one, frame application the other; the")
-            print("    model produces nonsense without raising:")
-            for name, a, b in conflict:
-                print("    %-22s REGISTRY=%s  FEATURE_MAP=%s" % (name, a, b))
-        else:
-            print("REGISTRY <-> FEATURE_MAP: no conflict "
-                  "(%d shared variables)" % (len(set(fmap) & set(REGISTRY))))
-        if only_fmap:
-            print("  (info) FEATURE_MAP holds %d extra candidate variables: %s"
-                  % (len(only_fmap), ", ".join(only_fmap[:6])
-                     + (" ..." if len(only_fmap) > 6 else "")))
-    return conflict
+    return _varmap.check(verbose=verbose)

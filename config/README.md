@@ -1,3 +1,14 @@
+# `config/` — the JSON tables, and which fields bite
+
+Two files, both **pure data**: reading either is `json.load()` and nothing
+else.  `productions.json` knows the per-production facts (paths, GCD, pulse
+series, weight schemes); `variables.json` knows every variable, both where it
+sits in a booked HDF5 file and where it sits in an I3 frame.  This README
+carries what JSON cannot: why each value is what it is, and which ones fail
+*silently* when wrong.  **Read it before editing either file.**
+
+---
+
 # `productions.json` — what every field means, and which ones bite
 
 This file is the one place that knows a per-production fact.  It is **pure
@@ -222,3 +233,132 @@ twenty lines of filtering and path-building itself, in the same cell as the
 production switch.  That cell is also where `set_noise_weight_unit` is
 called — beside the thing it depends on, so selecting pass2 and forgetting the
 unit is not an available mistake.
+
+---
+
+# `variables.json` — one row per variable, both sides of it
+
+Until now this table was **six** hand-written dicts spread over two modules,
+all keyed by the same variable names: `REGISTRY`, `ALTS`, `AUX` and
+`AUX_SCHEMES` in `oscnext_l4/data.py`, `FEATURE_MAP` and `COLUMN_ALTS` in
+`oscnext_l4/classifier.py`.  They are now one row each, and
+`oscnext_l4/varmap.py` turns that row into the views the code still uses under
+their old names.
+
+## Why one row — the critical synchronisation point
+
+Training reads a **column out of an HDF5 file**.  The trained model is applied
+to an **I3 frame**.  Those are different media with different names for the
+same quantity — the hdfwriter converter renames, so `fill_ratio_from_mean` in
+the frame is `fillratio_from_mean` in the file.  Two tables, two spellings,
+one variable.
+
+If one side is edited and the other is not, training fits one quantity and
+application reads another, and **the model produces wrong predictions without
+raising**.  Nothing in the output says so.
+
+The old defence was a checker that parsed `classifier.py` with `ast` — parsed,
+not imported, because that module needs icetray and a plain kernel does not
+have it — and compared the two dicts.  That is ~95 lines of machinery whose
+whole job was to detect an edit that should not have been possible.  With one
+row it is not possible: `data.check_feature_map()` is now a dict comparison,
+still needs no icetray, and still runs in the notebook.
+
+It is not pure ceremony, though.  The two sides of a row can still be made to
+name *different quantities* by hand, and the check catches exactly that: for
+every row it asks whether the `hdf5` accept-set and the `frame` accept-set
+intersect, and whether every BDT input has both sides at all.
+
+## The shape of a row
+
+```json
+"fill_ratio": {
+  "hdf5":       ["L4_fill_ratio", "fillratio_from_mean"],
+  "hdf5_alts": [["L4_fill_ratio", "fill_ratio_from_mean"], ...],
+  "frame":      ["L4_fill_ratio", "fill_ratio_from_mean"],
+  "frame_alts": ["fillratio_from_mean"]
+}
+```
+
+| field | meaning |
+|---|---|
+| `hdf5` | the `(table, column)` a booked HDF5 file holds — what training reads |
+| `hdf5_alts` | further `(table, column)` pairs naming the **same** quantity; whichever is actually in the file is used |
+| `frame` | the `(key, field)` the same quantity has in an I3 frame — what the tray reads |
+| `frame_alts` | field names that change between versions, tried in order |
+| `schemes` | **present only on weight columns.** Its presence is what marks a row as a weight column rather than a BDT input |
+
+A row with `schemes` lands in `AUX`/`AUX_SCHEMES`; every other row lands in
+`REGISTRY`, and lands in `FEATURE_MAP` as well if it has a `frame` side.
+`hdf5_alts` produces `ALTS` (with the primary pair first), `frame_alts`
+produces `COLUMN_ALTS`.
+
+**`hdf5_alts` must only ever hold the same physical quantity.**  For
+`fill_ratio` every entry is the fill ratio *about the mean*; the file also
+carries `from_rms` and `from_nch`, and putting one of those here would read a
+different piece of physics silently.
+
+## `bdt_features` — the order is load-bearing
+
+```json
+"bdt_features": {"noise": [5 names], "muon": [10 names]}
+```
+
+These are the model's input vectors, and **the order is the feature order**.
+It is written out explicitly rather than derived from the order of the
+`variables` block, because the two differ: `NchCleaned` is an input to *both*
+BDTs, so it sits in the noise block of `variables` but third in the muon list.
+Deriving the lists from key order would silently hand the muon model a
+differently ordered vector.
+
+Both lists are confirmed against the production source
+(`L4_noise_model_train.py` and `L4_muon_model_train.py` in the fridge), not
+read off Tables 11/12 — 5 + 10, 14 unique.  Table 12 lists ten variables and
+`NchCleaned` was once missing from the muon list because it was already in the
+noise one.
+
+## The spellings that were measured, not assumed
+
+| variable | why it reads the way it does |
+|---|---|
+| `fill_ratio` | **`fillratio_from_mean`**, no underscore — verified against real pass3 output.  Table 11 writes `fill_ratio_from_mean`, which is the *frame* spelling; the converter renames |
+| `iLineFit_speed` | `lf_vel` in the file.  `LFVel` was the old assumption and Table 11 names it `L4_iLineFit.speed`; all three are alternatives, and the first run caught this as a real conflict |
+| `noise_weight` | the column is **`weight`**, not `value`.  Being wrong left the noise weight entirely NaN, so the noise sample's `w_phys` would have been zero |
+| `pdg` | `I3MCWeightDict.PrimaryNeutrinoType` at pass3; pass2's older genie-icetray has no such column and it comes from `MCInIcePrimary.pdg_encoding`.  `genie_weight` needs the **sign** of this, and a missing value is a silent 2.33× error on antineutrinos — so only spellings that are unambiguously the primary neutrino's type belong here |
+| `gen_ratio` | the production divides by `NEvents × gen_ratio`.  pass2 **stores** the ratio, so it is read rather than reconstructed from the neutrino's sign |
+| `micro_count` | `STW_m3500p4000_DTW200`; `STW7500_DTW200` is an older naming the pass2 source contradicts elsewhere |
+| `cog_z`, `z_sigma`, `z_travel` | the hit-statistics key keeps the **pass3** spelling (`SRTTWSplitInIcePulsesDC…`) on a pass2 run too.  The values are computed from whichever series was actually passed; only the label is fixed.  Deliberate and cosmetic — writer and reader use the same literal, so they stay consistent |
+| `MuonWeight*` | three spellings are booked because which one a production wrote is not fixed; the first that is present is used |
+
+## `AUX` is not uniform across samples — ask `aux_for`
+
+Not every weight column exists in every sample: `noise_weight` is only in the
+vuvuzela noise MC, `OneWeight`/`PrimaryNeutrino*` only in GENIE.  Checking all
+of them against a single sample prints **false alarms**, three per file for a
+MuonGun set asked about `CorsikaWeightMap`.
+
+`schemes` is keyed by weight **scheme**, not by `kind`, for the same reason
+`productions.json` is: one kind can carry several schemes — pass3's `muon_bg`
+is CORSIKA and pass2's is MuonGun.
+
+`schemes_without_aux` lists the schemes that have **no** weight columns by
+design, so an empty list can be told apart from a caller that built its list
+wrongly.  Detector data is the case: its weight is `1/livetime`, a property of
+the runs, with nothing per-event to read.
+
+`kind_to_scheme` is only a fallback for a sample spec written before
+`productions.json` had a `weight` field.
+
+## Adding a variable
+
+1. Add one row with both sides.  If you only have one side, say so by leaving
+   the other out — a BDT input without a `frame` side is reported as a
+   conflict, a candidate without one is not.
+2. If it is a BDT input, add its name to the right `bdt_features` list, at the
+   position the model should see it.
+3. Run `data.check_feature_map()`.  It needs no icetray and no HDF5 file.
+4. Run `data.check_registry(TABLES, names)` against a real file to confirm the
+   column is actually there under that spelling.
+
+`OSCNEXT_L4_VARIABLES` points `varmap` at a different file, the way
+`OSCNEXT_L4_CONFIG` does for `productions.json`.

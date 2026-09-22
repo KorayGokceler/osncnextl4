@@ -120,9 +120,18 @@ Supporting files:
   register a Jupyter kernel.
 - `scripts/scan_files.py` — find corrupt `.i3.zst` files, write a healthy list.
 - `oscnext_l4/runner.py` — the `process_L4.py` driver plus a live progress bar.
-- `oscnext_l4/data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
+- `oscnext_l4/data.py` — `dump_tables`, `check_registry`,
   `check_feature_map`, `load_sample`, `add_weights`,
-  `set_noise_weight_unit`.
+  `set_noise_weight_unit`.  The variable table itself is NOT here any more.
+- `config/variables.json` + `oscnext_l4/varmap.py` — **one row per variable,
+  carrying BOTH sides of it**: the `(HDF5 table, column)` training reads and
+  the `(frame key, field)` the tray reads.  `varmap` turns that one table into
+  `REGISTRY`, `ALTS`, `AUX`, `AUX_SCHEMES`, `NOISE_FEATURES`/`MUON_FEATURES`
+  (imported by `data.py` under their old names) and `FEATURE_MAP`,
+  `COLUMN_ALTS` (imported by `classifier.py`).  It imports nothing but the
+  standard library on purpose: `classifier.py` runs inside icetray and
+  `data.py` needs pytables, so neither can be the home of a table the other
+  reads.  The rationale for every spelling is in `config/README.md`.
 - `config/productions.json` + `config/README.md` — **which production the
   notebook is pointed at,
   and the ONE place that knows a per-production fact.**  Every sample declares
@@ -162,21 +171,40 @@ Supporting files:
 
 To dump the HDF5 columns, use section 2 of the notebook.
 
-## The critical synchronisation point
+## The critical synchronisation point — closed by construction
 
-`FEATURE_MAP` (`oscnext_l4/classifier.py`) and `REGISTRY`
-(`oscnext_l4/data.py`) must agree line for line.  If one reads a different
-column than the other, the model produces wrong predictions **silently** -- it
+Training reads a **column out of an HDF5 file**; the trained model is applied
+to an **I3 frame**.  Those are different media with different names for the
+same quantity (the hdfwriter converter renames: `fill_ratio_from_mean` in the
+frame is `fillratio_from_mean` in the file).  If the two sides ever name
+different quantities, the model produces wrong predictions **silently** -- it
 does not raise.
 
-This is checked in code, not by eye: `data.check_feature_map()` reads
-`FEATURE_MAP` **with AST** (no icetray needed) and lists the conflicts.  It is
-normal for FEATURE_MAP to hold extra candidate variables; what is dangerous is
-**the same name pointing at a different column**.
+**It used to be six hand-written dicts in two modules** -- `REGISTRY`, `ALTS`,
+`AUX`, `AUX_SCHEMES` in `data.py`, `FEATURE_MAP`, `COLUMN_ALTS` in
+`classifier.py` -- all keyed by the same variable names, and the defence was a
+checker that parsed `classifier.py` **with AST** (parsed, not imported,
+because that module needs icetray).  Ninety-five lines of machinery whose only
+job was to detect an edit that should not have been possible.
 
-The first run caught a real conflict: `iLineFit_speed` was `LFVel` in REGISTRY,
-`lf_vel` in FEATURE_MAP, and `L4_iLineFit.speed` in Table 11 of the note.  All
-three are in `data.ALTS` -- whichever is **actually in the file** is used.
+**Now it is ONE row per variable** in `config/variables.json`, carrying both
+sides, and the six dicts are views onto it (`oscnext_l4/varmap.py`).  One row
+cannot be edited apart, so `data.check_feature_map()` is a dict comparison --
+still no icetray, still called from the notebook.  It is not ceremony: the two
+sides of a row can still be made to name different quantities by hand, and the
+check asks exactly that (do the two accept-sets intersect, and does every BDT
+input have both sides).
+
+The first run caught a real conflict of this kind: `iLineFit_speed` was
+`LFVel` on the HDF5 side, `lf_vel` on the frame side, and `L4_iLineFit.speed`
+in Table 11 of the note.  All three are alternatives on the row -- whichever
+is **actually in the file** is used.
+
+One trap the move made explicit: `bdt_features` writes the two input lists out
+in order rather than deriving them from the order of the `variables` block,
+because **the order is the model's feature order** and the two differ
+(`NchCleaned` is an input to both BDTs, so it sits in the noise block but
+third in the muon list).
 
 The model format is deliberately not joblib/pickle but LightGBM's native text
 format (`.txt`) plus a JSON sidecar: the IceTray environment has no

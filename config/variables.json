@@ -1,0 +1,219 @@
+{
+  "__README__": "One row per variable, both sides of it.  `hdf5` is the (table, column) a booked HDF5 file holds; `frame` is the (key, field) the same quantity has in an I3 frame.  They need not match -- the hdfwriter converter renames.  An entry with `schemes` is a WEIGHT column, not a BDT input.  Rationale, traps and the evidence for every spelling: config/README.md.  Loaded by oscnext_l4/varmap.py; nothing here is executed.",
+  "bdt_features": {
+    "noise": ["NchCleaned", "micro_count", "iLineFit_speed", "fill_ratio", "FullTimeLengthRatio"],
+    "muon": ["ICVetoHits", "RTVeto250Hits", "NchCleaned", "NAbove200Hits", "VICH_nch", "accumulated_time", "first_hlc_rho", "cog_z", "z_sigma", "z_travel"]
+  },
+  "kind_to_scheme": {
+    "muon_bg": "corsika",
+    "noise_bg": "noise",
+    "signal": "genie"
+  },
+  "schemes_without_aux": ["data"],
+  "variables": {
+    "NchCleaned": {
+      "hdf5": ["IC2018_LE_L3_Vars", "NchCleaned"],
+      "frame": ["IC2018_LE_L3_Vars", "NchCleaned"]
+    },
+    "micro_count": {
+      "hdf5": ["L4_micro_count", "STW_m3500p4000_DTW200"],
+      "hdf5_alts": [
+        ["L4_micro_count", "STW7500_DTW200"]
+      ],
+      "frame": ["L4_micro_count", "STW_m3500p4000_DTW200"]
+    },
+    "iLineFit_speed": {
+      "hdf5": ["L4_iLineFitParams", "lf_vel"],
+      "hdf5_alts": [
+        ["L4_iLineFitParams", "LFVel"],
+        ["L4_iLineFit", "speed"]
+      ],
+      "frame": ["L4_iLineFitParams", "lf_vel"],
+      "frame_alts": ["LFVel", "speed"]
+    },
+    "fill_ratio": {
+      "hdf5": ["L4_fill_ratio", "fillratio_from_mean"],
+      "hdf5_alts": [
+        ["L4_fill_ratio", "fill_ratio_from_mean"],
+        ["L4_fill_ratio", "fillRatioFromMean"],
+        ["L4_fill_ratio", "FillRatioFromMean"]
+      ],
+      "frame": ["L4_fill_ratio", "fill_ratio_from_mean"],
+      "frame_alts": ["fillratio_from_mean"]
+    },
+    "FullTimeLengthRatio": {
+      "hdf5": ["L4_FullTimeLengthRatio", "value"],
+      "frame": ["L4_FullTimeLengthRatio", "value"]
+    },
+    "ICVetoHits": {
+      "hdf5": ["IC2018_LE_L3_Vars", "ICVetoHits"],
+      "frame": ["IC2018_LE_L3_Vars", "ICVetoHits"]
+    },
+    "RTVeto250Hits": {
+      "hdf5": ["IC2018_LE_L3_Vars", "RTVeto250Hits"],
+      "frame": ["IC2018_LE_L3_Vars", "RTVeto250Hits"]
+    },
+    "NAbove200Hits": {
+      "hdf5": ["IC2018_LE_L3_Vars", "NAbove200Hits"],
+      "frame": ["IC2018_LE_L3_Vars", "NAbove200Hits"]
+    },
+    "VICH_nch": {
+      "hdf5": ["L4_VICH_nch", "value"],
+      "frame": ["L4_VICH_nch", "value"]
+    },
+    "accumulated_time": {
+      "hdf5": ["L4_accumulated_time", "value"],
+      "frame": ["L4_accumulated_time", "value"]
+    },
+    "first_hlc_rho": {
+      "hdf5": ["L4_first_hlc_rho", "value"],
+      "frame": ["L4_first_hlc_rho", "value"]
+    },
+    "cog_z": {
+      "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_z"],
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_z"]
+    },
+    "z_sigma": {
+      "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_sigma"],
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_sigma"]
+    },
+    "z_travel": {
+      "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_travel"],
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_travel"]
+    },
+    "n_hit_doms": {
+      "hdf5": ["SRTTWSplitInIcePulsesDCHitMultiplicity", "n_hit_doms"],
+      "frame": ["SRTTWSplitInIcePulsesDCHitMultiplicity", "n_hit_doms"]
+    },
+    "C2HR6": {
+      "hdf5": ["IC2018_LE_L3_Vars", "C2HR6"],
+      "frame": ["IC2018_LE_L3_Vars", "C2HR6"]
+    },
+    "CausalVetoHits": {
+      "hdf5": ["IC2018_LE_L3_Vars", "CausalVetoHits"],
+      "frame": ["IC2018_LE_L3_Vars", "CausalVetoHits"]
+    },
+    "VertexGuessZ": {
+      "hdf5": ["IC2018_LE_L3_Vars", "VertexGuessZ"],
+      "frame": ["IC2018_LE_L3_Vars", "VertexGuessZ"]
+    },
+    "DCFiducialHits": {
+      "hdf5": ["IC2018_LE_L3_Vars", "DCFiducialHits"],
+      "frame": ["IC2018_LE_L3_Vars", "DCFiducialHits"]
+    },
+    "VICH_npulses": {
+      "hdf5": ["L4_VICH_npulses", "value"],
+      "frame": ["L4_VICH_npulses", "value"]
+    },
+    "VICH_qtot": {
+      "hdf5": ["L4_VICH_qtot", "value"],
+      "frame": ["L4_VICH_qtot", "value"]
+    },
+    "separation_in_cogs": {
+      "hdf5": ["L4_separation_in_cogs", "value"],
+      "frame": ["L4_separation_in_cogs", "value"]
+    },
+    "cog_x": {
+      "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_x"],
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_x"]
+    },
+    "cog_y": {
+      "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_y"],
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_y"]
+    },
+    "z_min": {
+      "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_min"],
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_min"]
+    },
+    "z_max": {
+      "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_max"],
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_max"]
+    },
+    "STW9000_DTW300Hits": {
+      "hdf5": ["IC2018_LE_L3_Vars", "STW9000_DTW300Hits"],
+      "frame": ["IC2018_LE_L3_Vars", "STW9000_DTW300Hits"]
+    },
+    "CleanedFullTimeLength": {
+      "hdf5": ["IC2018_LE_L3_Vars", "CleanedFullTimeLength"],
+      "frame": ["IC2018_LE_L3_Vars", "CleanedFullTimeLength"]
+    },
+    "UncleanedFullTimeLength": {
+      "hdf5": ["IC2018_LE_L3_Vars", "UncleanedFullTimeLength"],
+      "frame": ["IC2018_LE_L3_Vars", "UncleanedFullTimeLength"]
+    },
+    "VetoFiducialRatioHits": {
+      "hdf5": ["IC2018_LE_L3_Vars", "VetoFiducialRatioHits"],
+      "frame": ["IC2018_LE_L3_Vars", "VetoFiducialRatioHits"]
+    },
+    "first_hlc_x": {
+      "hdf5": ["L4_first_hlc", "x"],
+      "frame": ["L4_first_hlc", "x"]
+    },
+    "first_hlc_y": {
+      "hdf5": ["L4_first_hlc", "y"],
+      "frame": ["L4_first_hlc", "y"]
+    },
+    "first_hlc_z": {
+      "hdf5": ["L4_first_hlc", "z"],
+      "frame": ["L4_first_hlc", "z"]
+    },
+    "true_energy": {
+      "hdf5": ["I3MCWeightDict", "PrimaryNeutrinoEnergy"],
+      "schemes": ["genie"]
+    },
+    "OneWeight": {
+      "hdf5": ["I3MCWeightDict", "OneWeight"],
+      "schemes": ["genie"]
+    },
+    "NEvents": {
+      "hdf5": ["I3MCWeightDict", "NEvents"],
+      "schemes": ["genie"]
+    },
+    "pdg": {
+      "hdf5": ["I3MCWeightDict", "PrimaryNeutrinoType"],
+      "hdf5_alts": [
+        ["MCInIcePrimary", "pdg_encoding"]
+      ],
+      "schemes": ["genie"]
+    },
+    "n_flux_events": {
+      "hdf5": ["L4_n_flux_events", "value"],
+      "schemes": ["genie"]
+    },
+    "gen_ratio": {
+      "hdf5": ["I3MCWeightDict", "gen_ratio"],
+      "schemes": ["genie"]
+    },
+    "noise_weight": {
+      "hdf5": ["noise_weight", "weight"],
+      "hdf5_alts": [
+        ["noise_weight", "value"]
+      ],
+      "schemes": ["noise"]
+    },
+    "cwm_Weight": {
+      "hdf5": ["CorsikaWeightMap", "Weight"],
+      "schemes": ["corsika"]
+    },
+    "cwm_NEvents": {
+      "hdf5": ["CorsikaWeightMap", "NEvents"],
+      "schemes": ["corsika"]
+    },
+    "cwm_OverSampling": {
+      "hdf5": ["CorsikaWeightMap", "OverSampling"],
+      "schemes": ["corsika"]
+    },
+    "MuonWeight": {
+      "hdf5": ["MuonWeight", "value"],
+      "schemes": ["muongun"]
+    },
+    "MuonWeight_GaisserH4a": {
+      "hdf5": ["MuonWeight_GaisserH4a", "value"],
+      "schemes": ["muongun"]
+    },
+    "MuonGunWeight": {
+      "hdf5": ["MuonGunWeight", "value"],
+      "schemes": ["muongun"]
+    }
+  }
+}

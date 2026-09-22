@@ -40,69 +40,20 @@ from icecube import icetray, dataclasses
 # Reading variables out of a frame
 # ---------------------------------------------------------------------------
 #
-# The map between the model's variable names ("NchCleaned", "cog_z",
-# "micro_count", ...) and where they live in the frame
-# ("IC2018_LE_L3_Vars"["NchCleaned"], ...).  It must match the feature registry
-# in oscnext_l4.data.
+# FEATURE_MAP maps the model's variable names ("NchCleaned", "cog_z",
+# "micro_count", ...) to where they live in the FRAME
+# ("IC2018_LE_L3_Vars"["NchCleaned"], ...), and COLUMN_ALTS gives the field
+# names that change between versions.
 #
-# Keeping the two in sync is critical: if training reads one column and
-# application another, the model produces nonsense silently.
-
-L3V = "IC2018_LE_L3_Vars"
-# L3 (grecovariables.DeepCoreCleaning) "SRTTWSplitInIcePulsesDC" uretir.
-CLEANED_PULSES = "SRTTWSplitInIcePulsesDC"
-HITSTAT = CLEANED_PULSES + "HitStatistics"
-HITMULT = CLEANED_PULSES + "HitMultiplicity"
-
-FEATURE_MAP = {
-    # --- noise BDT ---
-    "NchCleaned":          (L3V, "NchCleaned"),
-    "micro_count":         ("L4_micro_count", "STW_m3500p4000_DTW200"),
-    "iLineFit_speed":      ("L4_iLineFitParams", "lf_vel"),
-    "fill_ratio":          ("L4_fill_ratio", "fill_ratio_from_mean"),
-    # the ratio is NOT in the pass3 L3 map -> computed and written by the L4 tray
-    "FullTimeLengthRatio": ("L4_FullTimeLengthRatio", "value"),
-
-    # --- muon BDT ---
-    "ICVetoHits":       (L3V, "ICVetoHits"),
-    "RTVeto250Hits":    (L3V, "RTVeto250Hits"),
-    "NAbove200Hits":    (L3V, "NAbove200Hits"),
-    "VICH_nch":         ("L4_VICH_nch", "value"),
-    "accumulated_time": ("L4_accumulated_time", "value"),
-    "first_hlc_rho":    ("L4_first_hlc_rho", "value"),
-    "cog_z":            (HITSTAT, "cog_z"),
-    "z_sigma":          (HITSTAT, "z_sigma"),   # else cog_z_sigma -- read_feature tries both
-    "z_travel":         (HITSTAT, "z_travel"),
-
-    # --- candidate / derived inputs ---
-    "VICH_npulses":       ("L4_VICH_npulses", "value"),
-    "VICH_qtot":          ("L4_VICH_qtot", "value"),
-    "separation_in_cogs": ("L4_separation_in_cogs", "value"),
-    "n_hit_doms":         (HITMULT, "n_hit_doms"),
-    "cog_x":              (HITSTAT, "cog_x"),
-    "cog_y":              (HITSTAT, "cog_y"),
-    "z_min":              (HITSTAT, "z_min"),
-    "z_max":              (HITSTAT, "z_max"),
-    "CausalVetoHits":     (L3V, "CausalVetoHits"),
-    "C2HR6":              (L3V, "C2HR6"),
-    "VertexGuessZ":       (L3V, "VertexGuessZ"),
-    "DCFiducialHits":     (L3V, "DCFiducialHits"),
-    "STW9000_DTW300Hits": (L3V, "STW9000_DTW300Hits"),
-    "CleanedFullTimeLength":   (L3V, "CleanedFullTimeLength"),
-    "UncleanedFullTimeLength": (L3V, "UncleanedFullTimeLength"),
-    "VetoFiducialRatioHits":   (L3V, "VetoFiducialRatioHits"),
-    "first_hlc_x": ("L4_first_hlc", "x"),
-    "first_hlc_y": ("L4_first_hlc", "y"),
-    "first_hlc_z": ("L4_first_hlc", "z"),
-}
-
-
-# Alternatives for fields whose column name changes between versions
-COLUMN_ALTS = {
-    ("L4_iLineFitParams", "lf_vel"): ["LFVel", "speed"],
-    (HITSTAT, "z_sigma"):            ["cog_z_sigma"],
-    ("L4_fill_ratio", "fill_ratio_from_mean"): ["fillratio_from_mean"],
-}
+# Both come from config/variables.json, the same row that carries the HDF5
+# column data.load_sample reads.  That is what keeps training and application
+# on the same quantity: they cannot be edited apart, because there is one row.
+# Reading one column while the other reads another produces nonsense silently.
+# data.check_feature_map() checks it, and needs no icetray.
+#
+# The hit-statistics keys carry the pass3 spelling (SRTTWSplitInIcePulsesDC...)
+# on a pass2 run too -- deliberate, and explained in config/README.md.
+from .varmap import FEATURE_MAP, COLUMN_ALTS                    # noqa: F401
 
 
 def _get_col(obj, col):
@@ -116,7 +67,7 @@ def _get_col(obj, col):
 
 
 def read_feature(frame, name):
-    '''Frame'den tek bir degiskeni oku.  Bulunamazsa NaN dondur.'''
+    '''Read one variable out of the frame; NaN when it is not there.'''
     loc = FEATURE_MAP.get(name)
     if loc is None:
         return np.nan
@@ -176,7 +127,7 @@ def load_model(model_file):
     if unknown:
         raise KeyError(
             "variable(s) not defined in FEATURE_MAP: %s\n"
-            "Add them to FEATURE_MAP in oscnext_l4/classifier.py." % unknown)
+            "Add them to config/variables.json." % unknown)
 
     return booster, features, sidecar
 
