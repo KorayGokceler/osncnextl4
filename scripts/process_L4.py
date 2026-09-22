@@ -33,14 +33,8 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
 
-from oscnext_l4.env import (require_icetray, get_I3Tray, report_missing,
-                            load_deserialization_libs, IceTrayNotAvailable)
-
-try:
-    require_icetray()
-except IceTrayNotAvailable as _e:
-    # Show what to do, not a stack trace.
-    sys.exit("\n" + str(_e) + "\n")
+from oscnext_l4.env import (get_I3Tray, report_missing,
+                            load_deserialization_libs)
 from icecube import icetray, dataio, dataclasses
 I3Tray = get_I3Tray()
 

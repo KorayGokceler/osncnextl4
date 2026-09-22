@@ -26,18 +26,6 @@ try:
 except ImportError:
     _ienv = None
 
-if _ienv is not None and not _ienv.have_icetray():
-    print()
-    print(_ienv._env_report())
-    print()
-    print("env-shell.sh candidates found:")
-    _c = _ienv.find_env_shells()
-    if not _c:
-        print("  (none)  -> export OSCNEXT_I3_BUILD=/full/path/build")
-    for _kind, _path in _c:
-        print("  [%-12s] %s" % (_kind, _path))
-    sys.exit(1)
-
 if _ienv is not None:
     print()
     print("=" * 70)

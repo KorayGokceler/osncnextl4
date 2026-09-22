@@ -1163,11 +1163,11 @@ def check_feature_map(verbose=True):
     produces nonsense silently -- it does not raise.  Hence the check.
 
     It used to compare two hand-written dicts in two modules, parsing
-    classifier.py with AST because that module needs icetray.  Both sides now
-    come from ONE row in config/variables.json, so there is no second file to
-    parse and no way to edit one side alone.  Kept as a function because the
-    two sides can still be made to name different quantities BY HAND, and
-    because the notebook calls it.
+    classifier.py with AST rather than importing it.  Both sides now come from
+    ONE row in config/variables.json, so there is no second file to parse and
+    no way to edit one side alone.  Kept as a function because the two sides
+    can still be made to name different quantities BY HAND, and because the
+    notebook calls it.
 
     Returns the list of conflicts (empty = consistent).
     """

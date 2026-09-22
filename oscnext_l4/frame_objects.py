@@ -9,19 +9,11 @@ so it can still be read beside the original, which is the point.
     geom.py       -> calc_rho_36
     pulses.py     -> iter_map, get_pulses
     weighting.py  -> PropagateGenieInfo
-
-NOTE ON ICETRAY: `calc_rho_36` used to live in a module that imported nothing
-but numpy, so it could be called without icetray.  Nothing did -- its only
-caller is the tray segment in variables.py -- and merging costs that
-theoretical freedom.  If it is ever wanted back it is one function to lift out.
 """
 
 import numpy as np
 
-from .env import require_icetray
-
-require_icetray()
-from icecube import dataclasses, icetray      # noqa: E402  -- after require_icetray
+from icecube import dataclasses, icetray
 
 
 # -------------------------------------------------------------------------

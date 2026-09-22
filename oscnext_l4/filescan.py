@@ -11,10 +11,7 @@ it, and a script importing another script is a fragile arrangement.
 
 import os
 
-from .env import require_icetray
-
-require_icetray()
-from icecube import dataio          # noqa: E402  -- after require_icetray
+from icecube import dataio
 
 
 def validate_files(paths, n_frames=25, verbose=True):

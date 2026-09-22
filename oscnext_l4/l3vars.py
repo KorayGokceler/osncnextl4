@@ -10,10 +10,8 @@ value: identical over 8144 events.
 
 import numpy as np
 
-from .env import require_icetray
 from .frame_objects import iter_map, get_pulses
 
-require_icetray()
 from icecube import dataclasses, icetray
 
 L4_FTLR_KEY = "L4_FullTimeLengthRatio"

@@ -115,8 +115,20 @@ Supporting files:
   - `oscnext_l4/l3vars.py` — `FullTimeLengthRatio`.  An L3 variable
     (`oscNext_L3.py` writes it, and pass2's L3 map carries it); pass3's L3 map
     carries only the two components, so it is divided out at L4 instead.
-- `oscnext_l4/env.py` — **every `icecube` import goes through here**; when an
-  import fails it reports why.  `have_lightgbm()` lives here too.
+- `oscnext_l4/env.py` — what this meta-project does and does not CARRY.
+  **`icecube` itself is not its business:** this pipeline always runs inside an
+  icetray environment, so modules write `from icecube import ...` directly and
+  a failure there is a broken environment, not a case to handle.  What env.py
+  guards is everything above that line -- `optional_project`/`require_project`
+  for the projects that really are absent (`oscNext`, `tau_bdt`, `slc-veto`,
+  `tensor_of_inertia`, ...), `get_I3Tray()` for the two places I3Tray lives
+  depending on version, the DeepCore DOM lists, `load_deserialization_libs()`
+  and `have_lightgbm()`.
+  (It used to carry a `require_icetray()` that 29 call sites went through and
+  a 70-line report explaining why `import icecube` had failed.  Nothing in the
+  intended workflow can reach that state, so it went, and with it
+  `have_icetray`, `IceTrayNotAvailable` and `find_env_shells` -- the last
+  reachable only from a branch that assumed icetray was missing.)
 - `setup_env.sh` — find the environment / open a shell / run one command /
   register a Jupyter kernel.
 - `scripts/scan_files.py` — find corrupt `.i3.zst` files, write a healthy list.
@@ -184,14 +196,15 @@ does not raise.
 **It used to be six hand-written dicts in two modules** -- `REGISTRY`, `ALTS`,
 `AUX`, `AUX_SCHEMES` in `data.py`, `FEATURE_MAP`, `COLUMN_ALTS` in
 `classifier.py` -- all keyed by the same variable names, and the defence was a
-checker that parsed `classifier.py` **with AST** (parsed, not imported,
-because that module needs icetray).  Ninety-five lines of machinery whose only
-job was to detect an edit that should not have been possible.
+checker that parsed `classifier.py` **with AST** (parsed rather than imported,
+since `data.py` cannot import `classifier.py`).  Ninety-five lines of
+machinery whose only job was to detect an edit that should not have been
+possible.
 
 **Now it is ONE row per variable** in `config/variables.json`, carrying both
 sides, and the six dicts are views onto it (`oscnext_l4/varmap.py`).  One row
 cannot be edited apart, so `data.check_feature_map()` is a dict comparison --
-still no icetray, still called from the notebook.  It is not ceremony: the two
+it reads the config and nothing else, and is still called from the notebook.  It is not ceremony: the two
 sides of a row can still be made to name different quantities by hand, and the
 check asks exactly that (do the two accept-sets intersect, and does every BDT
 input have both sides).

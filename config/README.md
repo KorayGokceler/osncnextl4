@@ -269,12 +269,12 @@ If one side is edited and the other is not, training fits one quantity and
 application reads another, and **the model produces wrong predictions without
 raising**.  Nothing in the output says so.
 
-The old defence was a checker that parsed `classifier.py` with `ast` — parsed,
-not imported, because that module needs icetray and a plain kernel does not
-have it — and compared the two dicts.  That is ~95 lines of machinery whose
-whole job was to detect an edit that should not have been possible.  With one
-row it is not possible: `data.check_feature_map()` is now a dict comparison,
-still needs no icetray, and still runs in the notebook.
+The old defence was a checker that parsed `classifier.py` with `ast` — parsed
+rather than imported, since `data.py` cannot import `classifier.py` — and
+compared the two dicts.  That is ~95 lines of machinery whose whole job was to
+detect an edit that should not have been possible.  With one row it is not
+possible: `data.check_feature_map()` is now a dict comparison, and still runs
+in the notebook.
 
 It is not pure ceremony, though.  The two sides of a row can still be made to
 name *different quantities* by hand, and the check catches exactly that: for
@@ -368,7 +368,7 @@ the runs, with nothing per-event to read.
    conflict, a candidate without one is not.
 2. If it is a BDT input, add its name to the right `bdt_features` list, at the
    position the model should see it.
-3. Run `data.check_feature_map()`.  It needs no icetray and no HDF5 file.
+3. Run `data.check_feature_map()`.  It reads the config and nothing else.
 4. Run `data.check_registry(TABLES, names)` against a real file to confirm the
    column is actually there under that spelling.
 

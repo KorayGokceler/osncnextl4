@@ -29,7 +29,7 @@ but where the note and the production disagree, the production wins; see the
 `oscNext_L4` docstring.
 '''
 
-from .env import (require_icetray, optional_project, require_project,
+from .env import (optional_project, require_project,
                   load_deserialization_libs, deepcore_doms,
                   load_lib)
 
@@ -41,7 +41,6 @@ from .frame_objects import PropagateGenieInfo, L4_NFLUX_KEY
 from .l3vars import _full_time_length_ratio, L4_FTLR_KEY
 from .rewritten import _first_hlc, _accumulated_time, _separation_in_cogs, _vich
 
-require_icetray()
 from icecube import dataclasses, icetray
 
 # --- Optional projects -----------------------------------------------------

@@ -30,9 +30,7 @@ import json
 
 import numpy as np
 
-import os, sys
-from .env import require_icetray
-require_icetray()
+import sys
 from icecube import icetray, dataclasses
 
 
@@ -49,7 +47,7 @@ from icecube import icetray, dataclasses
 # column data.load_sample reads.  That is what keeps training and application
 # on the same quantity: they cannot be edited apart, because there is one row.
 # Reading one column while the other reads another produces nonsense silently.
-# data.check_feature_map() checks it, and needs no icetray.
+# data.check_feature_map() checks it.
 #
 # The hit-statistics keys carry the pass3 spelling (SRTTWSplitInIcePulsesDC...)
 # on a pass2 run too -- deliberate, and explained in config/README.md.

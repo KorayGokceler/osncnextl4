@@ -17,11 +17,9 @@ actually ran, and what the measurement was.
 
 import numpy as np
 
-from .env import require_icetray
 from .frame_objects import iter_map, get_pulses, _LC_FLAG
 
-require_icetray()
-from icecube import dataclasses      # noqa: E402  -- after require_icetray
+from icecube import dataclasses
 
 
 # =========================================================================

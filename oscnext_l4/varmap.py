@@ -10,15 +10,14 @@ other is the failure CLAUDE.md calls the critical synchronisation point: if
 training reads one column and frame application another, the model produces
 wrong predictions and DOES NOT RAISE.
 
-The old defence was a checker that parsed classifier.py with AST (because that
-module needs icetray, which a plain kernel does not have) and compared the two
-dicts.  Now there is ONE row per variable carrying BOTH sides, so the two
-cannot be edited apart -- and the check costs a dict comparison instead of 95
-lines of AST.
+The old defence was a checker that parsed classifier.py with AST rather than
+importing it, and compared the two dicts.  Now there is ONE row per variable
+carrying BOTH sides, so the two cannot be edited apart -- and the check costs a
+dict comparison instead of 95 lines of AST.
 
 This module imports nothing but the standard library on purpose: classifier.py
-runs inside icetray and data.py needs pytables, so neither can be the home of a
-table the other one reads.
+pulls in the icetray frame classes and data.py pulls in pytables, and neither
+can import the other, so neither can be the home of a table both read.
 
 Rationale for the individual spellings is in config/README.md.
 """
@@ -80,8 +79,8 @@ def check(verbose=True):
     Does each variable's HDF5 side still name the same quantity as its frame
     side, and does every BDT input have both?
 
-    Returns the list of conflicts (empty = consistent).  Needs no icetray and
-    no HDF5 file -- it reads the config and nothing else.
+    Returns the list of conflicts (empty = consistent).  It reads the config
+    and nothing else -- no HDF5 file, no frame.
     """
     conflict = []
     for name in sorted(VARIABLES):

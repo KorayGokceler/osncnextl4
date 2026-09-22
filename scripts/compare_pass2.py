@@ -51,12 +51,7 @@ def expand(patterns):
 
 def _icetray():
     """Import IceTray only in the subcommands that need it."""
-    from oscnext_l4.env import (require_icetray, get_I3Tray,
-                                load_deserialization_libs, IceTrayNotAvailable)
-    try:
-        require_icetray()
-    except IceTrayNotAvailable as e:
-        sys.exit("\n" + str(e) + "\n")
+    from oscnext_l4.env import get_I3Tray, load_deserialization_libs
     from icecube import icetray, dataio, dataclasses
     load_deserialization_libs()
     return icetray, dataio, dataclasses, get_I3Tray()

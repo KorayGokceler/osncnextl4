@@ -23,8 +23,6 @@ Usage:
 import numpy as np
 
 import os, sys
-from .env import require_icetray
-require_icetray()
 from icecube import icetray, dataclasses
 
 

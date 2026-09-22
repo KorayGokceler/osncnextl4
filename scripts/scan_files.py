@@ -30,13 +30,6 @@ import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
-from oscnext_l4.env import require_icetray, IceTrayNotAvailable
-
-try:
-    require_icetray()
-except IceTrayNotAvailable as _e:
-    sys.exit("\n" + str(_e) + "\n")
-
 from oscnext_l4.filescan import validate_files
 
 
