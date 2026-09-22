@@ -106,13 +106,15 @@ def _fmt_eta(sec):
     if sec is None or sec != sec or sec < 0:
         return "?"
     sec = int(sec)
-    # Units spelled out: s / min / h.  (Abbreviations like "8d32s" were
-    # ambiguous -- d could read as minute or day, s as second or hour.)
+    # Units spelled out in English, as all printed output is.  (The bare
+    # abbreviations were ambiguous: "d" could read as minute or day, "s" as
+    # second or hour -- and these three were in fact Turkish, dk/sn/sa, while
+    # the comment above them claimed otherwise.)
     if sec < 60:
         return "%ds" % sec
     if sec < 3600:
-        return "%ddk%02dsn" % (sec // 60, sec % 60)
-    return "%dsa%02ddk" % (sec // 3600, (sec % 3600) // 60)
+        return "%dmin%02ds" % (sec // 60, sec % 60)
+    return "%dh%02dmin" % (sec // 3600, (sec % 3600) // 60)
 
 
 class _Bar:
