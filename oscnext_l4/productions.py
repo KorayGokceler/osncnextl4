@@ -1,21 +1,12 @@
 """
-The productions this pipeline can be pointed at, and how to switch between
-them.
+Which production the pipeline is pointed at, and how to switch between them.
 
-WHY THIS EXISTS
----------------
-The notebook used to carry the pass3 GCD and sample paths inline.  Running the
-same pipeline over pass2 needs three things changed at once -- the GCD, the
-paths, and the cleaned pulse series -- plus one that is easy to forget and
-expensive to get wrong: **the unit of the vuvuzela noise weight**.  pass3
-stores it in 1/ns, pass2 already in Hz.  Nothing raises when that is wrong; it
-scales every noise rate by 1e9 and the only symptom is an absurd number much
-later, in the training.
-
-So the switch is one call, and it sets the unit as part of switching.  There is
-no supported way to select pass2 and forget.
-
-USAGE (notebook section 1)
+THE FACTS LIVE IN `config/productions.json`; THIS FILE IS THE LOADER.
+Every value there is explained in `config/README.md`, which is where the
+reasons went when the tables became JSON -- JSON cannot carry comments, and
+several of those values fail SILENTLY when wrong (the vuvuzela weight unit
+scales every noise rate by 1e9; the detector-data GCD glob dropped a whole
+season). Read the README before editing the JSON, and keep the two in step.
 
     from oscnext_l4.productions import select
     GCD, SAMPLES = select("pass2", HDF_BASE)     # or "pass3"
@@ -23,226 +14,123 @@ USAGE (notebook section 1)
 Everything downstream -- booking, the registry check, loading, weights,
 datasets, training -- is production-independent and needs no change.
 
-WHAT DIFFERS BETWEEN THE TWO
-----------------------------
-Verified against real files and the technical note; the full account is in
-`docs/pass2_verification.md`.
+A different config:
 
-| | pass3 | pass2 |
-|---|---|---|
-| cleaned pulses | `SRTTWSplitInIcePulsesDC` | `SRTTWOfflinePulsesDC` |
-| uncleaned pulses | `SplitInIcePulses` | the same |
-| noise weight unit | 1/ns | Hz |
-| L3 cut | `L3_oscNext_bool` (data quality ANDed by the pass3 script) | `L3_oscNext_bool` too -- `oscNext_L3.py` folds data quality INTO `IC2018_LE_L3_Full` and copies it there, so both branches of `l3_cut` agree and the cut is applied either way |
-| `I3GenieInfo` | present | **absent** -- every event falls back to `NEvents * 70/30` |
-| muon background | CORSIKA | MuonGun (there is no CORSIKA in these paths) |
-
-The last two matter for weights, not for the BDT inputs, and neither touches
-the noise classifier.  An earlier version of this table claimed pass2 drops
-the data-quality cut; that was read out of the technical note and is wrong --
-the production L3 script settles it.  See CLAUDE.md, "Running on pass2".
+    export OSCNEXT_L4_CONFIG=/path/to/my_productions.json
 """
 
 import os
+import json
 import glob
 
 
-# ---------------------------------------------------------------------------
-# pass3
-# ---------------------------------------------------------------------------
+# Repo root / config / productions.json, unless told otherwise.  The package
+# may be imported from anywhere, so the path is resolved from THIS file rather
+# than from the working directory.
+DEFAULT_CONFIG = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "config", "productions.json")
 
-PASS3_GCD = ("/cvmfs/icecube.opensciencegrid.org/data/GCD/"
-             "GeoCalibDetectorStatus_IC86.All_Pass3.i3.gz")
+CONFIG_PATH = os.environ.get("OSCNEXT_L4_CONFIG") or DEFAULT_CONFIG
 
-PASS3_SAMPLES = {
-    "nue":     dict(l3="/data/ana/LE/oscNext/pass3/genie/level3/23800/*.i3.zst",
-                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
-    "numu":    dict(l3="/data/ana/LE/oscNext/pass3/genie/level3/23799/*.i3.zst",
-                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
-    "corsika": dict(l3="/data/ana/LE/oscNext/pass3/corsika/level3/23694/*.i3.zst",
-                    flags=["--corsika"], kind="muon_bg", weight="corsika"),
-    "noise":   dict(l3="/data/ana/LE/oscNext/pass3/noise/level3/23813/*.i3.zst",
-                    flags=["--noise"], kind="noise_bg", weight="noise"),
-}
+# Fields without which a sample cannot be used.  Checked at load time and
+# named individually: a missing `weight` would otherwise surface much later as
+# "no weighting function for scheme None", and a missing `kind` would make a
+# sample silently invisible to every role-based selection.
+_SAMPLE_REQUIRED = ("flags", "kind", "weight")
+_PRODUCTION_REQUIRED = ("gcd", "samples", "noise_weight_unit")
 
 
-# ---------------------------------------------------------------------------
-# pass2
-# ---------------------------------------------------------------------------
+def _expand_runs(name, spec):
+    """
+    A sample given as runs + templates -> (expanded spec, {year: runs}).
 
-# The GCD that sits with the pass2 files.  That it is the RIGHT one is not
-# assumed: cog_z / z_sigma / z_travel, which we compute from it and pass2
-# stored from theirs, agree to the last bit over 8144 events.
-PASS2_GCD = ("/data/ana/LE/oscNext/pass2/genie/level4/121122/"
-             "GeoCalibDetectorStatus_AVG_55697-57531_PASS2_SPE_withScaledNoise"
-             ".i3.gz")
+    The runs come back separately rather than inside the spec; see below.
 
-PASS2_CLEANED_PULSES = "SRTTWOfflinePulsesDC"
+    Detector data is one pattern PER RUN, and its GCD is another: written out,
+    the run numbers would appear in two lists that can drift apart.  One
+    substitution -- `{run:08d}` and `{season:02d}`, where season = year - 2000
+    -- keeps them in a single place.  This is the only templating the config
+    has, and it is deliberately not a language.
+    """
+    if "runs_by_year" not in spec:
+        return spec, None
+    out = dict(spec)
+    runs = out.pop("runs_by_year")
+    try:
+        l3_t = out.pop("l3_template")
+    except KeyError:
+        raise KeyError("sample %r has `runs_by_year` but no `l3_template` "
+                       "(%s)" % (name, CONFIG_PATH))
+    gcd_t = out.pop("gcd_template", None)
 
-_P2 = "/data/ana/LE/oscNext/pass2"
-_GENIE_L3 = _P2 + "/genie/level3/%s/oscNext_genie_level3_v02.00_pass2.%s.*.i3.zst"
-
-# NuE and NuMu are each TWO datasets at pass2, so `l3` is a list here.
-#
-# `weight` names the weighting SCHEME, not the sample -- that is what makes one
-# code serve both productions.  Both productions have a `muon_bg`, but pass3's
-# is CORSIKA and pass2's is MuonGun, and they need different input columns and
-# a different formula.  Keying anything downstream on the SAMPLE NAME breaks the
-# moment a production names its sets differently; keying on the scheme does not.
-# ---------------------------------------------------------------------------
-# The muon classifier's background: DETECTOR DATA, and exactly which runs
-# ---------------------------------------------------------------------------
-#
-# Technical note v00.07 sec. 3.6.3 (p.39) names them, so this is not a choice
-# of ours -- it is the production's list, quoted:
-#
-#   "For this classifier, detector data (following L4 noise cut) is used as the
-#    background sample used for training, as it is 99% muons at this stage and
-#    is considered more robust than using MuonGun MC at this processing level.
-#    The signal training sample is still GENIE MC.  This also allows
-#    unsimulated event populations (such as muon bundles) to be removed by the
-#    classifier.  Note that a classifier was also trained using MuonGun MC for
-#    the background sample, which achieved similar performance but was not used
-#    in the sample."
-#
-#   "The background sample is comprised of the following data runs, which were
-#    selected to cover years roughly equally in order to avoid strong
-#    dependence of the muon rejection on the specific season due to muon flux
-#    seasonal variations."
-#
-# Three per year, 2012-2017.  The even coverage is the POINT of the list: the
-# atmospheric muon flux varies seasonally, so a background drawn from one part
-# of the year teaches the classifier that season rather than the muon.
-#
-# TWO CONDITIONS COME WITH IT, and neither is optional:
-#
-#   1. "following L4 noise cut" -- the background is data that has ALREADY
-#      passed the noise classifier at 0.7.  That is what makes it 99% muon.
-#      Training on data that has not been through the noise cut trains the muon
-#      BDT partly on noise, which the noise BDT has already removed.  The
-#      note's own figures say the same in their cut box: Figures 19-21 all
-#      carry `L4_NoiseClassifier_ProbNu > 0.7`.
-#   2. The signal side stays GENIE MC.  This is a data-vs-MC classifier by
-#      construction, not a data/data or MC/MC one.
-#
-# The fridge's `L4_model_data.py` says "one run per month 2012-2018", which is
-# a LATER and larger list than the note's 18.  Where they differ the note is
-# what the published pass2 numbers (Table 13) were produced with; the fridge
-# script is the state of the code at a later date.
-PASS2_MUON_DATA_RUNS_BY_YEAR = {
-    2012: (120200, 120700, 121650),
-    2013: (122650, 123250, 124650),
-    2014: (125150, 125700, 126300),
-    2015: (126850, 127400, 127850),
-    2016: (128000, 128550, 129050),
-    2017: (129650, 130150, 130700),
-}
-
-PASS2_MUON_DATA_RUNS = tuple(
-    r for year in sorted(PASS2_MUON_DATA_RUNS_BY_YEAR)
-    for r in PASS2_MUON_DATA_RUNS_BY_YEAR[year])
-
-# Detector data L3 -- the layout is VERIFIED on disk, not assumed:
-#
-#   .../data/level3/IC86.12/Run00120200/
-#       Level2pass2_IC86.2012_data_Run00120200_0527_1_20_GCD.i3.zst
-#       oscNext_data_IC86.12_level3_v02.00_pass2_Run00120200_Subrun00000000.i3.zst
-#       oscNext_data_..._Subrun00000000.hdf5
-#       oscNext_data_..._Subrun00000000.json
-#
-# one directory per season, one per run inside it, and the season number is
-# the year: IC86.NN holds the runs taken in 20NN.  A season carries about a
-# thousand runs (IC86.12 has 1010); the note picked three of them per year.
-#
-# THE PATTERN CANNOT BE `*.i3.zst`.  Each subrun contributes THREE files and
-# the run's GCD is `*_GCD.i3.zst`, so that glob would hand I3Reader a GCD as
-# if it were an input and count three entries per subrun.  It also makes the
-# file counts three times what they are: a directory listing of 634 entries is
-# about 211 L3 files, and the note's 18 runs come to roughly 4,400 rather than
-# the 13,125 a naive `ls | wc -l` suggests.
-_P2_DATA_L3 = (_P2 + "/data/level3/IC86.%02d/Run%08d/"
-                     "oscNext_data_*_level3_*_Run%08d_Subrun*.i3.zst")
-
-# The GCD lives in the run directory, one per run -- detector data cannot use
-# the averaged MC GCD, because the dead DOMs and the calibration are what
-# changes from run to run.  Its name carries fields that vary per run
-# (`_0527_1_20_` above), so it is GLOBBED rather than constructed.
-#
-# THE EXTENSION IS NOT CONSTANT.  Most runs carry `_GCD.i3.zst`, but the
-# 2015 and early-2016 runs carry `_GCD.i3.gz` -- the L3 files beside them are
-# `.i3.zst` either way, so nothing else gives it away.  A `.i3.zst` pattern
-# silently matched nothing there and dropped ALL of 2015 and two thirds of
-# 2016, which is exactly the seasonal gap the note's run list exists to
-# prevent.  Matching `.i3*` covers both; `_GCD.i3` is specific enough that
-# nothing else in the directory can match.
-_P2_DATA_GCD = _P2 + "/data/level3/IC86.%02d/Run%08d/*_GCD.i3*"
-
-PASS2_MUON_DATA_L3 = [
-    _P2_DATA_L3 % (year - 2000, run, run)
-    for year in sorted(PASS2_MUON_DATA_RUNS_BY_YEAR)
-    for run in PASS2_MUON_DATA_RUNS_BY_YEAR[year]]
-
-PASS2_MUON_DATA_GCD = [
-    _P2_DATA_GCD % (year - 2000, run)
-    for year in sorted(PASS2_MUON_DATA_RUNS_BY_YEAR)
-    for run in PASS2_MUON_DATA_RUNS_BY_YEAR[year]]
+    pairs = [(int(y), int(r)) for y in sorted(runs, key=int) for r in runs[y]]
+    out["l3"] = [l3_t.format(season=y - 2000, run=r) for y, r in pairs]
+    if gcd_t:
+        out["gcd"] = [gcd_t.format(season=y - 2000, run=r) for y, r in pairs]
+    # The runs do NOT go back into the sample spec.  That spec is handed
+    # straight to the runner and out of select(), and an extra key there is an
+    # extra key everything downstream sees -- the expansion should leave no
+    # trace beyond the lists it produced.  The caller keeps them separately.
+    return out, {int(y): tuple(runs[y]) for y in runs}
 
 
-PASS2_SAMPLES_ALL = {
-    "nue":     dict(l3=[_GENIE_L3 % ("121122", "121122"),
-                        _GENIE_L3 % ("121291", "121291")],
-                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
-    "numu":    dict(l3=[_GENIE_L3 % ("141154", "141154"),
-                        _GENIE_L3 % ("141292", "141292")],
-                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
-    "noise":   dict(l3=_P2 + "/noise/level3/888003/"
-                            "oscNext_noise_level3_v02.00_pass2.888003.*.i3.zst",
-                    flags=["--noise"], kind="noise_bg", weight="noise"),
-    "nutau":   dict(l3=_GENIE_L3 % ("160511", "160511"),
-                    flags=["--mc", "--genie"], kind="signal", weight="genie"),
-    "muongun": dict(l3=_P2 + "/muongun/level3/139008/"
-                            "oscNext_muongun_level3_v02.00_pass2.139008.*.i3.zst",
-                    flags=["--mc", "--muongun"], kind="muon_bg",
-                    weight="muongun"),
-    # Real detector data -- the production's ACTUAL muon background, and the
-    # only sample here with NO MC flag: no truth, no MC weight dict, nothing
-    # to propagate.  process_L4.py needs no change for it; an empty `flags`
-    # is exactly what "this is data" means to build_key_list.
-    #
-    # It shares the muon_bg role with MuonGun ON PURPOSE, so that a muon-BDT
-    # run picks up whichever the production offers -- but the two must never
-    # be STACKED: one is measured and one is simulated, and a model trained on
-    # the union learns the difference between them as much as the physics.
-    # Section 6 of the notebook picks one and says which.
-    # `gcd` is a LIST here, one per L3 pattern, and it is the only sample with
-    # the field: every MC set shares one averaged GCD, detector data cannot.
-    # Nothing consumes it yet -- see the note below on how a run is processed.
-    "data":    dict(l3=PASS2_MUON_DATA_L3, gcd=PASS2_MUON_DATA_GCD,
-                    flags=[], kind="muon_bg", weight="data"),
-}
+def load_config(path=None):
+    """Read and validate the config -> the parsed dict, samples expanded."""
+    path = path or CONFIG_PATH
+    if not os.path.exists(path):
+        raise IOError(
+            "production config not found: %s\n"
+            "Set OSCNEXT_L4_CONFIG, or check out config/productions.json."
+            % path)
+    with open(path) as fh:
+        cfg = json.load(fh)
+
+    for key in ("productions", "bdt_roles"):
+        if key not in cfg:
+            raise KeyError("%s has no top-level %r" % (path, key))
+
+    for pname, prod in cfg["productions"].items():
+        for key in _PRODUCTION_REQUIRED:
+            if key not in prod:
+                raise KeyError("production %r has no %r (%s)"
+                               % (pname, key, path))
+        prod.setdefault("cleaned_pulses", None)
+        for sname, spec in list(prod["samples"].items()):
+            spec, runs = _expand_runs("%s.%s" % (pname, sname), spec)
+            if runs:
+                prod.setdefault("runs_by_year", {})[sname] = runs
+            missing = [k for k in _SAMPLE_REQUIRED if k not in spec]
+            if "l3" not in spec:
+                missing.append("l3 (or runs_by_year + l3_template)")
+            if missing:
+                raise KeyError("sample %s.%s has no %s (%s)"
+                               % (pname, sname, ", ".join(missing), path))
+            prod["samples"][sname] = spec
+    return cfg
+
+
+CONFIG = load_config()
+
+PRODUCTIONS = CONFIG["productions"]
 
 # What a noise-BDT run needs, stated as ROLES rather than as names: every
-# signal set, plus the noise background.  The muon background is the only thing
-# it can skip.
-#
-# This used to be the tuple ("nue", "numu", "noise"), which was written when
-# pass3 was the only production and pass3 has no NuTau set.  At pass2 NuTau
-# (160511) EXISTS and is signal -- the production's own L4_model_data.py
-# harvests 12xxxx, 14xxxx and 16xxxx alike -- so a name list silently dropped
-# it.  Roles do not have that failure mode: a production that adds a signal set
-# gets it, one that does not have it is unaffected.
-NOISE_BDT_ROLES = ("signal", "noise_bg")
-MUON_BDT_ROLES = ("signal", "muon_bg")
+# signal set, plus the noise background.  See config/README.md -- this used to
+# be a name list and it silently dropped pass2's NuTau.
+NOISE_BDT_ROLES = tuple(CONFIG["bdt_roles"]["noise"])
+MUON_BDT_ROLES = tuple(CONFIG["bdt_roles"]["muon"])
 
+# Names kept for the modules that already import them (oscnext_l4/pass2.py).
+PASS2_CLEANED_PULSES = PRODUCTIONS["pass2"]["cleaned_pulses"]
+PASS2_SAMPLES_ALL = PRODUCTIONS["pass2"]["samples"]
+PASS2_GCD = PRODUCTIONS["pass2"]["gcd"]
+PASS3_GCD = PRODUCTIONS["pass3"]["gcd"]
+PASS3_SAMPLES = PRODUCTIONS["pass3"]["samples"]
 
-PRODUCTIONS = {
-    "pass3": dict(gcd=PASS3_GCD, samples=PASS3_SAMPLES,
-                  cleaned_pulses=None,          # the code's own default
-                  noise_weight_unit="per_ns"),
-    "pass2": dict(gcd=PASS2_GCD, samples=PASS2_SAMPLES_ALL,
-                  cleaned_pulses=PASS2_CLEANED_PULSES,
-                  noise_weight_unit="hz"),
-}
+# The note's 18 detector-data runs, by year -- quoted and explained in
+# config/README.md.
+PASS2_MUON_DATA_RUNS_BY_YEAR = PRODUCTIONS["pass2"].get(
+    "runs_by_year", {}).get("data", {})
 
 
 def select(production, hdf_base, samples=None, roles=None, count_files=True):

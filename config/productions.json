@@ -1,0 +1,81 @@
+{
+  "__README__": "Every value here is explained in config/README.md. Read it before editing: several of these strings look arbitrary and are not.",
+
+  "bdt_roles": {
+    "noise": ["signal", "noise_bg"],
+    "muon":  ["signal", "muon_bg"]
+  },
+
+  "productions": {
+    "pass3": {
+      "gcd": "/cvmfs/icecube.opensciencegrid.org/data/GCD/GeoCalibDetectorStatus_IC86.All_Pass3.i3.gz",
+      "cleaned_pulses": null,
+      "noise_weight_unit": "per_ns",
+      "samples": {
+        "nue": {
+          "l3": "/data/ana/LE/oscNext/pass3/genie/level3/23800/*.i3.zst",
+          "flags": ["--mc", "--genie"], "kind": "signal", "weight": "genie"
+        },
+        "numu": {
+          "l3": "/data/ana/LE/oscNext/pass3/genie/level3/23799/*.i3.zst",
+          "flags": ["--mc", "--genie"], "kind": "signal", "weight": "genie"
+        },
+        "corsika": {
+          "l3": "/data/ana/LE/oscNext/pass3/corsika/level3/23694/*.i3.zst",
+          "flags": ["--corsika"], "kind": "muon_bg", "weight": "corsika"
+        },
+        "noise": {
+          "l3": "/data/ana/LE/oscNext/pass3/noise/level3/23813/*.i3.zst",
+          "flags": ["--noise"], "kind": "noise_bg", "weight": "noise"
+        }
+      }
+    },
+
+    "pass2": {
+      "gcd": "/data/ana/LE/oscNext/pass2/genie/level4/121122/GeoCalibDetectorStatus_AVG_55697-57531_PASS2_SPE_withScaledNoise.i3.gz",
+      "cleaned_pulses": "SRTTWOfflinePulsesDC",
+      "noise_weight_unit": "hz",
+      "samples": {
+        "nue": {
+          "l3": [
+            "/data/ana/LE/oscNext/pass2/genie/level3/121122/oscNext_genie_level3_v02.00_pass2.121122.*.i3.zst",
+            "/data/ana/LE/oscNext/pass2/genie/level3/121291/oscNext_genie_level3_v02.00_pass2.121291.*.i3.zst"
+          ],
+          "flags": ["--mc", "--genie"], "kind": "signal", "weight": "genie"
+        },
+        "numu": {
+          "l3": [
+            "/data/ana/LE/oscNext/pass2/genie/level3/141154/oscNext_genie_level3_v02.00_pass2.141154.*.i3.zst",
+            "/data/ana/LE/oscNext/pass2/genie/level3/141292/oscNext_genie_level3_v02.00_pass2.141292.*.i3.zst"
+          ],
+          "flags": ["--mc", "--genie"], "kind": "signal", "weight": "genie"
+        },
+        "noise": {
+          "l3": "/data/ana/LE/oscNext/pass2/noise/level3/888003/oscNext_noise_level3_v02.00_pass2.888003.*.i3.zst",
+          "flags": ["--noise"], "kind": "noise_bg", "weight": "noise"
+        },
+        "nutau": {
+          "l3": "/data/ana/LE/oscNext/pass2/genie/level3/160511/oscNext_genie_level3_v02.00_pass2.160511.*.i3.zst",
+          "flags": ["--mc", "--genie"], "kind": "signal", "weight": "genie"
+        },
+        "muongun": {
+          "l3": "/data/ana/LE/oscNext/pass2/muongun/level3/139008/oscNext_muongun_level3_v02.00_pass2.139008.*.i3.zst",
+          "flags": ["--mc", "--muongun"], "kind": "muon_bg", "weight": "muongun"
+        },
+        "data": {
+          "flags": [], "kind": "muon_bg", "weight": "data",
+          "runs_by_year": {
+            "2012": [120200, 120700, 121650],
+            "2013": [122650, 123250, 124650],
+            "2014": [125150, 125700, 126300],
+            "2015": [126850, 127400, 127850],
+            "2016": [128000, 128550, 129050],
+            "2017": [129650, 130150, 130700]
+          },
+          "l3_template":  "/data/ana/LE/oscNext/pass2/data/level3/IC86.{season:02d}/Run{run:08d}/oscNext_data_*_level3_*_Run{run:08d}_Subrun*.i3.zst",
+          "gcd_template": "/data/ana/LE/oscNext/pass2/data/level3/IC86.{season:02d}/Run{run:08d}/*_GCD.i3*"
+        }
+      }
+    }
+  }
+}
