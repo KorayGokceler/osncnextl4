@@ -155,7 +155,7 @@ class L4Classifier(icetray.I3ConditionalModule):
         self.skip_incomplete = self.GetParameter("SkipIfIncomplete")
 
         if not model_file or not self.output_key:
-            raise ValueError("ModelFile ve OutputKey zorunlu")
+            raise ValueError("ModelFile and OutputKey are required")
 
         self.booster, self.features, self.sidecar = load_model(model_file)
         self.n_missing = {f: 0 for f in self.features}

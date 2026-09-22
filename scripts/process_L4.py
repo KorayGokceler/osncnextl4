@@ -563,9 +563,9 @@ def main():
             out_part = _part_path(args.output_hdf5, ci)
             n_done_files += len(chunk)
 
-            # Tamamlanmis parcayi atla -> cokme sonrasi kaldigi yerden devam
+            # Skip a finished part -> a crashed run resumes where it stopped
             if os.path.exists(out_part) and not args.overwrite:
-                print("[%d/%d] atlandi (zaten var): %s"
+                print("[%d/%d] skipped (already there): %s"
                       % (ci + 1, n_chunks, os.path.basename(out_part)))
                 _emit("[CHUNK] %d/%d files=%d/%d booked=%d elapsed=%.1f"
                       % (ci + 1, n_chunks, n_done_files, len(infiles),
