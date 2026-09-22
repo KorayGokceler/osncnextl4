@@ -496,7 +496,7 @@ def main():
             tray.Add(ProgressReporter(args.progress, counter, time.time()),
                      "progress")
 
-        # Sadece fizik sub-event stream'ini isle
+        # Only the physics sub-event stream
         tray.Add(lambda f: f["I3EventHeader"].sub_event_stream == args.sub_event_stream,
                  "stream_filter",
                  Streams=[icetray.I3Frame.Physics])

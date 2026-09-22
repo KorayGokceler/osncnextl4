@@ -155,7 +155,7 @@ def load_lib(libname, required=False):
 # DeepCore DOM lists  --  when DeepCore_Filter is absent
 # ---------------------------------------------------------------------------
 #
-# DOMS.DOMS("IC86") her frame'de yeniden kurulmasin diye burada cache'lenir
+# Cached here so DOMS.DOMS("IC86") is not rebuilt on every frame
 # (it used to be called per event inside VICH -- pointless slowdown).
 
 _doms_cache = {}
