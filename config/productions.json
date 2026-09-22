@@ -13,7 +13,7 @@
   "productions": {
     "pass3": {
       "gcd": "/cvmfs/icecube.opensciencegrid.org/data/GCD/GeoCalibDetectorStatus_IC86.All_Pass3.i3.gz",
-      "cleaned_pulses": null,
+      "cleaned_pulses": "SRTTWSplitInIcePulsesDC",
       "noise_weight_unit": "per_ns",
       "samples": {
         "nue": {

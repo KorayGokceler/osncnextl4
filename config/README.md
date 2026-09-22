@@ -36,15 +36,27 @@ pass2.  Getting it wrong **scales every noise rate by 1e9**, and nothing
 checks it.  The only symptom is an absurd rate in the training, long after the
 cause.
 
-`select()` sets it as part of switching production, so there is no supported
-way to pick pass2 and forget.  Verified at pass3 by measurement: the noise
-rate came out at 41.4 mHz against Table 13's 36.6 mHz, agreement within 13%.
+The notebook calls `set_noise_weight_unit` in the same cell that picks the
+production, beside the thing it depends on, so picking pass2 and forgetting
+the unit is not an available mistake.  Verified at pass3 by measurement: the
+noise rate came out at 41.4 mHz against Table 13's 36.6 mHz, agreement within
+13%.
 
 ### 2. `cleaned_pulses`
 
-`null` means the code's own default, `SRTTWSplitInIcePulsesDC` (pass3).  pass2
-uses `SRTTWOfflinePulsesDC`.  The uncleaned series is `SplitInIcePulses` in
-**both**, which is why it is not configured here.
+`SRTTWSplitInIcePulsesDC` at pass3, `SRTTWOfflinePulsesDC` at pass2.  The
+uncleaned series is `SplitInIcePulses` in **both**, which is why it is not
+configured here.
+
+**Both are written out, and pass3's is not left `null`.**  It used to be:
+`null` meant "pass no `--cleaned-pulses` flag and let `process_L4.py`'s
+default win", and that default is `CLEANED_PULSES_DEFAULT` in
+`oscnext_l4/variables.py` — pass3's name, in a different file.  So the config
+claimed to be the one place that knows a per-production fact while deferring
+one of them to a Python constant.  Writing it out costs a flag on the command
+line that names the series it was already using, and makes the run
+self-describing.  Anything reading this field (`pass2.py` does) now gets a
+string for either production instead of `None` for one of them.
 
 Technical note sec. 3.2 (p.25) defines both outright, and the official
 project's `selection/globals.py` says the same.  **This single field is the
