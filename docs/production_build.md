@@ -35,7 +35,7 @@ around is there:
 
 So the build is self-contained: it could run L1 to L7 on its own.  Nothing was
 missing from it; the projects are missing from the MODERN metaproject, which is
-the whole reason for `oscnext_l4/rewritten/`.
+the whole reason for `oscnext_l4/rewritten.py`.
 
 ## 2. `oscNext_master.py` — the driver, live
 

@@ -70,8 +70,8 @@ scripts/process_L4.py  ──uses──►  oscnext_l4.variables (the oscNext_L4
    │                          ├─ noise vars: micro_count, fill_ratio
    │                          └─ hit_statistics: cog_z, z_sigma, z_travel, n_hit_doms
    │                                │
-   │                                ├─ oscnext_l4.rewritten.{first_hlc,dunkman,vich}
-   │                                └─ oscnext_l4.{geom,pulses,weighting,l3vars}
+   │                                ├─ oscnext_l4.rewritten  (first_hlc, dunkman, vich)
+   │                                └─ oscnext_l4.{frame_objects,l3vars}
    │
    ├─uses──►  oscnext_l4.booker (add_booker: hdfwriter if present, else SimpleBooker)
    │
@@ -95,22 +95,23 @@ Supporting files:
   same segments in the same order, and the small per-segment helpers left inline
   exactly as the original leaves them.  Everything else was moved out so that
   stays true:
-  - `oscnext_l4/rewritten/` — the pure-Python replacements for the three
-    icetray modules this meta-project lacks.  `first_hlc.py`
-    (`SimpleVertex FirstHLC<I3RecoPulse>`), `dunkman.py`
+  - `oscnext_l4/rewritten.py` — the pure-Python replacements for the three
+    icetray modules this meta-project lacks: `first_hlc`
+    (`SimpleVertex FirstHLC<I3RecoPulse>`), `dunkman`
     (`analysis CalculateVariables` -> accumulated_time, separation_in_cogs),
-    `vich.py` (`tau_bdt I3CutL7Module`).  Each is ONE `tray.AddModule` line in
+    `vich` (`tau_bdt I3CutL7Module`).  Each is ONE `tray.AddModule` line in
     the original.  **The evidence for each definition is in its docstring** --
     where it came from, which of the several implementations the production
     actually ran, and what the measurement was.  Read those before touching
-    anything here.
-  - `oscnext_l4/geom.py`, `pulses.py` — `calc_rho_36`, `iter_map`,
-    `get_pulses`.  The production takes these from
-    `oscNext/frame_objects/geom.py` and `pulses.py`; the layout here mirrors
-    that.
-  - `oscnext_l4/weighting.py` — `PropagateGenieInfo`.  The production does this
-    in `oscNext_master.py`, not in its L4 segment, which is why the original L4
-    script has no counterpart.
+    anything here.  (Three files in a package until they became three sections
+    of one file: they exist for one reason.)
+  - `oscnext_l4/frame_objects.py` — `calc_rho_36`, `iter_map`, `get_pulses`,
+    `PropagateGenieInfo`.  One file mirroring the production's whole
+    `oscNext/frame_objects/` directory, each section named after the file it
+    stands in for, so it still reads beside the original.  `PropagateGenieInfo`
+    is among them although the production runs it from `oscNext_master.py`
+    rather than from its L4 segment, which is why the original L4 script has no
+    counterpart to it.
   - `oscnext_l4/l3vars.py` — `FullTimeLengthRatio`.  An L3 variable
     (`oscNext_L3.py` writes it, and pass2's L3 map carries it); pass3's L3 map
     carries only the two components, so it is divided out at L4 instead.

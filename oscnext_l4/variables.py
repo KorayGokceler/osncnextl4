@@ -12,17 +12,17 @@ The production calls three projects a modern meta-project does not carry:
     tau_bdt        I3CutL7Module           -> the VICH variables
     analysis       CalculateVariables      -> the Dunkman variables
 
-Each is one `tray.AddModule` line there and a module under `rewritten/` here,
+Each is one `tray.AddModule` line there and a section of `rewritten.py` here,
 verified against the real pass2 L4 output.  The slc-veto QR box has no rewrite
 and stays optional (it is not a BDT input).
 
 Everything that is not a segment lives beside this file:
 
-    geom.py       calc_rho_36
-    pulses.py     iter_map, get_pulses
-    weighting.py  PropagateGenieInfo      (the production does this in its master script)
-    l3vars.py     FullTimeLengthRatio     (an L3 variable pass3's L3 does not store)
-    rewritten/    first_hlc.py, dunkman.py, vich.py
+    frame_objects.py  calc_rho_36, iter_map, get_pulses, PropagateGenieInfo
+                      -- our version of the production's frame_objects/, whose
+                      weighting it runs from its master script, not from L4
+    l3vars.py         FullTimeLengthRatio  (an L3 variable pass3's L3 does not store)
+    rewritten.py      first_hlc, dunkman, vich
 
 Reference: oscNext technical note v00.07, sections 3.4-3.6, Tables 11-12 --
 but where the note and the production disagree, the production wins; see the
@@ -36,13 +36,10 @@ from .env import (require_icetray, optional_project, require_project,
 # Helpers and rewrites live beside this file so that the segments below read
 # next to the original script.  Importing them here also keeps them module
 # attributes, so `from oscnext_l4.variables import _vich` still works.
-from .geom import calc_rho_36
-from .pulses import iter_map, get_pulses
-from .weighting import PropagateGenieInfo, L4_NFLUX_KEY
+from .frame_objects import calc_rho_36, iter_map, get_pulses
+from .frame_objects import PropagateGenieInfo, L4_NFLUX_KEY
 from .l3vars import _full_time_length_ratio, L4_FTLR_KEY
-from .rewritten.first_hlc import _first_hlc
-from .rewritten.dunkman import _accumulated_time, _separation_in_cogs
-from .rewritten.vich import _vich
+from .rewritten import _first_hlc, _accumulated_time, _separation_in_cogs, _vich
 
 require_icetray()
 from icecube import dataclasses, icetray

@@ -7,5 +7,5 @@ IceTray at module level: `env` reports why an import failed instead of
 letting a missing project take the whole repository down.
 '''
 
-__all__ = ["env", "variables", "booker", "data", "runner", "classifier",
-           "filescan"]
+__all__ = ["env", "variables", "frame_objects", "rewritten", "l3vars",
+           "booker", "data", "varmap", "runner", "classifier", "filescan"]

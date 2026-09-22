@@ -11,7 +11,7 @@ value: identical over 8144 events.
 import numpy as np
 
 from .env import require_icetray
-from .pulses import iter_map, get_pulses
+from .frame_objects import iter_map, get_pulses
 
 require_icetray()
 from icecube import dataclasses, icetray

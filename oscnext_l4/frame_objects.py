@@ -1,18 +1,99 @@
-'''
-Weight bookkeeping carried through the L4 tray.
+"""
+Our counterparts of the production's `oscNext/python/frame_objects/`.
 
-The counterpart of the production's `oscNext/python/frame_objects/weighting.py`
--- except that the production reads `NEvents * gen_ratio` where this reads
-`I3GenieInfo`, a deviation recorded as open risk 4 in CLAUDE.md.
+This meta-project has no `icecube.oscNext`, so the handful of frame-level
+helpers the L4 tray needs are rewritten here.  One file mirrors their whole
+directory, and each section below is named after the file it stands in for --
+so it can still be read beside the original, which is the point.
 
-The production does this in `oscNext_master.py`, not in its L4 segment, which
-is why the original L4 script has no counterpart to it.
-'''
+    geom.py       -> calc_rho_36
+    pulses.py     -> iter_map, get_pulses
+    weighting.py  -> PropagateGenieInfo
+
+NOTE ON ICETRAY: `calc_rho_36` used to live in a module that imported nothing
+but numpy, so it could be called without icetray.  Nothing did -- its only
+caller is the tray segment in variables.py -- and merging costs that
+theoretical freedom.  If it is ever wanted back it is one function to lift out.
+"""
+
+import numpy as np
 
 from .env import require_icetray
 
 require_icetray()
-from icecube import dataclasses, icetray
+from icecube import dataclasses, icetray      # noqa: E402  -- after require_icetray
+
+
+# -------------------------------------------------------------------------
+# geom -- detector geometry
+# oscNext/python/frame_objects/geom.py
+# -------------------------------------------------------------------------
+
+# Position of string 36 (the DeepCore centre) -- the reference point of rho_36.
+STRING36_X = 46.29
+STRING36_Y = -34.88
+
+
+def calc_rho_36(x, y):
+    '''
+    Horizontal radial distance from string 36 (the DeepCore centre).
+
+    VERBATIM from the official project, oscNext/frame_objects/geom.py:
+
+        return np.sqrt( (x-46.29) ** 2 + (y+34.88) ** 2 )
+
+    The constants were already right; the SQUARE ROOT was not.  We used
+    np.hypot, which is a different algorithm (it rescales to avoid overflow)
+    and disagrees with the naive form in the last bit.  Measured against pass2:
+    our rho matched bitwise in 80.6% of 8144 events and to 1e-6 in 99.85% --
+    the gap was this, not a different definition.  Using their form makes it
+    exact.
+    '''
+    return float(np.sqrt((x - STRING36_X) ** 2 + (y - STRING36_Y) ** 2))
+
+# -------------------------------------------------------------------------
+# pulses -- pulse-series helpers
+# oscNext/python/frame_objects/pulses.py
+# -------------------------------------------------------------------------
+
+# A pulse belongs to a local-coincidence (HLC) hit when this flag is set.
+_LC_FLAG = dataclasses.I3RecoPulse.PulseFlags.LC
+
+
+def iter_map(pulse_map):
+    '''
+    Iterate over (omkey, pulses) pairs.
+
+    CAREFUL: depending on the IceTray version, iterating an
+    I3RecoPulseSeriesMap directly may yield KEYS rather than pairs.  Then
+    "for omkey, pulses in pmap" fails with "too many values to unpack
+    (expected 2)", because an OMKey unpacks into three components
+    (string, om, pmt).  .items() is correct in every version.
+    '''
+    if pulse_map is None:
+        return []
+    try:
+        return pulse_map.items()
+    except AttributeError:
+        return iter(pulse_map)
+
+
+def get_pulses(frame, key):
+    '''Get the pulse series; apply it to the frame when it is a mask/union.'''
+    if key not in frame:
+        return None
+    obj = frame[key]
+    if hasattr(obj, "apply"):
+        try:
+            return obj.apply(frame)
+        except Exception:
+            return None
+    return obj
+
+# -------------------------------------------------------------------------
+# weighting -- weight bookkeeping carried through the tray
+# oscNext/python/frame_objects/weighting.py
+# -------------------------------------------------------------------------
 
 L4_NFLUX_KEY = "L4_n_flux_events"   # carried from I3GenieInfo into the P frame
 
