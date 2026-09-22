@@ -47,11 +47,10 @@ I3Tray = get_I3Tray()
 #   sim_services   -> I3MCPEShifter and the like
 load_deserialization_libs()
 
-from oscnext_l4.booker import add_booker
 # validate_files was USED at the --scan step but never imported, so the default
 # --scan quick died with NameError on every CLI run.  It went unnoticed because
 # the notebook path (run_process_parallel) passes --scan off.
-from oscnext_l4.filescan import validate_files
+from oscnext_l4.tray_io import add_booker, validate_files
 from oscnext_l4.variables import (
     oscNext_L4, L4_HDF5_KEYS, HITSTAT_KEY, HITMULT_KEY,
     UNCLEANED_PULSES_DEFAULT, CLEANED_PULSES_DEFAULT,

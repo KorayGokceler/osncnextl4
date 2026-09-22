@@ -30,7 +30,7 @@ import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
-from oscnext_l4.filescan import validate_files
+from oscnext_l4.tray_io import validate_files
 
 
 def main():

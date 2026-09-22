@@ -29,8 +29,8 @@ The IceTray meta-project in use (`py3-v4.4.2`) does **not** have:
 
 - The `icecube.oscNext` project at all → `I3Classifier` (model application),
   `oscNext_cut` and `calc_rho_36` are unavailable.
-- `icecube.hdfwriter` was thought to be missing, so `oscnext_l4/booker.py`
-  carried a 250-line pytables fallback (`SimpleBooker`).  **hdfwriter IS
+- `icecube.hdfwriter` was thought to be missing, so the booker carried a
+  250-line pytables fallback (`SimpleBooker`).  **hdfwriter IS
   there** -- the environment in use is PURE CVMFS, `icetray/v1.17.0` under
   `py3-v4.4.2/RHEL_9_x86_64_v2` -- and every measurement in this file, the
   pass2 cross-check included, was produced through it.  The fallback was
@@ -40,12 +40,27 @@ The IceTray meta-project in use (`py3-v4.4.2`) does **not** have:
   like one.
   **hdfwriter is DEPRECATED in v1.17.0:** importing it warns *"icecube.hdfwriter
   is deprecated and will be removed in a future release.  Use icecube.tableio
-  instead."*  That is the real forward risk, and `SimpleBooker` was never
-  insurance against it for the same reason: `data._index_node()` and
-  `pass2.match()` both depend on the `/__I3Index__/<key>` tables hdfwriter
-  writes, so a metaproject upgrade that drops it breaks booking and event
-  matching together.  The migration to tableio has to keep the index, and
-  `booker.add_booker` is the one place it changes.
+  instead."*  **That warning reads like more than it is, and an earlier version
+  of this file took it at face value.**  `tableio` and `hdfwriter` are LAYERS,
+  not rivals: tableio is the generic engine (frames -> rows through the
+  per-type converters) and knows nothing about HDF5, while the HDF5 back end
+  `I3HDFTableService` lives INSIDE hdfwriter.  The production's own booking
+  code imports exactly that way
+  (`icetray-oscNext/.../tools/processor.py`: `from icecube.tableio import
+  I3TableWriter` + `from icecube.hdfwriter import I3HDFTableService`), and our
+  own history confirms the `I3HDFWriter` segment is only a wrapper -- a run
+  that called it died with *"I3TableWriter died mid-run"*
+  (`docs/pass2_verification.md`).  So migrating means dropping the convenience
+  segment for the writer plus that service; it does **not** reduce the
+  dependency on hdfwriter and is **not** protection against hdfwriter being
+  removed.  Worth doing to match the production's code, not as a fix for the
+  warning.  What IS a real forward risk is hdfwriter going entirely:
+  `data._index_node()` and `pass2.match()` both depend on the
+  `/__I3Index__/<key>` tables it writes, so that would break booking and event
+  matching together.  `tray_io.add_booker` is the one place any of this
+  changes.  (Unmeasured: whether the warning fires on the package import or on
+  the segment -- `python -W error::DeprecationWarning -c "from
+  icecube.hdfwriter import I3HDFTableService"` settles it.)
 - The old project dependencies: `tau_bdt.I3CutL7Module` (VICH),
   `analysis.event_selection` (the Dunkman variables: accumulated_time,
   separation_in_cogs), `slc-veto` (QR box, optional).
@@ -78,7 +93,7 @@ scripts/process_L4.py  ──uses──►  oscnext_l4.variables (the oscNext_L4
    │                                ├─ oscnext_l4.rewritten  (first_hlc, dunkman, vich)
    │                                └─ oscnext_l4.{frame_objects,l3vars}
    │
-   ├─uses──►  oscnext_l4.booker (add_booker -> hdfwriter.I3HDFWriter)
+   ├─uses──►  oscnext_l4.tray_io (validate_files in, add_booker out)
    │
    ▼
 .hdf5  (L4_output/hdf5/<sample>/L4_*.hdf5)
@@ -136,6 +151,16 @@ Supporting files:
   reachable only from a branch that assumed icetray was missing.)
 - `setup_env.sh` — find the environment / open a shell / run one command /
   register a Jupyter kernel.
+- `oscnext_l4/tray_io.py` — the tray's two file ends, neither of which
+  computes anything: `validate_files` (the pre-flight check -- `I3Reader`
+  takes the whole file list at once, so ONE truncated file kills the run) and
+  `add_booker` (the HDF5 writer, which is a function rather than four lines in
+  each caller because whatever it becomes must keep writing
+  `/__I3Index__/<key>`, the only reliable way to match a table to its events).
+  Its docstring is also where the hdfwriter/tableio question is settled: they
+  are LAYERS, not rivals -- `tableio` is the generic engine and the HDF5 back
+  end `I3HDFTableService` lives inside hdfwriter -- so migrating does NOT
+  reduce the dependency on hdfwriter.
 - `scripts/scan_files.py` — find corrupt `.i3.zst` files, write a healthy list.
 - `oscnext_l4/runner.py` — the `process_L4.py` driver plus a live progress bar.
 - `oscnext_l4/data.py` — `dump_tables`, `check_registry`,

@@ -23,10 +23,10 @@ scripts/process_L4.py          driver: builds the tray, runs it, books
    │   │      ├─ noise vars  micro_count, fill_ratio
    │   │      └─ hit_stats   cog_z, z_sigma, z_travel, n_hit_doms
    │   │
-   │   ├─ oscnext_l4.filescan  the pre-scan for corrupt input
-   │   │
-   │   └─ oscnext_l4.booker    add_booker -> hdfwriter.I3HDFWriter, which also
-   │                           writes the /__I3Index__/ tables matching needs
+   │   └─ oscnext_l4.tray_io   the tray's two file ends:
+   │                           validate_files -- the pre-scan for corrupt input
+   │                           add_booker     -> hdfwriter.I3HDFWriter, which
+   │                           also writes the /__I3Index__/ tables matching needs
    ▼
 L4_output/hdf5/<sample>/L4_*.hdf5   + <output>.meta.json
 ```

@@ -15,8 +15,7 @@ Relevant sections: 3.4 (DeepCore Filter), 3.5.1 (L3 variables, Tables 7-8),
 turns every key into **its own HDF5 table**.  The table name is the frame key.
 Every table carries the shared index `Run`, `Event`, `SubEvent`.
 
-How a frame object becomes columns (`oscnext_l4.booker.extract_scalars`;
-hdfwriter produces the same schema):
+How a frame object becomes columns (hdfwriter's per-type converters):
 
 | Frame type | in HDF5 |
 |---|---|

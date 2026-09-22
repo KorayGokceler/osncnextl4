@@ -195,7 +195,7 @@ def cmd_book(args):
     answer key, so it must be read out untouched.
     """
     icetray, dataio, dataclasses, I3Tray = _icetray()
-    from oscnext_l4.booker import add_booker
+    from oscnext_l4.tray_io import add_booker
 
     # hdfwriter's converters for I3HitStatisticsValues / I3HitMultiplicityValues
     # come from common_variables and are registered when that project is

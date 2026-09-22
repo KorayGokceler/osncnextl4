@@ -70,7 +70,7 @@ if not hdfw:
     print("\n  -> hdfwriter is NOT here, and booking has no fallback.")
     print("     It is also what writes /__I3Index__/<key>, which is the only")
     print("     reliable way to match a table to its events -- so this breaks")
-    print("     booking AND the pass2 cross-check.  See oscnext_l4/booker.py.")
+    print("     booking AND the pass2 cross-check.  See oscnext_l4/tray_io.py.")
 elif tableio:
     print("\n  -> hdfwriter is present but DEPRECATED (v1.17.0 warns on import).")
     print("     tableio is the successor; migrating means keeping /__I3Index__/.")
