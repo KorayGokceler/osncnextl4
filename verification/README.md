@@ -460,21 +460,27 @@ only known gap, and it is not reproducible in principle.
 ## 12. A note on the tooling
 
 `oscnext_l4/fit_pass2.py` and the `fit` / `fit-report` subcommands of
-`scripts/compare_pass2.py` were **temporary scaffolding**: they existed to find
+`compare_pass2.py` were **temporary scaffolding**: they existed to find
 definitions, nothing in the production path imported them, and they were deleted
 once the findings were in `variables.py` and in `CLAUDE.md`.
-`scripts/run_crosscheck.py` went with them — `notebooks/pass2_verification.ipynb`
+`scripts/run_crosscheck.py` went with them — `pass2_verification.ipynb`
 does the same job and pools events across files, which the script could not.
 
 Removing them lost nothing, because everything they established is written down
 here and in the docstrings.  If a definition ever has to be fitted again — a
 pass3 variable that does not reproduce, `separation_in_cogs`, a new L4 variable
-— the machine is one command away:
+— the machine is one command away.  **The paths on the LEFT are where those
+files lived in that tag, and they have not moved there; the paths on the right
+are where they go today**, now that the cross-check lives in `verification/`:
 
 ```
-git show pass2-verified-v1:oscnext_l4/fit_pass2.py   > oscnext_l4/fit_pass2.py
-git show pass2-verified-v1:scripts/compare_pass2.py  > scripts/compare_pass2.py
+git show pass2-verified-v1:oscnext_l4/fit_pass2.py   > verification/fit_pass2.py
+git show pass2-verified-v1:scripts/compare_pass2.py  > verification/compare_pass2.py
 ```
+
+(The second one would overwrite the current `compare_pass2.py`; take the `fit`
+subcommands out of it rather than replacing the file wholesale, since it has
+moved on since that tag.)
 
 It is worth recovering rather than rewriting: it carries the
 variant/inversion/grid-scan method that found VICH, and the `production_tie_*`

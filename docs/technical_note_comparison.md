@@ -186,7 +186,7 @@ not fully correlated and the BDT extracts information from both.
 the cleaned pulse series."*  Our code: `fraction=0.75`,
 `pulses_key=cleaned_pulses`.  The fraction and the series were already
 verified.  **The rest is now settled against pass2** (8144 events, both values
-in the same frame -- `docs/pass2_verification.md` §7):
+in the same frame -- `verification/README.md` §7):
 
 | rule | agreement | median diff |
 |---|---|---|
@@ -231,7 +231,7 @@ of triggered DOMs in the Veto Region that can be caused by muons"* -- no
 window, no region, no reference point.  So nothing about our VICH is verified
 by the note, and the pass2 cross-check agrees: five hypotheses have been
 retired by measurement, all landing at ~12% agreement with the median
-difference pinned at 2 DOMs (`docs/pass2_verification.md` §8).
+difference pinned at 2 DOMs (`verification/README.md` §8).
 
 > The note also says outright (p.60, line 880) that *"some algorithms used
 > throughout their event selection may use differing definitions of what

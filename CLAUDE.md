@@ -50,7 +50,7 @@ The IceTray meta-project in use (`py3-v4.4.2`) does **not** have:
   I3TableWriter` + `from icecube.hdfwriter import I3HDFTableService`), and our
   own history confirms the `I3HDFWriter` segment is only a wrapper -- a run
   that called it died with *"I3TableWriter died mid-run"*
-  (`docs/pass2_verification.md`).  So migrating means dropping the convenience
+  (`verification/README.md`).  So migrating means dropping the convenience
   segment for the writer plus that service; it does **not** reduce the
   dependency on hdfwriter and is **not** protection against hdfwriter being
   removed.  Worth doing to match the production's code, not as a fix for the
@@ -204,7 +204,21 @@ Supporting files:
 - `docs/pipeline.md` — which file runs when.
 - `docs/technical_note_comparison.md` — exactly what we write to HDF5, compared
   line by line with the technical note (Tables 7/10/11/12/13).
-- `docs/pass2_verification.md` — the step-by-step record of checking the
+- `verification/` — **the pass2 cross-check, and NOT part of the pipeline.**
+  It runs the pipeline over the pass2 L3 files and holds the result against
+  the real pass2 L4 files, which already contain every variable; that is what
+  established "14 of 15 rows bitwise identical".  A CONSUMER of `oscnext_l4/`,
+  like `scripts/` and `notebooks/` are -- nothing in the pipeline imports it,
+  and the dependency runs one way.  `pass2.py` (the comparison machinery:
+  the key table, `match()`, the verdicts), `compare_pass2.py` (the CLI:
+  `inspect` / `plan` / `book` / `report`), `pass2_verification.ipynb` (which
+  carries its own parallel loop -- see the two constraints below), `README.md`
+  (the record).  **Delete this arm LAST:** a simplification that silently
+  breaks a variable is caught here and nowhere else.
+  One deliberate coupling: `pass2.py` reads `oscnext_l4.data`'s private HDF5
+  layout helpers (`_table_nodes`, `_index_node`, `_ids`), because the
+  cross-check must read a file exactly as loading does.
+- `verification/README.md` — the step-by-step record of checking the
   rewritten variables against the official pass2 production, from the first
   run to 14 of 15 rows bitwise identical: what each step established, the bugs
   it exposed on both sides, how `VICH` and `accumulated_time` were solved, and
@@ -1137,8 +1151,8 @@ The rewritten variables are validated against the real pass2 L4 files: our own
 L4 production is run over the pass2 **L3** files and compared, event by event,
 with the pass2 **L4** files, which already contain every variable.  The "ours"
 side is an ordinary `process_L4.py` output, so the same HDF5 is also the
-training input for a pass2-trained model.  `scripts/compare_pass2.py`
-(`inspect` / `plan` / `book` / `report`) and `oscnext_l4/pass2.py`.
+training input for a pass2-trained model.  `verification/compare_pass2.py`
+(`inspect` / `plan` / `book` / `report`) and `verification/pass2.py`.
 
 **The whole delta between a pass3 run and a pass2 run is ONE FLAG:**
 
@@ -1275,7 +1289,7 @@ their docstrings, and the measurements are in open risks 1, 2, 2a and 2b here
 nothing: everything they established is written down.
 
 `scripts/run_crosscheck.py` went with them.  It drove the cross-check from the
-command line before `notebooks/pass2_verification.ipynb` existed; the notebook
+command line before `verification/pass2_verification.ipynb` existed; the notebook
 does the same job and pools the events across files, which the script could
 not.
 
@@ -1283,8 +1297,11 @@ not.
 not reproduce, `separation_in_cogs`, a new L4 variable -- the machine is one
 command away:
 
-    git show pass2-verified-v1:oscnext_l4/fit_pass2.py > oscnext_l4/fit_pass2.py
-    git show pass2-verified-v1:scripts/compare_pass2.py > scripts/compare_pass2.py
+    git show pass2-verified-v1:oscnext_l4/fit_pass2.py > verification/fit_pass2.py
+    git show pass2-verified-v1:scripts/compare_pass2.py > verification/compare_pass2.py
+
+(the paths after the tag are where those files lived THEN, and must stay; the
+cross-check has since moved to `verification/`)
 
 It is worth recovering rather than rewriting: it carries the variant/inversion/
 grid-scan method that found VICH, and the `production_tie_*` variants that
@@ -1298,7 +1315,7 @@ measured the accumulated_time residual.
    when it sees a repeated triple instead of producing a plausible-looking
    disagreement table that is really an event-mixing artefact.
    **This is why the cross-check cannot use `runner.run_process_parallel`**,
-   and why `notebooks/pass2_verification.ipynb` carries its own parallel loop.
+   and why `verification/pass2_verification.ipynb` carries its own parallel loop.
    That runner chunks several L3 files into one part AND names its output by
    job/part index (`L4_nue_job0_part000.hdf5`), so even at `chunk_files=1` the
    file could not be paired with the right L4 partner.  The verification names

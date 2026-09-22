@@ -90,7 +90,7 @@ def validate_files(paths, n_frames=25, verbose=True):
 # on hdfwriter, and it is not protection against hdfwriter being removed.  (Our
 # own history confirms the segment is a wrapper: a booking run that called
 # I3HDFWriter died with "I3TableWriter died mid-run", see
-# docs/pass2_verification.md.)  Worth doing to match the production's code, not
+# verification/README.md.)  Worth doing to match the production's code, not
 # as a fix for the warning; unmeasured which of the two the warning fires on.
 #
 #     THERE USED TO BE A FALLBACK HERE, AND IT WOULD NOT HAVE WORKED.

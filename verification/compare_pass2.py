@@ -6,7 +6,7 @@ Cross-check our L4 production against the real pass2 L4 files.
     pass2 L4  --(this script, `book`)---------->  pass2.hdf5
     `report`  --> per-variable agreement
 
-See oscnext_l4/pass2.py for what is compared and why, and for the two things
+See verification/pass2.py for what is compared and why, and for the two things
 that have to be right before any of it means anything (the pass2 cleaned pulse
 series name, and one L3 file per HDF5 so events can be matched).
 
@@ -31,7 +31,7 @@ import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from oscnext_l4 import pass2 as P
+from verification import pass2 as P
 
 
 # ---------------------------------------------------------------------------
@@ -172,12 +172,12 @@ def cmd_plan(args):
               "    --cleaned-pulses %s \\\n"
               "    --output-hdf5 %s/ours_%s.hdf5 %s"
               % (args.gcd, l3, args.cleaned_pulses, args.outdir, tag, flags))
-        print("python scripts/compare_pass2.py book --gcd %s \\\n"
+        print("python verification/compare_pass2.py book --gcd %s \\\n"
               "    --input %s \\\n"
               "    --cleaned-pulses %s \\\n"
               "    --output-hdf5 %s/pass2_%s.hdf5"
               % (args.gcd, l4, args.cleaned_pulses, args.outdir, tag))
-        print("python scripts/compare_pass2.py report \\\n"
+        print("python verification/compare_pass2.py report \\\n"
               "    --ours %s/ours_%s.hdf5 --pass2 %s/pass2_%s.hdf5 \\\n"
               "    --cleaned-pulses %s"
               % (args.outdir, tag, args.outdir, tag, args.cleaned_pulses))

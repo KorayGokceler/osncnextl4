@@ -14,7 +14,7 @@ build is what produced the numbers we are trying to reproduce.
              oscNext/
 
 > STATUS: being written.  Sections marked PENDING have not been read yet.
-> `docs/pass2_verification.md` already covers what the L4 VARIABLES do and how
+> `verification/README.md` already covers what the L4 VARIABLES do and how
 > they were verified; this document is about the WORKFLOW around them.
 
 ---

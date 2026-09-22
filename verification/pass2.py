@@ -67,11 +67,11 @@ USAGE
         --output-hdf5 ours.hdf5 --mc --genie
 
     # side B -- the answer key
-    python scripts/compare_pass2.py book --gcd GCD.i3.gz \
+    python verification/compare_pass2.py book --gcd GCD.i3.gz \
         --input pass2_L4_file.i3.zst --output-hdf5 pass2.hdf5
 
     # the comparison
-    python scripts/compare_pass2.py report --ours ours.hdf5 --pass2 pass2.hdf5
+    python verification/compare_pass2.py report --ours ours.hdf5 --pass2 pass2.hdf5
 """
 
 import os
@@ -275,7 +275,10 @@ def read_pairs(h5path, pairs):
     bug, CLAUDE.md "Booking/read audit" items 1 and 2.
     """
     import tables
-    from .data import _table_nodes, _index_node, _ids
+    # Private on purpose: these three ARE the knowledge of what hdfwriter
+    # writes, and the cross-check has to read a file exactly as loading does.
+    # See verification/__init__.py.
+    from oscnext_l4.data import _table_nodes, _index_node, _ids
 
     out, missing = {}, []
     with tables.open_file(h5path, "r") as h5:

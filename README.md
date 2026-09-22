@@ -13,14 +13,30 @@ The method is the note's own: LightGBM with the Table 10 hyperparameters.
 ## Layout
 
 ```
-oscnext_l4/     the library      env, variables, booker, data, runner,
-                                 classifier, filescan
+oscnext_l4/     the library
+                  tray side      variables, rewritten, frame_objects, l3vars,
+                                 tray_io, env       (need icetray)
+                  analysis side  data              (needs pytables/numpy)
+                  both sides     varmap            (stdlib only)
+                  and            runner (drives process_L4 as a subprocess),
+                                 classifier (applies the model back to frames)
+config/         productions.json, variables.json + README.md -- PURE DATA.
+                The two facts that fail SILENTLY when wrong live here.
 scripts/        entry points     process_L4, train_L4_classifier,
-                                 scan_files, diagnose_env
+                                 scan_files, diagnose_env, plot_inputs,
+                                 check_leakage, inspect_production_table
 notebooks/      oscNext_L4.ipynb -- the interface, sections 0-10
-docs/           pipeline.md, technical_note_comparison.md
+verification/   the pass2 cross-check -- NOT part of the pipeline.  Runs it
+                over the pass2 L3 files and holds the result against the real
+                pass2 L4 files.  Delete this arm LAST; it is the safety net.
+docs/           pipeline.md, technical_note_comparison.md, production_build.md
+presentation/   figures and the weekly updates
 reference/      the technical note and first-hand source material
 ```
+
+The library splits by what a module must IMPORT, not by what it does: the tray
+side and the analysis side never import each other.  They meet at two places
+only -- the HDF5 file (the data) and `config/variables.json` (the naming).
 
 ## Setup
 

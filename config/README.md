@@ -214,7 +214,7 @@ what "this is data" means to `process_L4.build_key_list`, which is why
 ## What differs between the two productions
 
 Verified against real files and the technical note; the full account is in
-`docs/pass2_verification.md`.
+`verification/README.md`.
 
 | | pass3 | pass2 |
 |---|---|---|
@@ -237,7 +237,7 @@ settles it.  See CLAUDE.md, "Running on pass2".
 export OSCNEXT_L4_CONFIG=/path/to/my_productions.json
 ```
 
-Section 1 of the notebook reads that instead, and `oscnext_l4/pass2.py` with
+Section 1 of the notebook reads that instead, and `verification/pass2.py` with
 it.  The file must have the same shape.
 
 There is no `select()` and no `productions.py` any more: the notebook does the
