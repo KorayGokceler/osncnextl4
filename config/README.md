@@ -1,7 +1,8 @@
 # `productions.json` — what every field means, and which ones bite
 
-This file is the one place that knows a per-production fact.  `select()` in
-`oscnext_l4/productions.py` reads it and returns `(GCD, SAMPLES)`; everything
+This file is the one place that knows a per-production fact.  It is **pure
+data**: reading it is `json.load()` and nothing else, and section 1 of the
+notebook builds `(GCD, SAMPLES)` from it in about twenty lines.  Everything
 downstream — booking, the registry check, loading, weights, datasets,
 training — is production-independent and needs no change.
 
@@ -69,7 +70,7 @@ Per sample:
 | `kind` | the ROLE: `signal` / `noise_bg` / `muon_bg` |
 | `weight` | the weighting SCHEME (above) |
 | `gcd` | *optional*, a list parallel to `l3` — one GCD per pattern |
-| `runs_by_year` + `l3_template` + `gcd_template` | *optional*, expand to `l3` and `gcd` (below) |
+| `__…__` | ignored by every reader; a place to leave a note in a format with no comments |
 
 ### `kind` is a role, and roles are why one notebook serves both
 
@@ -98,12 +99,17 @@ Detector data is the production's actual muon background (note sec. 3.6.3).
 It is the only sample with `runs_by_year` and templates rather than a literal
 `l3`, and the only one with a per-pattern `gcd`.
 
-### Why templates instead of 18 written-out paths
+### The 18 paths are written out, and that is on purpose
 
-The run numbers would otherwise appear twice — once in each of the L3 and GCD
-lists — and could drift apart.  The loader substitutes `{run:08d}` and
-`{season:02d}`, where **season = year − 2000** (`IC86.12` holds the runs taken
-in 2012).  That is one defined substitution, not a template language.
+They were templated once, with `{run:08d}` and `{season:02d}` expanded by a
+loader.  Writing them out is what lets this file be PURE DATA — reading it is
+`json.load()` and nothing else, with no module in between.
+
+The cost is that the run numbers appear in both the `l3` and the `gcd` list
+and could in principle drift apart.  That failure is LOUD, not silent:
+`runner.run_gcd_pairs` refuses a sample whose two lists differ in length, and
+a run whose GCD pattern matches nothing is skipped by name with the directory
+listing printed beside it.  Edit the two together.
 
 ### The 18 runs are the note's, not ours
 
@@ -208,6 +214,11 @@ settles it.  See CLAUDE.md, "Running on pass2".
 export OSCNEXT_L4_CONFIG=/path/to/my_productions.json
 ```
 
-`select()` reads that instead.  The file must have the same shape; the loader
-validates the fields it needs and names what is missing rather than failing
-later with a KeyError.
+Section 1 of the notebook reads that instead, and `oscnext_l4/pass2.py` with
+it.  The file must have the same shape.
+
+There is no `select()` and no `productions.py` any more: the notebook does the
+twenty lines of filtering and path-building itself, in the same cell as the
+production switch.  That cell is also where `set_noise_weight_unit` is
+called — beside the thing it depends on, so selecting pass2 and forgetting the
+unit is not an available mistake.

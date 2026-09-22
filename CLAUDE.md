@@ -123,7 +123,8 @@ Supporting files:
 - `oscnext_l4/data.py` — `REGISTRY`/`ALTS`, `dump_tables`, `check_registry`,
   `check_feature_map`, `load_sample`, `add_weights`,
   `set_noise_weight_unit`.
-- `oscnext_l4/productions.py` — **which production the notebook is pointed at,
+- `config/productions.json` + `config/README.md` — **which production the
+  notebook is pointed at,
   and the ONE place that knows a per-production fact.**  Every sample declares
   `kind` (its ROLE: signal / noise_bg / muon_bg) and `weight` (its weighting
   SCHEME: genie / noise / corsika / muongun).  Everything downstream keys on

@@ -1200,7 +1200,7 @@ def muongun_weight(d):
     return np.zeros(len(d["Run"]), dtype=np.float64)
 
 
-# Keyed by WEIGHT SCHEME, not by sample name -- see productions.py.  A sample
+# Keyed by WEIGHT SCHEME, not by sample name -- see config/README.md.  A sample
 # called "corsika" at pass3 and "muongun" at pass2 is the same ROLE with two
 # formulas, and nothing here should have to know the names.
 WEIGHTERS = {"genie": genie_weight, "noise": noise_weight,
@@ -1219,7 +1219,7 @@ def add_weights(data, SAMPLES=None, weighters=None):
     against Table 13.
 
     The weighter is chosen by the sample's WEIGHT SCHEME (`SAMPLES[name]
-    ["weight"]`, see productions.py), not by its name.  That is what lets the
+    ["weight"]`, see config/README.md), not by its name.  That is what lets the
     same call serve pass2 and pass3: "which formula" is a fact the production
     table declares, and the names differ between productions while the schemes
     do not.  Without SAMPLES the name is tried as a scheme, which still works
@@ -1236,7 +1236,7 @@ def add_weights(data, SAMPLES=None, weighters=None):
         if fn is None:
             print("  [!] no weighting function for scheme %r -> w_phys = NaN"
                   % scheme)
-            print("      Give this sample a `weight=` in productions.py; the "
+            print("      Give this sample a `weight` in config/productions.json; "
                   "known schemes are %s." % ", ".join(sorted(weighters)))
             d["w_phys"] = np.full(len(d["Run"]), np.nan)
             continue

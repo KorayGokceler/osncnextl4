@@ -74,6 +74,9 @@ USAGE
     python scripts/compare_pass2.py report --ours ours.hdf5 --pass2 pass2.hdf5
 """
 
+import os
+import json
+
 import numpy as np
 
 
@@ -85,12 +88,24 @@ import numpy as np
 # names both explicitly.  The uncleaned series is the same string as pass3's,
 # so only the cleaned one is really a "pass2" constant.
 # The pass2 facts -- which datasets, which flags, which pulse series -- live in
-# ONE place, `oscnext_l4/productions.py`, because they are the same facts the
-# notebook's production switch needs.  They used to be written out here as well,
-# and the cost showed: correcting the NuTau dataset number from 160519 to
-# 160511 had to be done in both files, and a miss would have left one of them
-# globbing to nothing without raising.
-from .productions import PASS2_CLEANED_PULSES, PASS2_SAMPLES_ALL  # noqa: F401
+# ONE place, `config/productions.json`, because they are the same facts the
+# notebook's production switch needs.  They used to be written out here as
+# well, and the cost showed: correcting the NuTau dataset number from 160519
+# to 160511 had to be done in both files, and a miss would have left one of
+# them globbing to nothing without raising.
+#
+# The config is pure data, so reading it is json.load() and nothing else --
+# there is no module in between to import.  Every value is explained in
+# config/README.md.
+_CONFIG_PATH = os.environ.get("OSCNEXT_L4_CONFIG") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "config", "productions.json")
+
+with open(_CONFIG_PATH) as _fh:
+    _PASS2 = json.load(_fh)["productions"]["pass2"]
+
+PASS2_CLEANED_PULSES = _PASS2["cleaned_pulses"]
+PASS2_SAMPLES_ALL = _PASS2["samples"]
 
 PASS2_UNCLEANED_PULSES = "SplitInIcePulses"     # the same string as pass3
 
@@ -560,7 +575,7 @@ def _l3_patterns(spec):
     return [l3] if isinstance(l3, str) else list(l3)
 
 
-# The cross-check spells its samples with capitals (NuE) where productions.py
+# The cross-check spells its samples with capitals (NuE) where the config
 # uses the notebook's lower case (nue); the two differ in nothing else.
 _SAMPLES = ("NuE", "NuMu", "NuTau", "MuonGun", "Noise")
 
