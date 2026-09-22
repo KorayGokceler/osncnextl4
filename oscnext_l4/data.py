@@ -606,8 +606,7 @@ def set_data_livetime(seconds):
 
 
 # Column candidates for the event time.  hdfwriter expands I3EventHeader's
-# I3Time objects into an MJD day plus seconds and nanoseconds within that day;
-# our own booker (_TIME_FIELDS) uses the same spelling.
+# I3Time objects into an MJD day plus seconds and nanoseconds within that day.
 _MJD_COLS = ("time_start_mjd_day", "time_start_mjd_sec", "time_start_mjd_ns")
 
 

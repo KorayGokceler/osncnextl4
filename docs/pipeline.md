@@ -25,8 +25,8 @@ scripts/process_L4.py          driver: builds the tray, runs it, books
    │   │
    │   ├─ oscnext_l4.filescan  the pre-scan for corrupt input
    │   │
-   │   └─ oscnext_l4.booker    add_booker: hdfwriter if present, else the
-   │                           pytables fallback (for cvmfs)
+   │   └─ oscnext_l4.booker    add_booker -> hdfwriter.I3HDFWriter, which also
+   │                           writes the /__I3Index__/ tables matching needs
    ▼
 L4_output/hdf5/<sample>/L4_*.hdf5   + <output>.meta.json
 ```

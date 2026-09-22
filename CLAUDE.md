@@ -29,18 +29,23 @@ The IceTray meta-project in use (`py3-v4.4.2`) does **not** have:
 
 - The `icecube.oscNext` project at all → `I3Classifier` (model application),
   `oscNext_cut` and `calc_rho_36` are unavailable.
-- `icecube.hdfwriter` was thought to be missing from the cvmfs metaproject, so
-  `oscnext_l4/booker.py` carries a pytables fallback.  **That is out of date.**
-  The environment actually in use is PURE CVMFS -- `icetray/v1.17.0` under
-  `py3-v4.4.2/RHEL_9_x86_64_v2`, with no local build anywhere in the path --
-  and hdfwriter IS there.  Every measurement in this file, the pass2
-  cross-check included, was produced on it.  `SimpleBooker` has therefore never
-  run end to end; treat it as untested code, not as a working fallback.
+- `icecube.hdfwriter` was thought to be missing, so `oscnext_l4/booker.py`
+  carried a 250-line pytables fallback (`SimpleBooker`).  **hdfwriter IS
+  there** -- the environment in use is PURE CVMFS, `icetray/v1.17.0` under
+  `py3-v4.4.2/RHEL_9_x86_64_v2` -- and every measurement in this file, the
+  pass2 cross-check included, was produced through it.  The fallback was
+  **removed**: it had never run end to end, and it wrote the data tables only,
+  never `/__I3Index__/`, so booking through it would have produced files
+  `pass2.match()` refuses to match.  It was not a safety net; it only looked
+  like one.
   **hdfwriter is DEPRECATED in v1.17.0:** importing it warns *"icecube.hdfwriter
   is deprecated and will be removed in a future release.  Use icecube.tableio
-  instead."*  That is a real forward risk, because `pass2.match()` depends on
-  the `/__I3Index__/<key>` tables hdfwriter writes -- a metaproject upgrade that
-  drops it breaks both booking and event matching.
+  instead."*  That is the real forward risk, and `SimpleBooker` was never
+  insurance against it for the same reason: `data._index_node()` and
+  `pass2.match()` both depend on the `/__I3Index__/<key>` tables hdfwriter
+  writes, so a metaproject upgrade that drops it breaks booking and event
+  matching together.  The migration to tableio has to keep the index, and
+  `booker.add_booker` is the one place it changes.
 - The old project dependencies: `tau_bdt.I3CutL7Module` (VICH),
   `analysis.event_selection` (the Dunkman variables: accumulated_time,
   separation_in_cogs), `slc-veto` (QR box, optional).
@@ -73,7 +78,7 @@ scripts/process_L4.py  ──uses──►  oscnext_l4.variables (the oscNext_L4
    │                                ├─ oscnext_l4.rewritten  (first_hlc, dunkman, vich)
    │                                └─ oscnext_l4.{frame_objects,l3vars}
    │
-   ├─uses──►  oscnext_l4.booker (add_booker: hdfwriter if present, else SimpleBooker)
+   ├─uses──►  oscnext_l4.booker (add_booker -> hdfwriter.I3HDFWriter)
    │
    ▼
 .hdf5  (L4_output/hdf5/<sample>/L4_*.hdf5)

@@ -63,15 +63,17 @@ print("=" * 70)
 tableio  = try_import("icecube.tableio",  "generic table infrastructure")
 hdfw     = try_import("icecube.hdfwriter", "HDF5 writer")
 try_import("icecube.rootwriter", "ROOT writer (alternative)")
-try_import("tables", "pytables -- REQUIRED by the fallback booker")
-try_import("h5py", "h5py -- alternative fallback")
+try_import("tables", "pytables -- REQUIRED to READ the booked files (data.py)")
+try_import("h5py", "h5py -- not used, informational")
 
-if tableio and not hdfw:
-    print("\n  -> tableio is present but hdfwriter is NOT.")
-    print("     The meta-project was built without the HDF5 development libraries.")
-    print("     Remedy: the fallback booker (writes through pytables directly).")
-elif not tableio and not hdfw:
-    print("\n  -> No table infrastructure at all.  The fallback booker is mandatory.")
+if not hdfw:
+    print("\n  -> hdfwriter is NOT here, and booking has no fallback.")
+    print("     It is also what writes /__I3Index__/<key>, which is the only")
+    print("     reliable way to match a table to its events -- so this breaks")
+    print("     booking AND the pass2 cross-check.  See oscnext_l4/booker.py.")
+elif tableio:
+    print("\n  -> hdfwriter is present but DEPRECATED (v1.17.0 warns on import).")
+    print("     tableio is the successor; migrating means keeping /__I3Index__/.")
 
 print("\n" + "=" * 70)
 print("PROJECTS REQUIRED BY THE L4 VARIABLES")
