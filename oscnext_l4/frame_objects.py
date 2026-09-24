@@ -6,7 +6,7 @@ helpers the L4 tray needs are rewritten here.  One file mirrors their whole
 directory, and each section below is named after the file it stands in for --
 so it can still be read beside the original, which is the point.
 
-    geom.py       -> calc_rho_36
+    geom.py       -> calc_rho_36  (+ deepcore_doms, the cached DOMS.DOMS lists)
     pulses.py     -> iter_map, get_pulses
     weighting.py  -> PropagateGenieInfo
 """

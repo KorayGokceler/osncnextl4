@@ -18,7 +18,8 @@ and stays optional (it is not a BDT input).
 
 Everything that is not a segment lives beside this file:
 
-    frame_objects.py  calc_rho_36, iter_map, get_pulses, PropagateGenieInfo
+    frame_objects.py  calc_rho_36, deepcore_doms, iter_map, get_pulses,
+                      PropagateGenieInfo
                       -- our version of the production's frame_objects/, whose
                       weighting it runs from its master script, not from L4
     l3vars.py         FullTimeLengthRatio  (an L3 variable pass3's L3 does not store)

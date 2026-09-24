@@ -134,4 +134,3 @@ def add_booker(tray, name, output, keys, sub_event_streams=("InIceSplit",)):
     tray.Add(hdfwriter.I3HDFWriter, name,
              Output=output, Keys=keys,
              SubEventStreams=list(sub_event_streams))
-    return "hdfwriter"
