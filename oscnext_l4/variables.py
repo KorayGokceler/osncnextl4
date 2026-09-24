@@ -194,9 +194,14 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
                                              cleaned_pulses,
                                              run_qr_box=False,
                                              run_optional=False,
-                                             accumulated_time_pass2=False):
+                                             accumulated_time_pass2=True):
     '''
     Inputs of the L4 atmospheric muon rejection classifier.
+
+    accumulated_time_pass2=True (default) is the production's rule, as in
+    oscNext_L4; False is Table 12's reading.  The default used to be False
+    here while oscNext_L4 defaulted to True, so calling this segment on its
+    own silently gave the note's variable.
 
     run_optional=False (the default) skips the computations that are NOT BDT
     inputs (I3TensorOfInertia and separation_in_cogs).  Neither appears in
@@ -284,16 +289,20 @@ def _micro_count(frame, pulses_key, output_key, subkey):
 def oscNext_L4_noise_cut_variables(tray, name,
                                    fill_ratio_vertex,
                                    cleaned_pulses,
-                                   micro_count_pulses=None):
+                                   micro_count_pulses=UNCLEANED_PULSES_DEFAULT):
     '''
     Inputs of the L4 pure noise rejection classifier.
 
     micro_count_pulses: the pulse series the micro_count chain STARTS from.
-        None (default) -> cleaned_pulses, i.e. what Table 11 of the technical
-        note says ("Start with the cleaned pulse series").
-        Pass the uncleaned series to reproduce the original pass2 code exactly
-        -- see CLAUDE.md, open risk 5b.  fill_ratio uses cleaned_pulses either
-        way (as the original does).
+        The uncleaned series (default) reproduces the production, bitwise
+        against pass2 -- see CLAUDE.md, open risk 5b.
+        None -> cleaned_pulses, what Table 11 of the technical note says
+        ("Start with the cleaned pulse series"); it changes the value in
+        about 9% of events.  fill_ratio uses cleaned_pulses either way (as the
+        original does).
+        The default used to be None here while oscNext_L4 defaulted to the
+        uncleaned series, so calling this segment on its own silently gave
+        the note's variable.  oscNext_L4 passes the series explicitly.
     '''
     if micro_count_pulses is None:
         micro_count_pulses = cleaned_pulses
@@ -307,24 +316,20 @@ def oscNext_L4_noise_cut_variables(tray, name,
     #    that maximizes the number of triggered DOMs in it.  Get the number of
     #    triggered DOMs in that sliding time window"
     #
-    # Chain:  cleaned -> static TW [-3500,+4000] ns -> DeepCore fiducial
-    #         -> 200 ns dynamic window -> count DOMs
+    # Chain:  micro_count_pulses -> static TW [-3500,+4000] ns
+    #         -> DeepCore fiducial -> 200 ns dynamic window -> count DOMs
     #
-    # FIX (see CLAUDE.md, "Booking/read audit"): this chain used to start
-    # from the UNCLEANED series with an I3SeededRTCleaning in the middle -- but
-    # that module's output (L4_SRTTWPulses) was read NOWHERE: I3OMSelection
-    # took the StaticTWC output as its input, not the SeededRT one.  So the
-    # only noise-cleaning step in the chain was effectively disabled and
-    # micro_count was counted over raw (uncleaned) hits.
+    # BY DEFAULT IT STARTS FROM THE UNCLEANED SERIES, as the production does,
+    # and not from the cleaned one the note describes (CLAUDE.md open risk 5b:
+    # reproducing the production's numbers comes first).  The production also
+    # runs an I3SeededRTCleaning in the middle whose output (L4_SRTTWPulses) is
+    # read NOWHERE -- I3OMSelection takes the StaticTWC output -- so that step
+    # never did anything; it is left out here and micro_count is bitwise
+    # identical to pass2.
     #
-    # It now starts from the CLEANED series (SRTTWSplitInIcePulsesDC) as the
-    # note says.  The SeededRT block was also removed: L3 already applied SRT
-    # cleaning to that series (that is the "SRT" in its name), so applying it
-    # again would be double cleaning.
-    #
-    # Measured afterwards, the difference is small: the two chains agree on 91%
-    # of nue and 94% of noise events, because the closing 200 ns window is what
-    # actually decides.
+    # micro_count_pulses=None gives the note's reading, the cleaned series.
+    # The two chains agree on 91% of nue and 94% of noise events, because the
+    # closing 200 ns window is what actually decides.
     #
     # L3's own microcount (STW9000_DTW300Hits, [-4,+5] us / 300 ns) uses
     # different parameters -- the two are not fully correlated, and the BDT
@@ -483,11 +488,12 @@ def oscNext_L4(tray, name,
     before the models are trained -- every event is booked without a cut, so
     both the noise and the muon training set come out of one pass.
 
-    accumulated_time_pass2=True (DEFAULT): accumulated_time takes the pulse
-    BEFORE the cumulative charge crosses 75%, reproducing pass2 at 99.40% over
-    8144 events.  Set False to follow the technical note instead, which says
-    "time to reach 75%" and so takes the pulse AT the crossing -- that agrees
-    with pass2 in 0.98% of events.
+    accumulated_time_pass2=True (DEFAULT): accumulated_time follows
+    CalculateVariables' charge-quartile rule -- the LAST pulse whose cumulative
+    charge has not passed 75% -- identical to pass2 in 99.84% of 56,301 events.
+    Set False to follow the technical note instead, which says "time to reach
+    75%" and so takes the pulse AT the crossing -- that agrees with pass2 in
+    0.98% of events.
 
     micro_count_uncleaned=True (DEFAULT): the micro_count chain starts from the
     uncleaned series, as the original pass2 code does.  Set False to follow
