@@ -61,7 +61,15 @@ load_deserialization_libs()
 # Output frame object names  (identical to the original script)
 # ---------------------------------------------------------------------------
 
-L4_CUT_BOOL_KEY = "L4_Cut_Bool"
+# THIS ONE WAS NOT IDENTICAL, DESPITE THE HEADING ABOVE.  It read
+# "L4_Cut_Bool", invented here.  Three sources give the real name:
+#   - the production's selection/globals.py:  L4_CUT_BOOL_KEY = "L4_oscNext_bool"
+#   - reference/oscNext_L4_pass2_original.py writes frame[L4_CUT_BOOL_KEY]
+#   - the dump of a real pass2 L4 file carries "L4_oscNext_bool"
+# The name matters beyond tidiness: it is the key the collaboration's own
+# tools cut on, so an L4 file of ours carrying "L4_Cut_Bool" would look to
+# them like an L4 file with no cut in it.
+L4_CUT_BOOL_KEY = "L4_oscNext_bool"
 
 L4_FIRST_HLC_KEY      = "L4_first_hlc"
 L4_FIRST_HLC_RHO_KEY  = L4_FIRST_HLC_KEY + "_rho"

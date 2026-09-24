@@ -211,9 +211,13 @@ class L4Classifier(icetray.I3ConditionalModule):
 # Convenience segment
 # ---------------------------------------------------------------------------
 
+# The two score keys are the original's verbatim.  The cut key is NOT
+# redefined here: it was, and it drifted -- the same failure the variable
+# table was restructured to make impossible.  One definition, in variables.py.
+from .variables import L4_CUT_BOOL_KEY as CUT_KEY        # noqa: E402
+
 NOISE_KEY = "L4_NoiseClassifier_ProbNu"
 MUON_KEY  = "L4_MuonClassifier_Data_ProbNu"
-CUT_KEY   = "L4_Cut_Bool"
 
 
 @icetray.traysegment
