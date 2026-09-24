@@ -48,7 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
 
 from oscnext_l4.env import (get_I3Tray, report_missing,
-                            load_deserialization_libs)
+                            load_deserialization_libs, have_lightgbm)
 from icecube import icetray, dataio, dataclasses
 I3Tray = get_I3Tray()
 
@@ -223,6 +223,61 @@ def _output_kind(path):
     return "HDF5" if path.endswith((".hdf5", ".h5")) else "I3 file"
 
 
+# ---------------------------------------------------------------------------
+# An output exists under its real name only once its tray has FINISHED
+# ---------------------------------------------------------------------------
+#
+# Until then it is written as _incomplete_<name> in the same directory and
+# renamed at the end -- the production does the same with its `tmp_path`
+# (icetray-oscNext/.../tools/processor.py).  Deleting a partial file on the
+# error path is not enough: a walltime kill or a SIGKILL runs no Python at
+# all, and the half-written file then sat under the real name, where --chunk-
+# files resume skipped it as finished and the notebook loaded it.
+#
+# The prefix keeps the extension, which I3Writer reads the compression from,
+# and keeps the name out of every glob that finds finished output
+# (L4_<sample>*.hdf5 in data.py, L4_<sample>_job<J>*.hdf5 in runner.py).  A
+# leftover from a killed run is harmless: the next run of the same part
+# overwrites it.
+_INCOMPLETE = "_incomplete_"
+
+
+def _tmp_path(path):
+    """Where `path` is written until its tray has finished."""
+    if not path:
+        return None
+    head, tail = os.path.split(path)
+    return os.path.join(head, _INCOMPLETE + tail)
+
+
+def _discard(paths):
+    """Remove whichever of these exist; True when one did."""
+    removed = False
+    for path in paths:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+                removed = True
+            except OSError as e:
+                print("    [!] could not remove %s: %s" % (path, e))
+    return removed
+
+
+def _part_done(outputs):
+    """
+    Is a --chunk-files part finished?  Every requested output under its real
+    name AND the anchor's meta.json, which is written last.
+
+    The output alone used to be the test, and a part killed after its HDF5 was
+    opened was then skipped forever.  Requiring every output also catches a
+    part first made without --output-i3: its .i3 is produced now instead of
+    being silently never produced.
+    """
+    outputs = [o for o in outputs if o]
+    return (os.path.exists(outputs[0] + ".meta.json")
+            and all(os.path.exists(o) for o in outputs))
+
+
 def _write_meta(output, meta):
     """
     Write <output>.meta.json.
@@ -299,53 +354,61 @@ def _record_bad(output, paths, reason):
         print("  [!] could not write the blacklist: %s" % e)
 
 
-def _run_tray(build, infiles, output, retries):
+def _run_tray(build, infiles, output_hdf5, output_i3, retries):
     """
     Run the tray.  If it dies on a corrupt file, drop that file and retry
     (at most `retries` times).
 
-    `output` is the run's ANCHOR: the HDF5 when there is one, the .i3
-    otherwise.  The blacklist goes next to it and a half-written one is
-    removed before the retry.  (With both outputs the .i3 is not removed: the
-    rebuilt tray's I3Writer truncates it anyway.)
+    output_hdf5 / output_i3 are the FINAL paths, either may be None.  The tray
+    writes them under _tmp_path() and they are renamed only once it has
+    finished; on every failure -- the corrupt-file retry, a final error,
+    Ctrl-C -- the temporary files are removed.  The blacklist goes next to the
+    ANCHOR: the HDF5 when there is one, the .i3 otherwise.
     """
+    finals = [p for p in (output_hdf5, output_i3) if p]
+    anchor = finals[0]
+    tmps = [_tmp_path(p) for p in finals]
+    build.output_hdf5 = _tmp_path(output_hdf5)
+    build.output_i3 = _tmp_path(output_i3)
     attempt = 0
-    while True:
-        tray, counter = build(infiles)
-        n_frames = getattr(build, "n_frames", 0)
-        try:
-            if n_frames:
-                tray.Execute(n_frames)
-            else:
-                tray.Execute()
-            _print_usage(tray)
-            return counter, infiles
-        except RuntimeError as e:
-            m = _BAD_FILE_RE.search(str(e))
-            if not m or attempt >= retries:
-                raise
-            bad = m.group(1)
-            if bad not in infiles:
-                raise
-            attempt += 1
-            print("\n[!] Corrupt file caught at run time:\n    %s" % bad)
-            print("    %s" % str(e).strip().splitlines()[0][:200])
-            _record_bad(output, [bad], "run time: input stream error")
-            infiles = [f for f in infiles if f != bad]
-            # A half-written output is unusable; an HDF5 cannot even be
-            # reopened.
-            if output and os.path.exists(output):
-                try:
-                    os.remove(output)
+    try:
+        while True:
+            tray, counter = build(infiles)
+            n_frames = getattr(build, "n_frames", 0)
+            try:
+                if n_frames:
+                    tray.Execute(n_frames)
+                else:
+                    tray.Execute()
+                _print_usage(tray)
+            except RuntimeError as e:
+                m = _BAD_FILE_RE.search(str(e))
+                if not m or attempt >= retries:
+                    raise
+                bad = m.group(1)
+                if bad not in infiles:
+                    raise
+                attempt += 1
+                print("\n[!] Corrupt file caught at run time:\n    %s" % bad)
+                print("    %s" % str(e).strip().splitlines()[0][:200])
+                _record_bad(anchor, [bad], "run time: input stream error")
+                infiles = [f for f in infiles if f != bad]
+                # A half-written output is unusable; an HDF5 cannot even be
+                # reopened.
+                if _discard(tmps):
                     print("    Removed the partial %s, starting over."
-                          % _output_kind(output))
-                except OSError as rm:
-                    print("    [!] could not remove the partial %s: %s"
-                          % (_output_kind(output), rm))
-            print("    Files left: %d  (attempt %d/%d)\n"
-                  % (len(infiles), attempt, retries))
-            if not infiles:
-                raise RuntimeError("Every input file turned out to be corrupt.")
+                          % _output_kind(anchor))
+                print("    Files left: %d  (attempt %d/%d)\n"
+                      % (len(infiles), attempt, retries))
+                if not infiles:
+                    raise RuntimeError("Every input file turned out to be corrupt.")
+                continue
+            for tmp, final in zip(tmps, finals):
+                os.replace(tmp, final)
+            return counter, infiles
+    except BaseException:
+        _discard(tmps)
+        raise
 
 
 def build_key_list(is_mc=False, is_noise=False, is_muongun=False,
@@ -421,9 +484,11 @@ def main():
                         "default; it only costs processing time.")
     p.add_argument("--accumulated-time-pass2", dest="accumulated_time_pass2",
                    action="store_true", default=True,
-                   help="reproduce the pass2 production's accumulated_time: take "
-                        "the pulse BEFORE the cumulative charge crosses 75%% "
-                        "(99.40%% over 8144 pass2 events).  THIS IS THE DEFAULT.")
+                   help="reproduce the pass2 production's accumulated_time "
+                        "(CalculateVariables' charge-quartile rule: the LAST "
+                        "pulse whose cumulative charge has not passed 75%%; "
+                        "identical to pass2 in 99.84%% of 56,301 events).  "
+                        "THIS IS THE DEFAULT.")
     p.add_argument("--accumulated-time-note", dest="accumulated_time_pass2",
                    action="store_false",
                    help="follow the technical note instead: take the pulse AT the "
@@ -466,21 +531,37 @@ def main():
     # Checked here, not where the tray finally needs them: the L4Classifier
     # modules only open their model files when the tray is configured, which
     # is AFTER the pre-scan -- on a long input list, minutes into the job.
+    #
+    # --model-dir WITHOUT --apply-cut used to be silently ignored, and the
+    # result looked like success: an L4 file with every variable and no score
+    # and no L4_oscNext_bool in it.
+    if args.model_dir and not args.apply_cut:
+        p.error("--model-dir is only read with --apply-cut; without it the "
+                "output gets no classifier scores and no L4_oscNext_bool.  "
+                "Add --apply-cut, or drop --model-dir.")
     if args.apply_cut:
         if not args.model_dir:
             p.error("--apply-cut needs --model-dir (the trained models).")
-        absent = [f for f in ("L4_noise_model.txt", "L4_muon_model.txt")
-                  if not os.path.exists(os.path.join(args.model_dir, f))]
+        # The .json is not optional here: it carries the feature ORDER, and
+        # without it the classifier falls back to the booster's own names.
+        absent = ["L4_%s_model%s" % (tag, ext)
+                  for tag in ("noise", "muon") for ext in (".txt", ".json")
+                  if not os.path.exists(os.path.join(args.model_dir,
+                                                     "L4_%s_model%s" % (tag, ext)))]
         if absent:
-            p.error("--apply-cut runs BOTH classifiers, and %s has no %s."
-                    % (args.model_dir, " / ".join(absent)))
+            p.error("--apply-cut runs BOTH classifiers, and %s is missing %s."
+                    % (args.model_dir, ", ".join(absent)))
+        if not have_lightgbm():
+            p.error("--apply-cut needs lightgbm, which does not import in %s.  "
+                    "On cvmfs it ships with the metaproject, so this is most "
+                    "likely not the env-shell python." % sys.executable)
 
     # THE ANCHOR: the output the side files are named after.  The HDF5 when
     # there is one -- so a run that books one names everything exactly as it
     # always has -- and the .i3 otherwise:
-    #     <anchor>.meta.json      n_l3_files, the weight divisor
+    #     <anchor>.meta.json      n_l3_files, the weight divisor; written LAST,
+    #                             so with --chunk-files it marks a part finished
     #     <anchor>.badfiles.txt   the corrupt inputs that were dropped
-    # and, with --chunk-files, the part whose existence marks it finished.
     anchor = args.output_hdf5 or args.output_i3
 
     # Which icetray projects are absent.  `variables.py` records them at import
@@ -650,24 +731,26 @@ def main():
 
         n_done_files = 0
         for ci, chunk in enumerate(chunks):
-            # The anchor's part marks the part finished; see `anchor` above.
             hdf5_part = _part_path(args.output_hdf5, ci)
             i3_part = _part_path(args.output_i3, ci)
-            out_part = hdf5_part or i3_part
+            out_part = hdf5_part or i3_part          # the anchor's part
             n_done_files += len(chunk)
 
             # Skip a finished part -> a crashed run resumes where it stopped
-            if os.path.exists(out_part) and not args.overwrite:
+            if not args.overwrite and _part_done([hdf5_part, i3_part]):
                 print("[%d/%d] skipped (already there): %s"
                       % (ci + 1, n_chunks, os.path.basename(out_part)))
                 _emit("[CHUNK] %d/%d files=%d/%d booked=%d elapsed=%.1f"
                       % (ci + 1, n_chunks, n_done_files, len(infiles),
                          totals["n"], time.time() - t_start))
                 continue
+            if not args.overwrite and os.path.exists(out_part):
+                print("[%d/%d] redoing %s: it exists, but its run never "
+                      "finished (no meta.json, or an output missing)"
+                      % (ci + 1, n_chunks, os.path.basename(out_part)))
 
-            build_tray.output_hdf5 = hdf5_part
-            build_tray.output_i3 = i3_part
-            counts, chunk_used = _run_tray(build_tray, chunk, out_part, args.retries)
+            counts, chunk_used = _run_tray(build_tray, chunk, hdf5_part,
+                                           i3_part, args.retries)
             for k in totals:
                 totals[k] += counts[k]
             used.extend(chunk_used)
@@ -686,9 +769,8 @@ def main():
                   % (ci + 1, n_chunks, n_done_files, len(infiles),
                      totals["n"], time.time() - t_start))
     else:
-        build_tray.output_hdf5 = args.output_hdf5
-        build_tray.output_i3 = args.output_i3
-        totals, used = _run_tray(build_tray, infiles, anchor, args.retries)
+        totals, used = _run_tray(build_tray, infiles, args.output_hdf5,
+                                 args.output_i3, args.retries)
         # With --n the tray stops early, so the file list may not have been
         # read in full and n_l3_files is NOT RELIABLE.  None is written so it
         # cannot be used as a weight divisor; load_sample treats the sidecar as
