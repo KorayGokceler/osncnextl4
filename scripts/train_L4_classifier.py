@@ -423,7 +423,11 @@ def main():
     if target is None:
         target = 0.99 if args.tag == "noise" else 0.94
 
-    X, y, w, wp, tr, features = load_dataset(args.dataset, args.features)
+    # --features is ONE comma-separated string; handed over as it was, it was
+    # iterated character by character and every run with it failed.
+    wanted = ([f.strip() for f in args.features.split(",") if f.strip()]
+              if args.features else None)
+    X, y, w, wp, tr, features = load_dataset(args.dataset, wanted)
     te = ~tr
     sig, bg = y == 1, y == 0
 

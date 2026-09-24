@@ -71,7 +71,8 @@
     },
     "cog_z": {
       "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_z"],
-      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_z"]
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog.z"],
+      "frame_alts": ["cog_z"]
     },
     "z_sigma": {
       "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_sigma"],
@@ -115,11 +116,13 @@
     },
     "cog_x": {
       "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_x"],
-      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_x"]
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog.x"],
+      "frame_alts": ["cog_x"]
     },
     "cog_y": {
       "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_y"],
-      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog_y"]
+      "frame": ["SRTTWSplitInIcePulsesDCHitStatistics", "cog.y"],
+      "frame_alts": ["cog_y"]
     },
     "z_min": {
       "hdf5": ["SRTTWSplitInIcePulsesDCHitStatistics", "z_min"],
