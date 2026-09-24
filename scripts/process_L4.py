@@ -18,8 +18,22 @@ Usage:
       --input "/data/L3/data/Run00125150/*.i3.zst" \
       --output-hdf5 /data/L4/hdf5/data/Run00125150/L4_Run00125150.hdf5
 
-Important: --no-cut is the default.  Do not apply a cut before the
-classifiers are trained; book every event.
+  # L3 .i3 -> L4 .i3 only: the L4 variables, both classifier scores and the
+  # L4_oscNext_bool, with no HDF5 at all (needs BOTH trained models)
+  python process_L4.py \
+      --gcd  /data/GCD/GeoCalibDetectorStatus_2013.56429_V1.i3.gz \
+      --input /data/L3/genie/14640/L3_14640.000000.i3.zst \
+      --output-i3 /data/L4/genie/14640/L4_14640.000000.i3.zst \
+      --mc --genie --apply-cut --model-dir models
+
+At least one of --output-i3 / --output-hdf5 is required, and either may be
+given alone.  The side files (<output>.meta.json, <output>.badfiles.txt) go
+next to the HDF5 when there is one, and next to the .i3 otherwise.
+
+Important: --apply-cut is OFF by default.  Do not apply it before the
+classifiers are trained; book every event.  With it, the L4_oscNext_bool is
+WRITTEN for every event and NO event is dropped -- the same as the
+production's pass2 L4 files, which hold every event with its bool.
 '''
 
 import os
@@ -183,12 +197,30 @@ class ProgressReporter:
         return True
 
 
+# The compression suffixes I3Writer and I3File recognise.  They sit AFTER
+# ".i3", so a plain splitext would split "L4_nue.i3.zst" into ("L4_nue.i3",
+# ".zst") and name the part "L4_nue.i3_part003.zst" -- a file no *.i3.zst glob
+# finds.  HDF5 names carry a single extension and are unaffected.
+_I3_COMPRESSION = (".zst", ".gz", ".bz2", ".xz")
+
+
 def _part_path(path, index):
-    """L4_nue.hdf5 -> L4_nue_part003.hdf5  (matches the notebook glob L4_nue*.hdf5)"""
+    """
+    L4_nue.hdf5   -> L4_nue_part003.hdf5    (matches the notebook glob L4_nue*.hdf5)
+    L4_nue.i3.zst -> L4_nue_part003.i3.zst  (the compression suffix stays last)
+    """
     if not path:
         return None
     base, ext = os.path.splitext(path)
+    if ext in _I3_COMPRESSION:
+        base, inner = os.path.splitext(base)
+        ext = inner + ext
     return "%s_part%03d%s" % (base, index, ext)
+
+
+def _output_kind(path):
+    """What a run's anchor output is, for the messages that name it."""
+    return "HDF5" if path.endswith((".hdf5", ".h5")) else "I3 file"
 
 
 def _write_meta(output, meta):
@@ -198,7 +230,8 @@ def _write_meta(output, meta):
     THE FIELD THAT MATTERS: n_l3_files -- how many L3 files this HDF5 was made
     from.  The weight normalisation (OneWeight/n_flux/n_files) must be divided
     by that number, NOT by the number of HDF5 files.  The notebook reads it
-    from this sidecar.
+    from this sidecar.  An i3-only run writes it next to the .i3 instead, where
+    it records the same thing for whoever weights that file later.
     """
     if not output:
         return
@@ -266,10 +299,15 @@ def _record_bad(output, paths, reason):
         print("  [!] could not write the blacklist: %s" % e)
 
 
-def _run_tray(build, infiles, output_hdf5, retries):
+def _run_tray(build, infiles, output, retries):
     """
     Run the tray.  If it dies on a corrupt file, drop that file and retry
     (at most `retries` times).
+
+    `output` is the run's ANCHOR: the HDF5 when there is one, the .i3
+    otherwise.  The blacklist goes next to it and a half-written one is
+    removed before the retry.  (With both outputs the .i3 is not removed: the
+    rebuilt tray's I3Writer truncates it anyway.)
     """
     attempt = 0
     while True:
@@ -292,15 +330,18 @@ def _run_tray(build, infiles, output_hdf5, retries):
             attempt += 1
             print("\n[!] Corrupt file caught at run time:\n    %s" % bad)
             print("    %s" % str(e).strip().splitlines()[0][:200])
-            _record_bad(output_hdf5, [bad], "run time: input stream error")
+            _record_bad(output, [bad], "run time: input stream error")
             infiles = [f for f in infiles if f != bad]
-            # A half-written HDF5 is unusable and cannot be reopened.
-            if output_hdf5 and os.path.exists(output_hdf5):
+            # A half-written output is unusable; an HDF5 cannot even be
+            # reopened.
+            if output and os.path.exists(output):
                 try:
-                    os.remove(output_hdf5)
-                    print("    Removed the partial HDF5, starting over.")
+                    os.remove(output)
+                    print("    Removed the partial %s, starting over."
+                          % _output_kind(output))
                 except OSError as rm:
-                    print("    [!] could not remove the partial HDF5: %s" % rm)
+                    print("    [!] could not remove the partial %s: %s"
+                          % (_output_kind(output), rm))
             print("    Files left: %d  (attempt %d/%d)\n"
                   % (len(infiles), attempt, retries))
             if not infiles:
@@ -329,8 +370,13 @@ def main():
     p.add_argument("--gcd", required=True, help="GCD file")
     p.add_argument("--input", nargs="+", default=[],
                    help="input .i3 files (glob patterns accepted)")
-    p.add_argument("--output-i3", default=None, help="output .i3 (optional)")
-    p.add_argument("--output-hdf5", required=True, help="output .hdf5")
+    p.add_argument("--output-i3", default=None,
+                   help="output .i3 (.i3.zst etc.): the L3 frames plus every L4 "
+                        "key.  Physics frames that fail the L3 cut or are not "
+                        "in --sub-event-stream are not written.")
+    p.add_argument("--output-hdf5", default=None,
+                   help="output .hdf5: the booked keys, for training.  At least "
+                        "one of --output-i3 / --output-hdf5 is required.")
 
     p.add_argument("--uncleaned-pulses", default=UNCLEANED_PULSES_DEFAULT)
     p.add_argument("--cleaned-pulses", default=CLEANED_PULSES_DEFAULT)
@@ -349,9 +395,12 @@ def main():
     p.add_argument("--no-l3-cut", action="store_true",
                    help="do not apply the L3 cut (when the input already passed L3)")
     p.add_argument("--apply-cut", action="store_true",
-                   help="apply the L4 classifier cut (the models must be trained)")
+                   help="run both trained classifiers and write their scores "
+                        "and the L4_oscNext_bool into every event.  No event "
+                        "is dropped.  Needs --model-dir.")
     p.add_argument("--model-dir", default=None,
-                   help="directory holding the trained L4_<tag>_model.txt files")
+                   help="directory holding the trained L4_noise_model.txt and "
+                        "L4_muon_model.txt (each with its .json beside it)")
 
     p.add_argument("--n", type=int, default=0, help="number of frames to process (0=all)")
 
@@ -395,9 +444,10 @@ def main():
                         "notebook draws its progress bar from these lines.")
     p.add_argument("--chunk-files", type=int, default=0,
                    help="process the input in parts of N files; each part is its "
-                        "own tray and its own <output>_partNNN.hdf5.  The benefit: "
-                        "a REAL percentage/ETA, and a crash loses only that part "
-                        "(finished parts are skipped).")
+                        "own tray and its own <output>_partNNN.hdf5 (and/or "
+                        "_partNNN.i3.zst).  The benefit: a REAL percentage/ETA, "
+                        "and a crash loses only that part (finished parts are "
+                        "skipped).")
     p.add_argument("--overwrite", action="store_true",
                    help="with --chunk-files: regenerate parts that already exist")
     p.add_argument("--retries", type=int, default=3,
@@ -409,6 +459,29 @@ def main():
 
     if not args.input and not args.input_list:
         p.error("--input or --input-list is required.")
+
+    if not args.output_i3 and not args.output_hdf5:
+        p.error("no output: give --output-i3, --output-hdf5, or both.")
+
+    # Checked here, not where the tray finally needs them: the L4Classifier
+    # modules only open their model files when the tray is configured, which
+    # is AFTER the pre-scan -- on a long input list, minutes into the job.
+    if args.apply_cut:
+        if not args.model_dir:
+            p.error("--apply-cut needs --model-dir (the trained models).")
+        absent = [f for f in ("L4_noise_model.txt", "L4_muon_model.txt")
+                  if not os.path.exists(os.path.join(args.model_dir, f))]
+        if absent:
+            p.error("--apply-cut runs BOTH classifiers, and %s has no %s."
+                    % (args.model_dir, " / ".join(absent)))
+
+    # THE ANCHOR: the output the side files are named after.  The HDF5 when
+    # there is one -- so a run that books one names everything exactly as it
+    # always has -- and the .i3 otherwise:
+    #     <anchor>.meta.json      n_l3_files, the weight divisor
+    #     <anchor>.badfiles.txt   the corrupt inputs that were dropped
+    # and, with --chunk-files, the part whose existence marks it finished.
+    anchor = args.output_hdf5 or args.output_i3
 
     # Which icetray projects are absent.  `variables.py` records them at import
     # time through `optional_project`; without this call the record is kept and
@@ -441,6 +514,14 @@ def main():
         sys.exit("No input files found.")
     print("Input files:", len(infiles))
 
+    # BEFORE the pre-scan, which writes its blacklist next to the anchor.  This
+    # used to come after it, so on a first run into a new directory the list of
+    # dropped files was lost to "could not write the blacklist".  The notebook
+    # never saw it: runner.py creates the directory before calling this.
+    for out in (args.output_i3, args.output_hdf5):
+        if out:
+            os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+
     # --- remove corrupt files with a pre-scan ---
     if args.scan != "off":
         nf = 0 if args.scan == "full" else args.scan_frames
@@ -458,18 +539,17 @@ def main():
                 print("      %s\n          %s" % (os.path.basename(path), why))
             if len(bad) > 10:
                 print("      ... (+%d more)" % (len(bad) - 10))
-            _record_bad(args.output_hdf5, [b[0] for b in bad], "pre-scan: " + args.scan)
+            _record_bad(anchor, [b[0] for b in bad], "pre-scan: " + args.scan)
         print("  Files to process: %d" % len(infiles))
         if not infiles:
             sys.exit("No healthy input file left.")
 
-    for out in (args.output_i3, args.output_hdf5):
-        if out:
-            os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-
     keys = build_key_list(is_mc=args.mc, is_noise=args.noise,
                           is_muongun=args.muongun, is_corsika=args.corsika)
-    print("Keys to book:", len(keys))
+    if args.output_hdf5:
+        print("Keys to book:", len(keys))
+    else:
+        print("No HDF5 -- nothing is booked; the .i3 carries every frame key.")
 
     # --- tray ---
     # The tray is built inside a factory function so that, when a corrupt
@@ -527,18 +607,28 @@ def main():
 
         out_i3 = getattr(build_tray, "output_i3", args.output_i3)
         if out_i3:
+            # DropOrphanStreams=[DAQ]: a Q frame none of whose P frames
+            # survived the stream filter and the L3 cut is not written.  The
+            # production's own writer does exactly this
+            # (icetray-oscNext/.../tools/processor.py), and without it an L4
+            # file is mostly Q frames with nothing after them -- the L3 cut
+            # keeps only ~8% of noise events.  The HDF5 is not affected:
+            # hdfwriter books P frames only.
             tray.Add("I3Writer", "writer",
                      Filename=out_i3,
                      Streams=[icetray.I3Frame.TrayInfo,
                               icetray.I3Frame.DAQ,
                               icetray.I3Frame.Physics,
                               icetray.I3Frame.Stream("S"),
-                              icetray.I3Frame.Stream("M")])
+                              icetray.I3Frame.Stream("M")],
+                     DropOrphanStreams=[icetray.I3Frame.DAQ])
 
-        add_booker(tray, "booker",
-                   output=getattr(build_tray, "output_hdf5", args.output_hdf5),
-                   keys=keys,
-                   sub_event_streams=[args.sub_event_stream])
+        out_hdf5 = getattr(build_tray, "output_hdf5", args.output_hdf5)
+        if out_hdf5:
+            add_booker(tray, "booker",
+                       output=out_hdf5,
+                       keys=keys,
+                       sub_event_streams=[args.sub_event_stream])
         return tray, counter
 
     build_tray.n_frames = args.n if args.n > 0 else 0
@@ -550,7 +640,7 @@ def main():
     totals = {"physics": 0, "stream": 0, "n": 0}
     used = []
 
-    if args.chunk_files and args.chunk_files > 0 and args.output_hdf5:
+    if args.chunk_files and args.chunk_files > 0:
         chunks = [infiles[i:i + args.chunk_files]
                   for i in range(0, len(infiles), args.chunk_files)]
         n_chunks = len(chunks)
@@ -560,7 +650,10 @@ def main():
 
         n_done_files = 0
         for ci, chunk in enumerate(chunks):
-            out_part = _part_path(args.output_hdf5, ci)
+            # The anchor's part marks the part finished; see `anchor` above.
+            hdf5_part = _part_path(args.output_hdf5, ci)
+            i3_part = _part_path(args.output_i3, ci)
+            out_part = hdf5_part or i3_part
             n_done_files += len(chunk)
 
             # Skip a finished part -> a crashed run resumes where it stopped
@@ -572,8 +665,8 @@ def main():
                          totals["n"], time.time() - t_start))
                 continue
 
-            build_tray.output_hdf5 = out_part
-            build_tray.output_i3 = _part_path(args.output_i3, ci)
+            build_tray.output_hdf5 = hdf5_part
+            build_tray.output_i3 = i3_part
             counts, chunk_used = _run_tray(build_tray, chunk, out_part, args.retries)
             for k in totals:
                 totals[k] += counts[k]
@@ -595,12 +688,12 @@ def main():
     else:
         build_tray.output_hdf5 = args.output_hdf5
         build_tray.output_i3 = args.output_i3
-        totals, used = _run_tray(build_tray, infiles, args.output_hdf5, args.retries)
+        totals, used = _run_tray(build_tray, infiles, anchor, args.retries)
         # With --n the tray stops early, so the file list may not have been
         # read in full and n_l3_files is NOT RELIABLE.  None is written so it
         # cannot be used as a weight divisor; load_sample treats the sidecar as
         # missing and warns.
-        _write_meta(args.output_hdf5, dict(
+        _write_meta(anchor, dict(
             n_l3_files=(None if args.n > 0 else len(used)),
             n_l3_files_unreliable=bool(args.n > 0),
             n_l3_files_given=len(infiles),
@@ -633,12 +726,16 @@ def main():
     else:
         print("Files processed         : %d" % len(used))
 
-    if args.chunk_files > 0 and args.output_hdf5:
-        print("HDF5 parts              : %s"
-              % _part_path(args.output_hdf5, 0).replace("_part000", "_partNNN"))
-    else:
-        print("HDF5:", args.output_hdf5)
-    bl = _bad_list_path(args.output_hdf5)
+    # Each output that was asked for, in the chunked or the single form.
+    for label, out in (("HDF5", args.output_hdf5), ("I3", args.output_i3)):
+        if not out:
+            continue
+        if args.chunk_files > 0:
+            print("%-24s: %s" % (label + " parts",
+                                 _part_path(out, 0).replace("_part000", "_partNNN")))
+        else:
+            print("%s:" % label, out)
+    bl = _bad_list_path(anchor)
     if os.path.exists(bl):
         print("Corrupt file list:", bl)
 
