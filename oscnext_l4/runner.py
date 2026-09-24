@@ -579,10 +579,26 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                       stderr=subprocess.STDOUT, text=True,
                                       bufsize=1))
-        state[j] = {"done": 0, "total": len(grp), "booked": 0, "tail": []}
+        state[j] = {"done": 0, "total": len(grp), "booked": 0, "live": 0,
+                    "tail": []}
+
+    # The file count moves only when a whole part finishes.  With as many
+    # files per worker as `chunk_files`, every worker holds ONE part and the
+    # bar sits at 0 until the end; the event count (fed from the [PROGRESS]
+    # lines of the part in flight) is what shows the run is alive.
+    if chunk_files and max(len(g) for g in groups) <= chunk_files:
+        print("  [i] every worker holds a single part (<= %d files), so the "
+              "file count stays at 0 until a worker finishes; watch the event "
+              "count.  A smaller chunk_files gives a moving file count."
+              % chunk_files)
 
     b = _Bar(name, total=len(files)) if bar else None
     lock = threading.Lock()
+
+    def redraw():
+        d = sum(v["done"] for v in state.values())
+        bk = sum(v["booked"] + v["live"] for v in state.values())
+        b.update(d, "%d workers  events %d" % (len(procs), bk))
 
     def reader(j, p):
         for line in p.stdout:
@@ -596,11 +612,17 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
                 _, _, fdone, _, booked, _ = m.groups()
                 with lock:
                     st["done"] = int(fdone)
-                    st["booked"] = int(booked)
+                    st["booked"] = int(booked)     # cumulative over parts
+                    st["live"] = 0
                     if b:
-                        d = sum(v["done"] for v in state.values())
-                        bk = sum(v["booked"] for v in state.values())
-                        b.update(d, "%d workers  events %d" % (len(procs), bk))
+                        redraw()
+                continue
+            m = _PROG_RE.match(line)
+            if m:
+                with lock:
+                    st["live"] = int(m.group(3))   # the part in flight
+                    if b:
+                        redraw()
         p.wait()
 
     t0 = time.time()
