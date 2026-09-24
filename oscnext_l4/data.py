@@ -240,8 +240,14 @@ def resolve_one(name, available):
     return None
 
 
-def load_one_file(path, wanted):
-    """Read the wanted variables out of one HDF5 file -> {name: array}."""
+def load_one_file(path, wanted, extra=None):
+    """
+    Read the wanted variables out of one HDF5 file -> {name: array}.
+
+    `extra` = {name: (table, column)} reads columns that are NOT in the
+    variable table -- the booked classifier scores, for check_application.py
+    -- through the same event matching; absent ones come back NaN.
+    """
     # ONE open, not two.  This used to open the file, walk every node to build
     # `available`, close it, and open it again to read -- twice the metadata
     # walk per part, and there are 68 parts in a pass2 nue sample.
@@ -249,14 +255,20 @@ def load_one_file(path, wanted):
     try:
         nodes = _table_nodes(h5)
         available = {k: set(node.colnames) for k, node in nodes.items()}
-        return _read_resolved(h5, path, nodes, available, wanted)
+        return _read_resolved(h5, path, nodes, available, wanted, extra)
     finally:
         h5.close()
 
 
-def _read_resolved(h5, path, nodes, available, wanted):
+def _read_resolved(h5, path, nodes, available, wanted, extra=None):
     """The body of load_one_file, with the file already open."""
     need, unresolved = {}, []
+    for name, (tbl, col) in (extra or {}).items():
+        if tbl in available and col in available[tbl]:
+            need.setdefault(tbl, []).append((name, col))
+        else:
+            unresolved.append(name)
+            print("  [!] %s: no %s[%s] -> NaN" % (os.path.basename(path), tbl, col))
     for name in wanted:
         hit = resolve_one(name, available)
         if hit:
