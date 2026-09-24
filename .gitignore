@@ -3,6 +3,8 @@
 # ---------------------------------------------------------------------------
 # All processed data, models and plots go here
 L4_output/
+# The release scripts/make_release.py assembles (rebuilt, never edited)
+dist/
 
 # Blocked by type as well, in case something is written elsewhere by mistake
 *.hdf5
