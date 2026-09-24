@@ -617,9 +617,29 @@ def set_data_livetime(seconds):
     return DATA_LIVETIME_S
 
 
-# Column candidates for the event time.  hdfwriter expands I3EventHeader's
-# I3Time objects into an MJD day plus seconds and nanoseconds within that day.
+# The event time as booked.  THE hdfwriter IN USE WRITES ONE COLUMN,
+# `time_start_mjd` (fractional MJD days, float64), next to
+# `time_start_utc_daq` -- seen in a real pass2 detector-data file booked on
+# icetray v1.17.0.  This used to require a three-column split (MJD day +
+# seconds + nanoseconds) that the converter does not produce, so every file
+# was skipped as "no MJD columns" and the fallback livetime never ran; the
+# synthetic tests shared the assumption, which is why only a real file caught
+# it.  The split layout is still accepted if a file carries it.  float64 MJD
+# resolves ~1 microsecond at MJD ~56000, far below anything a run span needs.
 _MJD_COLS = ("time_start_mjd_day", "time_start_mjd_sec", "time_start_mjd_ns")
+_MJD_COL = "time_start_mjd"
+
+
+def _event_times_s(tbl):
+    """Event start times [s since MJD 0] from an I3EventHeader table, or None."""
+    have = set(tbl.colnames)
+    if _MJD_COL in have:
+        return np.asarray(tbl.col(_MJD_COL), dtype=np.float64) * 86400.0
+    if set(_MJD_COLS) <= have:
+        return (np.asarray(tbl.col(_MJD_COLS[0]), dtype=np.float64) * 86400.0
+                + np.asarray(tbl.col(_MJD_COLS[1]), dtype=np.float64)
+                + np.asarray(tbl.col(_MJD_COLS[2]), dtype=np.float64) * 1e-9)
+    return None
 
 
 def livetime_from_headers(paths, verbose=True):
@@ -662,15 +682,12 @@ def livetime_from_headers(paths, verbose=True):
             except Exception:
                 skipped.append((path, "no /I3EventHeader"))
                 continue
-            have = set(tbl.colnames)
-            if not set(_MJD_COLS) <= have:
-                skipped.append((path, "no MJD columns (has: %s)"
-                                % ", ".join(sorted(have))))
+            t = _event_times_s(tbl)
+            if t is None:
+                skipped.append((path, "no event-time column (has: %s)"
+                                % ", ".join(sorted(tbl.colnames))))
                 continue
             run = np.asarray(tbl.col("Run"), dtype=np.int64)
-            t = (np.asarray(tbl.col(_MJD_COLS[0]), dtype=np.float64) * 86400.0
-                 + np.asarray(tbl.col(_MJD_COLS[1]), dtype=np.float64)
-                 + np.asarray(tbl.col(_MJD_COLS[2]), dtype=np.float64) * 1e-9)
         finally:
             h5.close()
         for r in np.unique(run):
