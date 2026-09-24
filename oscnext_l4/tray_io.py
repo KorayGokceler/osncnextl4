@@ -5,8 +5,9 @@ Neither computes anything.  `validate_files` is the pre-flight check on the
 input -- I3Reader takes the whole file list at once, so ONE truncated file
 kills the run -- and `add_booker` is the writer that turns the frames into the
 HDF5 the notebook then reads.  `scripts/process_L4.py` uses both, one before
-the tray is built and one as its last module; `scan_files.py` and
-`compare_pass2.py` use one each.
+the tray is built and one as its last module; `scan_files.py` uses
+`validate_files`, and `verification/compare_pass2.py` uses
+`load_deserialization_libs` and `add_booker`.
 
 They live in the package rather than in a script because more than one script
 needs them, and a script importing another script is a fragile arrangement.

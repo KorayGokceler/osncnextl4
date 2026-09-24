@@ -218,7 +218,8 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
                        Name=L4_TOI_KEY)
 
     # --- improved LineFit ---
-    # The field used by the BDT is the speed: L4_iLineFitParams.LFVel
+    # The field used by the BDT is the speed: L4_iLineFitParams, booked as
+    # lf_vel (LFVel on the binding) -- config/variables.json lists both
     tray.AddSegment(linefit.simple, name + "_iLineFit",
                     inputResponse=cleaned_pulses,
                     fitName=L4_LINEFIT_KEY)

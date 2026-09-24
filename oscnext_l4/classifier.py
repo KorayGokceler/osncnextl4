@@ -11,7 +11,7 @@ sklearn and joblib do NOT exist in the IceTray environment (py3-v4.4.2), so
 the model is read in the native text format:
 
     L4_noise_model.txt    the LightGBM trees
-    L4_noise_model.json   the feature list (ORDER MATTERS) + class map
+    L4_noise_model.json   the feature list (ORDER MATTERS) + the training record
 
 Usage:
 
@@ -30,7 +30,6 @@ import json
 
 import numpy as np
 
-import sys
 from icecube import icetray, dataclasses
 
 
