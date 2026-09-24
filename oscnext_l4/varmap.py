@@ -81,6 +81,11 @@ def check(verbose=True):
 
     Returns the list of conflicts (empty = consistent).  It reads the config
     and nothing else -- no HDF5 file, no frame.
+
+    It compares NAMES, not bindings, so it cannot tell whether a frame field
+    exists on the object's python binding.  It passed while the frame side of
+    cog_z read a field I3HitStatisticsValues does not have (see classifier.py).
+    scripts/check_application.py is the test at the binding level.
     """
     conflict = []
     for name in sorted(VARIABLES):

@@ -51,10 +51,28 @@ from icecube import icetray, dataclasses
 #
 # The hit-statistics keys carry the pass3 spelling (SRTTWSplitInIcePulsesDC...)
 # on a pass2 run too -- deliberate, and explained in config/README.md.
+#
+# WHAT THE VARIABLE TABLE'S CHECK CANNOT SEE.  varmap.check() compares NAMES:
+# does the HDF5 column name the same quantity as the frame field.  Whether the
+# frame field actually EXISTS on the object's python binding is not a name
+# question.  `cog_z` is the tableio column name, while I3HitStatisticsValues
+# exposes `cog`, an I3Position -- so the frame side read `cog_z`, found
+# nothing, and every event was scored with cog_z missing.  The frame read had
+# never run against a real frame: the pass2 cross-check compared HDF5 with
+# HDF5.  Two guards now: a dotted field walks the binding (`cog.z` is
+# obj.cog.z, as the production's own get_frame_variable does), and
+# L4Classifier raises when an input is absent from every one of the first
+# frames.  scripts/check_application.py is the end-to-end test.
 from .varmap import FEATURE_MAP, COLUMN_ALTS                    # noqa: F401
 
 
 def _get_col(obj, col):
+    if "." in col:
+        # A dotted path walks attributes: "cog.z" -> obj.cog.z
+        head, rest = col.split(".", 1)
+        if not hasattr(obj, head):
+            return None
+        return _get_col(getattr(obj, head), rest)
     if hasattr(obj, "keys"):
         return float(obj[col]) if col in obj else None
     if col == "value":
@@ -131,8 +149,24 @@ def load_model(model_file):
 
 
 # ---------------------------------------------------------------------------
-# Tray modulu
+# Tray module
 # ---------------------------------------------------------------------------
+
+# Missing in all of the first 100 events is the bug signature, not an event
+# property.  Some inputs ARE legitimately absent per event -- CalculateVariables
+# writes no accumulated_time for 4 or fewer cleaned DOMs -- but the classifier
+# only sees events that passed the L3 cut, which already demands a minimum hit
+# count, and an input missing in 100 events in a row is a key or field that is
+# never there.  Raised early, so the
+# tray dies before it has written an L4 file full of wrong scores.
+FAIL_AFTER = 100
+
+
+# Below this many Physics frames an always-missing input is reported, not
+# fatal: too few events to tell a missing binding from legitimately absent
+# values.  See Finish().
+MIN_FRAMES_TO_JUDGE = 30
+
 
 class L4Classifier(icetray.I3ConditionalModule):
     '''Apply a trained LightGBM model frame by frame.'''
@@ -146,6 +180,10 @@ class L4Classifier(icetray.I3ConditionalModule):
                           "(NaN -> LightGBM handles it itself)", np.nan)
         self.AddParameter("SkipIfIncomplete",
                           "skip the frame when every variable is missing", False)
+        self.AddParameter("FailAfter",
+                          "raise when a model input has been missing in EVERY "
+                          "one of the first N Physics frames (0 = never)",
+                          FAIL_AFTER)
         self.AddOutBox("OutBox")
 
     def Configure(self):
@@ -153,6 +191,7 @@ class L4Classifier(icetray.I3ConditionalModule):
         self.output_key = self.GetParameter("OutputKey")
         self.missing = self.GetParameter("MissingValue")
         self.skip_incomplete = self.GetParameter("SkipIfIncomplete")
+        self.fail_after = self.GetParameter("FailAfter")
 
         if not model_file or not self.output_key:
             raise ValueError("ModelFile and OutputKey are required")
@@ -160,6 +199,7 @@ class L4Classifier(icetray.I3ConditionalModule):
         self.booster, self.features, self.sidecar = load_model(model_file)
         self.n_missing = {f: 0 for f in self.features}
         self.n_frames = 0
+        self.checked = False
 
         print("L4Classifier [%s]" % self.output_key)
         print("  model    : %s" % model_file)
@@ -167,7 +207,7 @@ class L4Classifier(icetray.I3ConditionalModule):
               (self.booster.num_trees(), len(self.features)))
         if self.sidecar:
             print("  trained  : %s (lightgbm %s)" %
-                  (self.sidecar.get("trained", "?"),
+                  (self.sidecar.get("trained_at", "?"),
                    self.sidecar.get("lightgbm_version", "?")))
             print("  default cut: %s" % self.sidecar.get("default_cut", "?"))
 
@@ -186,6 +226,9 @@ class L4Classifier(icetray.I3ConditionalModule):
                 v = self.missing
             x[0, i] = v
         self.n_frames += 1
+        if not self.checked and self.fail_after and \
+                self.n_frames >= self.fail_after:
+            self._fail_if_never_seen()
 
         if self.skip_incomplete and n_nan == len(self.features):
             self.PushFrame(frame)
@@ -196,7 +239,35 @@ class L4Classifier(icetray.I3ConditionalModule):
         frame[self.output_key] = dataclasses.I3Double(prob)
         self.PushFrame(frame)
 
+    def _fail_if_never_seen(self):
+        """Raise if some input has been missing in EVERY frame so far."""
+        self.checked = True
+        never = [f for f, n in self.n_missing.items() if n == self.n_frames]
+        if never:
+            raise RuntimeError(
+                "L4Classifier [%s]: model input(s) %s missing in ALL of the "
+                "first %d Physics frames.  That is not an event property, it "
+                "is a frame key or field the tray does not produce or this "
+                "code does not read -- and the scores would be silently "
+                "wrong.  Check FEATURE_MAP in config/variables.json against "
+                "the frame (dataio-shovel)."
+                % (self.output_key, ", ".join(never), self.n_frames))
+
     def Finish(self):
+        # A short file never reached FailAfter frames: judge it on what it had,
+        # but only if it had enough to judge.  Some inputs are legitimately
+        # absent per event (accumulated_time with <= 4 cleaned DOMs, a failed
+        # linefit), so "missing in all of 5 frames" is not the bug signature
+        # and would kill a --n smoke test or a sparse noise chunk.  Below the
+        # floor it warns instead; the report below still flags it.
+        if not self.checked and self.n_frames >= MIN_FRAMES_TO_JUDGE:
+            self._fail_if_never_seen()
+        elif not self.checked and self.n_frames:
+            never = [f for f, n in self.n_missing.items() if n == self.n_frames]
+            if never:
+                print("L4Classifier [%s] WARNING: %s missing in all of only "
+                      "%d frames -- too few to judge; check on a larger run."
+                      % (self.output_key, ", ".join(never), self.n_frames))
         bad = {f: n for f, n in self.n_missing.items() if n > 0}
         if bad and self.n_frames:
             print("L4Classifier [%s] missing-variable report (%d frames):"

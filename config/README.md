@@ -296,7 +296,7 @@ intersect, and whether every BDT input has both sides at all.
 |---|---|
 | `hdf5` | the `(table, column)` a booked HDF5 file holds — what training reads |
 | `hdf5_alts` | further `(table, column)` pairs naming the **same** quantity; whichever is actually in the file is used |
-| `frame` | the `(key, field)` the same quantity has in an I3 frame — what the tray reads |
+| `frame` | the `(key, field)` the same quantity has in an I3 frame — what the tray reads.  A dotted field walks the binding: `cog.z` is `obj.cog.z` |
 | `frame_alts` | field names that change between versions, tried in order |
 | `schemes` | **present only on weight columns.** Its presence is what marks a row as a weight column rather than a BDT input |
 
@@ -340,6 +340,7 @@ noise one.
 | `gen_ratio` | the production divides by `NEvents × gen_ratio`.  pass2 **stores** the ratio, so it is read rather than reconstructed from the neutrino's sign |
 | `micro_count` | `STW_m3500p4000_DTW200`; `STW7500_DTW200` is an older naming the pass2 source contradicts elsewhere |
 | `cog_z`, `z_sigma`, `z_travel` | the hit-statistics key keeps the **pass3** spelling (`SRTTWSplitInIcePulsesDC…`) on a pass2 run too.  The values are computed from whichever series was actually passed; only the label is fixed.  Deliberate and cosmetic — writer and reader use the same literal, so they stay consistent |
+| `cog_x/y/z` (frame side) | **`cog.z`**, not `cog_z`.  `cog_z` is the tableio COLUMN name; the `I3HitStatisticsValues` binding exposes `cog`, an `I3Position`, and the production reads the input as `HitStatistics.cog.z` (note Table 12; its `get_frame_variable` walks dotted paths).  With `cog_z` the frame read found nothing, and a NaN in an input that was never NaN in training takes the default branch: every event was scored as if `cog_z` were missing.  `cog_z` stays as a `frame_alt`.  `check()` could not see this -- it compares NAMES, not bindings -- and the frame-read path had never run against a real frame (the pass2 cross-check compared HDF5 with HDF5).  `scripts/check_application.py` is the test that can |
 | `MuonWeight*` | three spellings are booked because which one a production wrote is not fixed; the first that is present is used |
 
 ## `AUX` is not uniform across samples — ask `aux_for`
