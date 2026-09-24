@@ -1289,7 +1289,7 @@ chain has to adapt.  Three findings, in order of how much they matter:
   way the L4 variables were checked against the pass2 L4 files.  That would
   close open risk 4 by measurement instead of by argument.  Not done yet.
 
-### The fitting scaffolding is GONE (recover it from the tag)
+### The fitting scaffolding is GONE (recover it from git history)
 
 `oscnext_l4/fit_pass2.py` and the `fit` / `fit-report` subcommands existed to
 FIND the definitions the rewrite did not reproduce.  Both are settled -- VICH
@@ -1307,11 +1307,13 @@ not.
 not reproduce, `separation_in_cogs`, a new L4 variable -- the machine is one
 command away:
 
-    git show pass2-verified-v1:oscnext_l4/fit_pass2.py > verification/fit_pass2.py
-    git show pass2-verified-v1:scripts/compare_pass2.py > verification/compare_pass2.py
+    git show d9392e96c2:oscnext_l4/fit_pass2.py > verification/fit_pass2.py
+    git show d9392e96c2:scripts/compare_pass2.py > verification/compare_pass2.py
 
-(the paths after the tag are where those files lived THEN, and must stay; the
-cross-check has since moved to `verification/`)
+(d9392e96c2 is the parent of 4837bf2, the commit that deleted them -- the tag
+`pass2-verified-v1` this once named was never pushed.  The paths after the
+commit are where those files lived THEN, and must stay; the cross-check has
+since moved to `verification/`)
 
 It is worth recovering rather than rewriting: it carries the variant/inversion/
 grid-scan method that found VICH, and the `production_tie_*` variants that

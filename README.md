@@ -5,7 +5,9 @@ It computes the L4 discriminating variables from L3 `.i3` files, books them to
 HDF5, and trains two LightGBM classifiers:
 
 - **noise** — rejection of pure noise (vuvuzela)
-- **muon** — rejection of atmospheric muons (background: CORSIKA)
+- **muon** — rejection of atmospheric muons (background: CORSIKA at pass3;
+  MuonGun or detector data at pass2 -- the production trained on detector
+  data)
 
 Reference: oscNext technical note v00.07 (sections 3.4-3.6, Tables 10-13).
 The method is the note's own: LightGBM with the Table 10 hyperparameters.
@@ -16,19 +18,23 @@ The method is the note's own: LightGBM with the Table 10 hyperparameters.
 oscnext_l4/     the library
                   tray side      variables, rewritten, frame_objects, l3vars,
                                  tray_io            (need icetray)
-                  analysis side  data              (needs pytables/numpy)
+                  analysis side  data, dataset     (need pytables/numpy)
                   both sides     varmap            (stdlib only)
                   and            runner (drives process_L4 as a subprocess),
                                  classifier (applies the model back to frames)
 config/         productions.json, variables.json + README.md -- PURE DATA.
                 The two facts that fail SILENTLY when wrong live here.
-scripts/        entry points     process_L4, train_L4_classifier,
-                                 scan_files, diagnose_env, plot_inputs,
-                                 check_leakage, inspect_production_table
+scripts/        entry points     process_L4, make_dataset,
+                                 train_L4_classifier, check_application,
+                                 make_release, scan_files, diagnose_env,
+                                 plot_inputs, check_leakage,
+                                 inspect_production_table, collect_meta.sh
 notebooks/      oscNext_L4.ipynb -- the interface, sections 0-10
 verification/   the pass2 cross-check -- NOT part of the pipeline.  Runs it
                 over the pass2 L3 files and holds the result against the real
                 pass2 L4 files.  Delete this arm LAST; it is the safety net.
+release/        the templates make_release.py fills: the package a
+                collaborator runs (README, physics caveats, models)
 docs/           pipeline.md, technical_note_comparison.md, production_build.md
 presentation/   figures and the weekly updates
 reference/      the technical note and first-hand source material
@@ -46,7 +52,7 @@ IceTray build's `env-shell.sh`.  Search order: `$OSCNEXT_I3_BUILD` →
 `/data/user/$USER/*/build` → `~/*/build` → cvmfs metaprojects.
 
 ```bash
-./setup_env.sh find          # what is found
+./setup_env.sh               # report what is found (changes nothing)
 ./setup_env.sh shell         # open a shell inside the environment
 ./setup_env.sh run python scripts/diagnose_env.py    # one command
 ```
@@ -102,13 +108,25 @@ Everything runs from `notebooks/oscNext_L4.ipynb`:
 It also works from the command line:
 
 ```bash
-# processing
+# processing -- each sample's flags are its `flags` in config/productions.json;
+# for pass2 L3 add --cleaned-pulses SRTTWOfflinePulsesDC
 python scripts/process_L4.py --input-list nue_good.txt \
-    --output-hdf5 L4_output/hdf5/nue/L4_nue.hdf5 --gcd <GCD> --scan off
+    --output-hdf5 L4_output/hdf5/nue/L4_nue.hdf5 --gcd <GCD> --scan off \
+    --chunk-files 10 --mc --genie
 
-# training
+# training sets (notebook sections 1, 4-6 without the notebook), then training
+python scripts/make_dataset.py --stage noise --production pass3 \
+    --hdf-base L4_output/hdf5 --outdir L4_output/ds
 python scripts/train_L4_classifier.py --tag noise \
     --dataset L4_output/ds/L4_noise_dataset.npz --outdir L4_output/models
+python scripts/make_dataset.py --stage muon --production pass3 \
+    --hdf-base L4_output/hdf5 --outdir L4_output/ds \
+    --noise-model L4_output/models/L4_noise_model.txt
+python scripts/train_L4_classifier.py --tag muon \
+    --dataset L4_output/ds/L4_muon_dataset.npz --outdir L4_output/models
+
+# the runnable package for a collaborator (see release/README.md)
+python scripts/make_release.py --out dist/oscnext_l4 --models L4_output/models
 ```
 
 ## Known traps
@@ -144,17 +162,17 @@ Output cells take megabytes and produce meaningless diffs.
 
 ## Status
 
-- [x] Environment verified, IceTray/lightgbm import layer
+- [x] Environment verified: IceTray v1.17.0 on cvmfs (py3-v4.4.2), direct
+      `icecube` imports, lightgbm 4.5.0 shipped in the metaproject
 - [x] Robust against corrupt input files
 - [x] Column names pinned down (14/14 BDT inputs found)
-- [x] nue and CORSIKA processed
-- [x] Noise classifier trained — 95.9% efficiency at 99% rejection
-      (Table 13: ~96%)
-- [ ] numu / noise need reprocessing (cut short by corrupt `.i3.zst`)
+- [x] The rewritten variables verified against the real pass2 L4 files:
+      14 of 15 rows bitwise identical over 56,301 events in five samples;
+      `accumulated_time` 99.84% (max 286 ns, a tie-order residual)
+- [x] Noise classifier trained -- pass2: 96.9% efficiency at 99% rejection
+      on 120,125 noise events; pass3: 95.9%, on only 2,051 (Table 13: ~96%)
+- [ ] pass3 numu / noise need reprocessing (cut short by corrupt `.i3.zst`)
 - [ ] Muon classifier not trained
-- [ ] The rewritten variables (VICH, accumulated_time) not verified against
-      the reference
-- [ ] Noise MC statistics are inadequate — nothing right of 99% is measurable
 
 Details and open risks: `CLAUDE.md`.  Line-by-line comparison with the
 technical note: `docs/technical_note_comparison.md`.  Data flow:

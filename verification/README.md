@@ -470,12 +470,13 @@ Removing them lost nothing, because everything they established is written down
 here and in the docstrings.  If a definition ever has to be fitted again — a
 pass3 variable that does not reproduce, `separation_in_cogs`, a new L4 variable
 — the machine is one command away.  **The paths on the LEFT are where those
-files lived in that tag, and they have not moved there; the paths on the right
+files lived in commit d9392e96c2 -- the parent of 4837bf2, which deleted them; the
+tag `pass2-verified-v1` this once named was never pushed -- the paths on the right
 are where they go today**, now that the cross-check lives in `verification/`:
 
 ```
-git show pass2-verified-v1:oscnext_l4/fit_pass2.py   > verification/fit_pass2.py
-git show pass2-verified-v1:scripts/compare_pass2.py  > verification/compare_pass2.py
+git show d9392e96c2:oscnext_l4/fit_pass2.py   > verification/fit_pass2.py
+git show d9392e96c2:scripts/compare_pass2.py  > verification/compare_pass2.py
 ```
 
 (The second one would overwrite the current `compare_pass2.py`; take the `fit`

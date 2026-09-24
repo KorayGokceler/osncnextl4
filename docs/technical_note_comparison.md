@@ -4,8 +4,25 @@ Source: `reference/OscNext_v00.074_pass2_technical_note.pdf` (pass2, 83 pages).
 Relevant sections: 3.4 (DeepCore Filter), 3.5.1 (L3 variables, Tables 7-8),
 3.6 (L4, Tables 10-13).
 
-> **The note is for pass2.** Our input is pass3.  Most of the L4 logic is taken
-> to be the same, but the naming changed (marked below).
+> **The note is for pass2.** The pipeline runs on pass3 and on pass2 (the
+> `--cleaned-pulses` flag is the whole difference).  Most of the L4 logic is
+> the same; the naming changed (marked below).
+
+> **READ THIS FIRST -- what is current and what is history.**  Part 1 and
+> sections 2.4-2.7 describe the code as it is.  Sections 2.1-2.3 and the
+> "Priority order" were written BEFORE the pass2 cross-check and are kept as
+> the record of how the questions were posed; where they disagree with the
+> code, the code and CLAUDE.md win.  In short, what changed since:
+> - **VICH** is `I3CutL7Module`'s four causality bands around the trigger
+>   (`oscnext_l4/rewritten.py`, `vich`), 100.00% identical to pass2 -- not
+>   the speed window and fiducial COG described in 2.1-2.2.
+> - **accumulated_time** follows `CalculateVariables`' charge-quartile rule by
+>   default (99.84% identical to pass2); `--accumulated-time-note` gives the
+>   note's crossing.  It was never an off-by-one.
+> - **micro_count** starts from the UNCLEANED series by default, as pass2
+>   does (bitwise identical); `--micro-count-cleaned` follows Table 11.
+> - All five rewritten inputs are verified: 14 of 15 compared rows are
+>   bitwise identical over 56,301 events (`verification/README.md`).
 
 ---
 
@@ -25,7 +42,7 @@ How a frame object becomes columns (hdfwriter's per-type converters):
 | `I3LineFitParams` | `lf_vel`, `lf_vel_x/y/z`, `n_hits` (pass3 names) |
 | `I3HitStatisticsValues` | `cog_x/y/z`, `z_min`, `z_max`, `z_mean`, `z_sigma`, `z_travel`, … |
 | `I3HitMultiplicityValues` | `n_hit_strings`, `n_hit_doms`, `n_hit_doms_one_pulse`, `n_pulses` |
-| `I3FillRatioInfo` | `fill_ratio_from_mean`, `fill_radius_from_mean`, … |
+| `I3FillRatioInfo` | `fillratio_from_mean`, … (the converter drops the underscore) |
 | `I3EventHeader` | `run_id`, `event_id`, … + `time_start_mjd_day/sec/ns` |
 
 **Pulse series are NOT booked.** An event with 5000 pulses does not fit a flat
@@ -39,7 +56,7 @@ the BDT needs.
 | Key | What for |
 |---|---|
 | `I3EventHeader` | index + livetime (the MJD fields) |
-| `IC2018_LE_L3_Vars` | **4 muon + 2 noise BDT inputs live here** (map → many columns) |
+| `IC2018_LE_L3_Vars` | **4 muon + 1 noise BDT inputs live here** (map → many columns; `FullTimeLengthRatio` is recomputed at L4) |
 | `IC2018_LE_L3_bools` | the L3 cut flags |
 | `L3_oscNext_bool` | `IC2018_LE_L3_Full AND Data_quality_bool` |
 | `Data_quality_bool` | SLOP / LID errata data quality |
@@ -63,7 +80,7 @@ the BDT needs.
 | `L4_separation_in_cogs` | I3Double | no |
 | `L4_QR_Box` | — | no (no slc-veto, not produced) |
 | `L4_n_flux_events` | I3Double | no — **weighting** |
-| `L4_Cut_Bool`, `L4_NoiseStraightCuts_Bool` | I3Bool | no |
+| `L4_oscNext_bool`, `L4_NoiseStraightCuts_Bool` | I3Bool | no |
 | `L4_NoiseClassifier_ProbNu`, `L4_MuonClassifier_Data_ProbNu` | I3Double | with `--apply-cut` |
 
 ### By sample kind (for the weights)
@@ -84,7 +101,9 @@ the BDT needs.
 # Part 1b — Where each variable is computed
 
 For every BDT input: which file/function in the code, which page/table in the
-note.  Line numbers refer to `oscnext_l4/variables.py`.
+note.  The tray segments are in `oscnext_l4/variables.py`; the three
+rewritten modules in `oscnext_l4/rewritten.py`; `FullTimeLengthRatio` in
+`oscnext_l4/l3vars.py`.
 
 ## Noise BDT — 5 inputs (note p.36, Table 11)
 
@@ -104,7 +123,7 @@ note.  Line numbers refer to `oscnext_l4/variables.py`.
 | `RTVeto250Hits` | **from L3** | p.28-29, sec. 3.5.1 + Table 8 |
 | `NchCleaned` | **from L3** | p.28, sec. 3.5.1 |
 | `NAbove200Hits` | **from L3** | p.28, sec. 3.5.1 |
-| `VICH_nch` | `_vich()` — **our rewrite** | definition p.26-27, sec. 3.4 |
+| `VICH_nch` | `vich()` in `rewritten.py` — **our rewrite** of `tau_bdt.I3CutL7Module` | p.41, Table 12 (one line); the definition is I3CutL7Module's |
 | `accumulated_time` | `_accumulated_time()` — **our rewrite** | p.41, Table 12 |
 | `first_hlc_rho` | `_first_hlc()` → `_add_rho_36()` | p.41, Table 12 |
 | `cog_z` | the `common_variables.hit_statistics` segment, in `oscNext_L4_hit_statistics`.  An IceTray project. | p.41, Table 12 |
@@ -119,19 +138,18 @@ note.  Line numbers refer to `oscnext_l4/variables.py`.
 | **IceTray projects** | 5 | `iLineFit_speed` (linefit), `fill_ratio` (fill_ratio), `cog_z`/`z_sigma`/`z_travel` (common_variables) |
 | **Our pure-Python rewrites** | 5 | `micro_count`, `FullTimeLengthRatio`, `first_hlc_rho`, `accumulated_time`, `VICH_nch` |
 
-> All of the risk is in the last row.  What comes from L3 and what comes from
-> IceTray projects is already validated code; **the unverified part is those
-> five functions**, and two of them (`VICH_nch`, `accumulated_time`) are
-> principal inputs of the muon BDT.
+> All of the risk was in the last row, and it has been measured: all five
+> agree with the real pass2 L4 files -- bitwise, except `accumulated_time`
+> at 99.84% (a tie-order residual, CLAUDE.md open risk 2).
 
 ## Helper functions (not inputs, but everything uses them)
 
 | Function | What it does |
 |---|---|
-| `charge_weighted_cog()` | charge weighted COG -- used by VICH and separation_in_cogs |
-| `iter_hits()` | iteration over `(omkey, pos, time, charge)` |
+| `get_pulses()`, `iter_map()` | `frame_objects.py`: unpack a pulse series (mask or map) and iterate it |
+| `calc_rho_36()` | `frame_objects.py`: distance from string 36, bit for bit the production's formula |
 | `PropagateGenieInfo` | carries `n_flux_events` from the S frame to the P frames (for weighting) |
-| `l3_cut` | inside `oscNext_L4`: `IC2018_LE_L3_Full AND Data_quality_bool` |
+| `l3_cut` | inside `oscNext_L4`: `L3_oscNext_bool`, else `IC2018_LE_L3_Full` |
 
 ## How to read the note
 
@@ -280,13 +298,13 @@ the fiducial restriction is something the note states **explicitly**.
 
 | Topic | The note | Ours | Effect |
 |---|---|---|---|
-| **Muon BDT background** | **real detector data** (99% muon at this stage), 18 runs from 2012-2017, balanced over the seasonal muon flux | CORSIKA | The note says a classifier trained with MuonGun performed "similarly" but was not used.  The same can be expected of CORSIKA; but **no data/MC check is possible** and populations that are not simulated (muon bundles, say) cannot be learned. |
+| **Muon BDT background** | **real detector data** (99% muon at this stage), 18 runs from 2012-2017, balanced over the seasonal muon flux | pass2: the same 18 runs (`data` in productions.json), MuonGun only when data is not loaded; pass3: CORSIKA | The note says a classifier trained with MuonGun performed "similarly" but was not used.  The same can be expected of CORSIKA; but **no data/MC check is possible** and populations that are not simulated (muon bundles, say) cannot be learned. |
 | **VICH pulse series** | the DC Filter does its own SRT cleaning on `SplitUncleanedInIcePulses` (every HLC hit is kept) | raw `SplitInIcePulses` | Direction unclear.  Ours sees more hits → VICH may come out slightly high.  The original pass2 code passes `InputPulses=uncleaned_pulses`, which matches ours. |
 | **`FullTimeLengthRatio`** | Table 11 lists `IC2018_LE_L3_Vars.FullTimeLengthRatio` -- i.e. an **L3 variable** | we compute it at L4 (the pass3 L3 map has no ratio) | The components are in L3 (`CleanedFullTimeLength`, `UncleanedFullTimeLength` -- Table 8).  **Direction RESOLVED:** the x axis of this variable in Figure 13 runs 0.0-1.0 → the ratio is `cleaned/uncleaned`, the direction our code takes.  Verified against the L3 components: maximum deviation 0 over 143 events. |
 | **HitStatistics key** | `SRTTWOfflinePulsesDCHitStatistics` (pass2) | `SRTTWSplitInIcePulsesDCHitStatistics` (pass3) | A known pass2→pass3 rename, confirmed with `reference/pass3_L3_process.py`. |
-| **`accumulated_time` rule** | *"Time to reach 75% of an event's charge"* | the pulse at which the cumulative charge reaches 75% (the note's reading) | pass2 takes the pulse BEFORE that one -- an off-by-one, fitted at 99.40%.  ~52 ns apart.  `--accumulated-time-pass2` switches. |
-| **`VICH` everything** | one line, Table 12 | a speed window borrowed from the L2 DeepCore Filter, DeepCore_Filter's veto DOMs, a fiducial charge-weighted COG | **Does not reproduce pass2** (~12%).  Five hypotheses retired; needs the `tau_bdt` source. |
-| **ντ** | Table 13 has ντ CC (0.129 mHz) | no such set | ~3% of the signal. |
+| **`accumulated_time` rule** | *"Time to reach 75% of an event's charge"* | DEFAULT: `CalculateVariables`' charge-quartile rule -- the last pulse whose cumulative charge has not passed 75% (99.84% identical to pass2) | `--accumulated-time-note` takes the pulse at the crossing, the note's reading (0.98% agreement). |
+| **`VICH` everything** | one line, Table 12 | `I3CutL7Module`'s four (distance, dt) bands around the first trigger with config id 1010/1011 | **100.00% identical to pass2** (8144 events).  The speed-window version described above reproduced ~12% and is gone. |
+| **ντ** | Table 13 has ντ CC (0.129 mHz) | pass2: NuTau 160511 is signal (samples are taken by role); pass3: no such set in the paths we have | ~3% of the signal at pass3. |
 | **BDT engine** | LightGBM (sec. 3.6.1) | LightGBM | The same; the Table 10 parameters are used directly. |
 
 ---
@@ -395,8 +413,8 @@ Three consequences, in order of how easy they are to get wrong:
    populations that are not simulated, which is the stated reason for
    preferring data.
 
-**The 18 runs, listed outright** (p.39, and now
-`productions.PASS2_MUON_DATA_RUNS`):
+**The 18 runs, listed outright** (p.39, and now the `data` sample of
+`config/productions.json`):
 
 | year | runs |
 |---|---|
@@ -435,7 +453,10 @@ has a published counterpart to sit beside -- the same comparison the noise
 model's does not have.
 
 
-# Priority order
+# Priority order (historical -- written before the pass2 cross-check)
+
+Items 1, 3 and 4 are closed (CLAUDE.md open risks 1, 2 and
+`verification/README.md`); item 2 is still open.
 
 1. **`accumulated_time` reference time** (2.1) -- the fraction and the series
    are verified, the zero point is open.

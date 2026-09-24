@@ -14,7 +14,9 @@ series name, and one L3 file per HDF5 so events can be matched).
 `fit-report` subcommands that used to sit beside them were scaffolding for
 finding the definitions our rewrite did not reproduce; those are settled and
 recorded in variables.py and CLAUDE.md, so the scaffolding is gone.  Recover
-it from the tag pass2-verified-v1 if a definition ever has to be fitted again.
+it from commit d9392e96c2 (the parent of the deletion, 4837bf2; the tag
+pass2-verified-v1 named in older notes was never pushed) if a definition
+ever has to be fitted again.
 
 Subcommands
 -----------
