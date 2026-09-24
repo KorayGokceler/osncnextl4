@@ -271,6 +271,34 @@ def _part_done(outputs):
             and all(os.path.exists(o) for o in outputs))
 
 
+def _part_files_given(output):
+    """The L3 file list a finished part was made from (None if unrecorded)."""
+    try:
+        with open(output + ".meta.json") as fh:
+            return json.load(fh).get("l3_files_given")
+    except (OSError, ValueError):
+        return None
+
+
+def _stale_parts(path, n_chunks):
+    """
+    Parts of `path` numbered n_chunks or above: left by an earlier run that
+    cut the input into MORE parts.  They match the loader's L4_<sample>*.hdf5
+    glob like any other part, so leaving them would load their events twice.
+    """
+    if not path:
+        return []
+    probe = _part_path(path, 0)
+    head, tail = os.path.split(probe)
+    pat = re.compile(re.escape(tail).replace("_part000", r"_part(\d{3,})") + "$")
+    stale = []
+    for f in sorted(os.listdir(head or ".")):
+        m = pat.match(f)
+        if m and int(m.group(1)) >= n_chunks:
+            stale.append(os.path.join(head, f))
+    return stale
+
+
 def _write_meta(output, meta):
     """
     Write <output>.meta.json.
@@ -715,6 +743,18 @@ def main():
                   for i in range(0, len(infiles), args.chunk_files)]
         n_chunks = len(chunks)
         print("Parts: %d  (%d files/part)" % (n_chunks, args.chunk_files))
+        # A part is identified by its INDEX, and the index -> files mapping
+        # changes with --chunk-files, the input list or the scan result.  A
+        # leftover part from a differently cut run would be loaded beside the
+        # new ones -- the same L3 files twice, with nothing to show for it.
+        stale = _stale_parts(args.output_hdf5, n_chunks) + \
+            _stale_parts(args.output_i3, n_chunks)
+        if stale:
+            sys.exit("[!] %d part(s) from an earlier run cut into more parts "
+                     "are in the way:\n    %s\nThey would be loaded together "
+                     "with this run's parts and double-count their L3 files.  "
+                     "Remove them (and their .meta.json) first."
+                     % (len(stale), "\n    ".join(stale[:10])))
         _emit("[CHUNK] 0/%d files=0/%d booked=0 elapsed=0.0"
               % (n_chunks, len(infiles)))
 
@@ -727,6 +767,18 @@ def main():
 
             # Skip a finished part -> a crashed run resumes where it stopped
             if not args.overwrite and _part_done([hdf5_part, i3_part]):
+                given = _part_files_given(out_part)
+                if given is not None and given != list(chunk):
+                    sys.exit("[!] %s was made from a different L3 file list "
+                             "(--chunk-files, the input or the scan result "
+                             "changed since).  Skipping it would drop or "
+                             "double-count files.  Remove the old parts, or "
+                             "rerun with the original --chunk-files and "
+                             "input." % out_part)
+                if given is None:
+                    print("    [!] %s records no file list (made by an older "
+                          "process_L4.py): cannot check it matches this run's "
+                          "part %d." % (os.path.basename(out_part), ci))
                 print("[%d/%d] skipped (already there): %s"
                       % (ci + 1, n_chunks, os.path.basename(out_part)))
                 _emit("[CHUNK] %d/%d files=%d/%d booked=%d elapsed=%.1f"
@@ -747,6 +799,8 @@ def main():
             _write_meta(out_part, dict(
                 n_l3_files=len(chunk_used),
                 n_l3_files_given=len(chunk),
+                l3_files_given=list(chunk),
+                l3_files=list(chunk_used),
                 physics_frames=counts["physics"],
                 sub_event_stream=args.sub_event_stream,
                 after_stream_filter=counts["stream"],
@@ -768,6 +822,8 @@ def main():
             n_l3_files=(None if args.n > 0 else len(used)),
             n_l3_files_unreliable=bool(args.n > 0),
             n_l3_files_given=len(infiles),
+            l3_files_given=list(infiles),
+            l3_files=list(used),
             physics_frames=totals["physics"],
             sub_event_stream=args.sub_event_stream,
             after_stream_filter=totals["stream"],
