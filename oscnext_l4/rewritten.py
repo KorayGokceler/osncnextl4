@@ -441,7 +441,8 @@ def _vich(frame, uncleaned_pulses,
     `reference/oscNext_L4_pass2_original.py` passes
     `InputPulses=uncleaned_pulses  # Use uncleaned hits` to `I3CutL7Module`.
 
-    Originally done by tau_bdt.I3CutL7Module, which was never found.
+    Originally done by tau_bdt.I3CutL7Module -- found and read since (see
+    above and CLAUDE.md open risk 1); this follows it.
     '''
     if nch_key in frame:
         return True

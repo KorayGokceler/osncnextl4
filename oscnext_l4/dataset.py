@@ -43,6 +43,13 @@ def stack(data, samples, features):
     out = {f: np.concatenate([data[s][f] for s in samples]) for f in features}
     for extra in ("w_phys", "Run"):
         out[extra] = np.concatenate([data[s][extra] for s in samples])
+    # (sample, part) of every event, when the loader recorded it: an L3 file
+    # never spans two parts, so this groups every OverSampling copy of a
+    # shower whatever Run holds.  See split_by_shower.
+    if all("_part" in data[s] for s in samples):
+        out["_group"] = np.concatenate(
+            [(np.int64(i) << 32) + np.asarray(data[s]["_part"], dtype=np.int64)
+             for i, s in enumerate(samples)])
     return out
 
 
@@ -69,21 +76,41 @@ def report_missing_inputs(d, features, label):
     return ok
 
 
-def split_by_shower(runs, frac, rng_):
+def split_by_shower(runs, frac, rng_, groups=None, allow_event_fallback=True):
     """
     Train/test split at SHOWER level.
 
     In CORSIKA the same air shower is repeated OverSampling times; an
     event-level split puts copies of one shower on both sides and inflates the
-    test efficiency.  Events sharing a `Run` always move together.
+    test efficiency.  Events sharing a `Run` always move together -- and, when
+    `groups` is given (stack()'s "_group": the HDF5 part an event came from),
+    events sharing (group, Run).  The copies of a shower are written into one
+    L3 file and an L3 file never spans two parts, so that grouping is safe even
+    where Run is the DATASET number rather than the shower.
+
+    allow_event_fallback=False refuses, instead of warning, when there are too
+    few groups to split on: for CORSIKA an event-level split leaks copies.
     """
+    if groups is not None:
+        _, runs = np.unique(np.column_stack([np.asarray(groups, np.int64),
+                                             np.asarray(runs, np.int64)]),
+                            axis=0, return_inverse=True)
+        runs = np.asarray(runs).ravel()
     uniq = np.unique(runs)
     # A degenerate split is the danger here, and it is SILENT.  oscNext's
     # FixSimEventHeaders writes run_id = dataset_id, so a sample whose events
     # all come from one dataset has ONE distinct Run -- and this function would
     # then flip a single coin and send every event to train or every event to
-    # test.  CORSIKA is safe (Run is the shower), MuonGun may not be.
+    # test.  With `groups` the unit is (part, Run) instead, so a sample booked
+    # in many parts has many units whatever Run holds.
     if len(uniq) < 20:
+        if not allow_event_fallback:
+            raise ValueError(
+                "split_by_shower: only %d distinct (part, Run) group(s) for %d "
+                "events -- too few to split on, and an event-level split would "
+                "put OverSampling copies of one shower on both sides.  Book "
+                "the sample in more parts (process_L4.py --chunk-files)."
+                % (len(uniq), len(runs)))
         print("  [!] split_by_shower: only %d distinct Run value(s) for %d "
               "events." % (len(uniq), len(runs)))
         print("      Too few to split on -- falling back to an EVENT-level "

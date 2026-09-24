@@ -463,7 +463,9 @@ def main():
                         "one of --output-i3 / --output-hdf5 is required.")
 
     p.add_argument("--uncleaned-pulses", default=UNCLEANED_PULSES_DEFAULT)
-    p.add_argument("--cleaned-pulses", default=CLEANED_PULSES_DEFAULT)
+    p.add_argument("--cleaned-pulses", default=CLEANED_PULSES_DEFAULT,
+                   help="the cleaned pulse series (default %(default)s, "
+                        "pass3).  pass2 L3: SRTTWOfflinePulsesDC")
     p.add_argument("--sub-event-stream", default="InIceSplit")
 
     p.add_argument("--mc", action="store_true", help="simulation (book the MC truth)")
@@ -472,7 +474,9 @@ def main():
     p.add_argument("--muongun", action="store_true",
                    help="MuonGun MC (books the muon weight keys)")
     p.add_argument("--genie", action="store_true",
-                   help="GENIE MC -- carries I3GenieInfo.n_flux_events into every frame")
+                   help="GENIE MC -- carries I3GenieInfo.n_flux_events into "
+                        "every frame.  Implies --mc (without it I3MCWeightDict "
+                        "is not booked and the sample cannot be weighted)")
     p.add_argument("--corsika", action="store_true",
                    help="CORSIKA MC -- books CorsikaWeightMap + PolyplopiaPrimary")
 
@@ -540,8 +544,17 @@ def main():
                    help="how many times to drop a corrupt file found at run time "
                         "and retry (default 3, 0=no retry)")
     p.add_argument("--no-hit-statistics", action="store_true",
-                   help="do not compute HitStatistics (when L3 already has them)")
+                   help="do not compute HitStatistics.  Never needed: the "
+                        "segment already skips itself when the frame holds "
+                        "them, and neither production's L3 holds them under "
+                        "the booked name (pass3 L3 deletes them, pass2's carry "
+                        "the SRTTWOfflinePulsesDC spelling) -- so this leaves "
+                        "cog_z, z_sigma, z_travel and n_hit_doms MISSING in "
+                        "every event.")
     args = p.parse_args()
+
+    if args.genie:
+        args.mc = True
 
     if not args.input and not args.input_list:
         p.error("--input or --input-list is required.")
@@ -668,8 +681,8 @@ def main():
         tray.Add(_count_physics, "count_physics",
                  Streams=[icetray.I3Frame.Physics])
 
-        # Progress: counts EVERY frame (Q/P/G/C/D) and prints one line every
-        # --progress frames.  This is what feeds the notebook's bar.
+        # Progress: a function module, so it sees Physics frames only; prints
+        # one line every --progress of them.  This is what feeds the notebook's bar.
         if args.progress:
             tray.Add(ProgressReporter(args.progress, counter, time.time()),
                      "progress")
@@ -862,9 +875,14 @@ def main():
                                  _part_path(out, 0).replace("_part000", "_partNNN")))
         else:
             print("%s:" % label, out)
-    bl = _bad_list_path(anchor)
-    if os.path.exists(bl):
-        print("Corrupt file list:", bl)
+    # Files dropped at run time are listed per part in chunk mode.
+    bls = [_bad_list_path(anchor)]
+    if args.chunk_files > 0:
+        bls += sorted(glob.glob(glob.escape(_bad_list_path(
+            _part_path(anchor, 0))).replace("_part000", "_part[0-9]*")))
+    for bl in bls:
+        if os.path.exists(bl):
+            print("Corrupt file list:", bl)
 
     if n_phys and not n_booked:
         print()

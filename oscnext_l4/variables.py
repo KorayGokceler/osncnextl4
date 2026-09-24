@@ -454,6 +454,38 @@ def compute_L4_cut(tray, name, classifier_model_dir,
 # 6. MAIN SEGMENT
 # ===========================================================================
 
+# A pulse series absent from EVERY one of the first N Physics frames that
+# passed the L3 cut is a wrong key name, not an event property: every L3 event
+# carries both series.
+PULSE_CHECK_FRAMES = 20
+
+
+def _require_keys(*keys):
+    """A function module: raise if a key is missing from all the first frames."""
+    seen = dict.fromkeys(keys, 0)
+    count = [0]
+
+    def require_keys(frame):
+        if count[0] >= PULSE_CHECK_FRAMES:
+            return True
+        count[0] += 1
+        for k in keys:
+            if k in frame:
+                seen[k] += 1
+        if count[0] == PULSE_CHECK_FRAMES:
+            never = [k for k, n in seen.items() if n == 0]
+            if never:
+                raise RuntimeError(
+                    "pulse series %s missing from all of the first %d Physics "
+                    "frames after the L3 cut.  pass3 L3 names the cleaned "
+                    "series SRTTWSplitInIcePulsesDC (the default), pass2 L3 "
+                    "SRTTWOfflinePulsesDC: give --cleaned-pulses "
+                    "SRTTWOfflinePulsesDC for pass2."
+                    % (", ".join(never), PULSE_CHECK_FRAMES))
+        return True
+    return require_keys
+
+
 @icetray.traysegment
 def oscNext_L4(tray, name,
                uncleaned_pulses=UNCLEANED_PULSES_DEFAULT,
@@ -519,6 +551,13 @@ def oscNext_L4(tray, name,
                 return bool(frame["IC2018_LE_L3_bools"]["IC2018_LE_L3_Full"])
             return False
         tray.Add(l3_cut, name + "_L3_cut")
+
+    # Both pulse series must be in the frame.  A wrong name -- pass2 L3 run
+    # without --cleaned-pulses SRTTWOfflinePulsesDC -- makes no module fail:
+    # every variable built on the series is simply never written, and the
+    # booked file is full of missing values that training accepts silently.
+    tray.Add(_require_keys(cleaned_pulses, uncleaned_pulses),
+             name + "_pulse_check")
 
     tray.Add(oscNext_L4_common_variables, name + "_common",
              cleaned_pulses=cleaned_pulses,

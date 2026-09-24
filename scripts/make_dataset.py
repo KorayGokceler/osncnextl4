@@ -53,6 +53,7 @@ import sys
 import glob
 import json
 import argparse
+import hashlib
 import datetime
 import subprocess
 
@@ -196,6 +197,73 @@ def provenance(args, config_path, prod, samples, data, signal, background,
 
 
 # ---------------------------------------------------------------------------
+# The guards
+# ---------------------------------------------------------------------------
+
+def signal_identity(data, signal):
+    """
+    What the shared signal split depends on, as one hash: the seed, the
+    fraction, and every signal event's (Run, Event, SubEvent) in stack order.
+
+    The split is the first draw of default_rng(RNG_SEED) over the stacked
+    signal, made separately by the noise run and the muon run.  It is the SAME
+    split only if both runs stacked the same events in the same order -- a
+    part that was missing at one stage and present at the other shifts every
+    event after it, and signal events then sit in the noise model's TRAINING
+    set and the muon model's TEST set.  Nothing else would notice.
+    """
+    h = hashlib.sha256()
+    h.update(json.dumps([RNG_SEED, TRAIN_FRAC, list(signal)]).encode())
+    for n in signal:
+        for k in ("Run", "Event", "SubEvent"):
+            h.update(np.ascontiguousarray(data[n][k], dtype=np.int64).tobytes())
+    return {"sha256": h.hexdigest(),
+            "n_events": {n: int(len(data[n]["Run"])) for n in signal}}
+
+
+def check_shared_split(noise_model, sig_id):
+    """Refuse a muon set whose signal is not the noise set's, event for event."""
+    js = os.path.splitext(noise_model)[0] + ".json"
+    try:
+        with open(js) as fh:
+            prov = json.load(fh).get("provenance") or {}
+    except (OSError, ValueError):
+        prov = {}
+    theirs = prov.get("signal_identity")
+    if theirs is None:
+        print("  [!] %s records no signal identity (made before this check, "
+              "or by the notebook): cannot confirm the muon set shares the "
+              "noise set's signal split." % js)
+        return
+    if theirs.get("sha256") != sig_id["sha256"]:
+        sys.exit("[!] the signal loaded now is not the signal the noise model "
+                 "was trained on:\n    noise model: %s\n    now        : %s\n"
+                 "The shared train/test split would silently differ (events in "
+                 "the noise TRAINING set and the muon TEST set).  Load the same "
+                 "HDF5 parts, or rebuild and retrain the noise set first."
+                 % (theirs.get("n_events"), sig_id["n_events"]))
+    print("  signal identity matches the noise model's -- the split is shared.")
+
+
+def refuse_dead_inputs(sig, bg, features):
+    """
+    Exit when an input is missing in EVERY event of a class.  LightGBM trains
+    happily on it -- "missing" becomes the perfect separator -- and the frame
+    application would read the same nothing, so no later check fails either.
+    """
+    dead = [(f, lbl) for f in features for lbl, d in (("signal", sig),
+                                                       ("background", bg))
+            if len(d[f]) and not np.isfinite(
+                np.asarray(d[f], dtype=np.float64)).any()]
+    if dead:
+        sys.exit("[!] input(s) missing in every event of a class: %s.  A "
+                 "model trained on that learns 'missing' as the separator.  "
+                 "Check the booking (section 2 of the notebook, or "
+                 "data.dump_tables) before training."
+                 % ", ".join("%s (%s)" % d for d in dead))
+
+
+# ---------------------------------------------------------------------------
 
 def main():
     ap = argparse.ArgumentParser(
@@ -266,10 +334,25 @@ def main():
         d = load_sample(name, samples, WANTED)
         if d is not None:
             data[name] = d
+    for name in [n for n, d in data.items() if not len(d["Run"])]:
+        print("[!] %s: its HDF5 holds 0 events -- left out." % name)
+        del data[name]
     print("\nLoaded:", {k: len(v["Run"]) for k, v in data.items()})
     missing = [n for n in samples if n not in data]
     if missing:
         print("[!] not loaded:", ", ".join(missing))
+    # The weight divisor must be the recorded L3 file count of EVERY part.  One
+    # part without it switches the whole sample to a guessed divisor (the
+    # config glob), which reweights that sample against the others of its
+    # class -- a shape error in the training set, not just a wrong rate.
+    guessed = [n for n, d in data.items()
+               if scheme_of(samples[n]) != "data"
+               and d.get("_n_files_src") != "meta.json"]
+    if guessed:
+        sys.exit("[!] %s: not every HDF5 part has a usable .meta.json, so the "
+                 "weight divisor would be a guess.  Re-book the parts that "
+                 "lack one (or were made with --n) before building a training "
+                 "set." % ", ".join(guessed))
 
     # --- section 5 -----------------------------------------------------------
     livetime = set_livetime(data, samples, grl)
@@ -285,6 +368,7 @@ def main():
 
     rng = np.random.default_rng(RNG_SEED)
     sig = stack(data, signal, all_features)
+    sig_id = signal_identity(data, signal)
     sig_istrain = rng.random(len(sig["w_phys"])) < TRAIN_FRAC       # draw 1
     print("signal: %d events, train %d / test %d  (BOTH classifiers use this "
           "split)" % (len(sig_istrain), sig_istrain.sum(), (~sig_istrain).sum()))
@@ -300,10 +384,12 @@ def main():
         bg = stack(data, noise_bg, all_features)
         report_missing_inputs(sig, NOISE_FEATURES, "sig")
         report_missing_inputs(bg, NOISE_FEATURES, "bg")
+        refuse_dead_inputs(sig, bg, NOISE_FEATURES)
         # vuvuzela has no oversampling -> an event-level split is fine
         bg_istrain = rng.random(len(bg["w_phys"])) < TRAIN_FRAC     # draw 2
         prov = provenance(args, config_path, prod, samples, data, signal,
                           noise_bg, livetime, None)
+        prov["signal_identity"] = sig_id
         build_dataset("noise", sig, bg, NOISE_FEATURES, sig_istrain,
                       bg_istrain, args.outdir, provenance=prov)
         return
@@ -333,6 +419,7 @@ def main():
     # -- which is what keeps the split shared with the noise set.
     sig_m, sig_m_istrain = sig, sig_istrain
     if args.noise_model:
+        check_shared_split(args.noise_model, sig_id)
         noise_prob, nfeat = load_noise_prob(args.noise_model)
         print("noise model : %s" % args.noise_model)
         print("  features  : %s" % ", ".join(nfeat))
@@ -362,14 +449,22 @@ def main():
 
     report_missing_inputs(sig_m, MUON_FEATURES, "sig")
     report_missing_inputs(bg, MUON_FEATURES, "bg")
-    # Split by Run -- for CORSIKA that is the shower -- with its OWN generator,
-    # so this draw does not depend on whether the noise half ever ran.
-    bg_istrain = split_by_shower(bg["Run"], TRAIN_FRAC,
-                                 np.random.default_rng(RNG_SEED + 1))
+    refuse_dead_inputs(sig_m, bg, MUON_FEATURES)
+    # Split by shower -- (HDF5 part, Run), which keeps every OverSampling copy
+    # together -- with its OWN generator, so this draw does not depend on
+    # whether the noise half ever ran.
+    try:
+        bg_istrain = split_by_shower(
+            bg["Run"], TRAIN_FRAC, np.random.default_rng(RNG_SEED + 1),
+            groups=bg.get("_group"),
+            allow_event_fallback=scheme_of(samples[muon_bg[0]]) != "corsika")
+    except ValueError as e:
+        sys.exit("[!] %s" % e)
     print("  %s: %d distinct Run values, %d events"
           % (muon_bg[0], len(np.unique(bg["Run"])), len(bg["Run"])))
     prov = provenance(args, config_path, prod, samples, data, signal,
                       muon_bg, livetime, noise_cut)
+    prov["signal_identity"] = sig_id
     build_dataset("muon", sig_m, bg, MUON_FEATURES, sig_m_istrain, bg_istrain,
                   args.outdir, provenance=prov)
 

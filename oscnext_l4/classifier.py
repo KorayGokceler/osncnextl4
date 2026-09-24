@@ -220,7 +220,10 @@ class L4Classifier(icetray.I3ConditionalModule):
         n_nan = 0
         for i, f in enumerate(self.features):
             v = read_feature(frame, f)
-            if not np.isfinite(v):
+            # NaN only: training keeps an inf as inf (LightGBM routes it as
+            # a large value), so turning it into "missing" here would score
+            # the event differently from how the model learned it.
+            if np.isnan(v):
                 self.n_missing[f] += 1
                 n_nan += 1
                 v = self.missing

@@ -47,6 +47,7 @@ import os
 import sys
 import json
 import argparse
+import hashlib
 import datetime
 
 import numpy as np
@@ -133,6 +134,14 @@ RESERVED_COLS = {"w_phys", "weight", "istrain", "features",
 # ===========================================================================
 # Data
 # ===========================================================================
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
 
 def load_dataset(path, features=None):
     '''
@@ -654,6 +663,9 @@ def main():
         params=p,
         num_boost_round_limit=n_rounds,
         n_trees=int(best),
+        # The .txt this sidecar describes: make_release.py refuses a sidecar
+        # beside a different model.
+        model_sha256=_sha256(model_path),
         trained_at=datetime.datetime.now().isoformat(timespec="seconds"),
         lightgbm_version=lgb.__version__,
         dataset=os.path.abspath(args.dataset),

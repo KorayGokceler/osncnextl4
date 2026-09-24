@@ -568,7 +568,8 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         cmd = [sys.executable, "-u", _cfg("PROCESS_PY"),
                "--gcd", _cfg("GCD"),
                "--input-list", lst,
-               "--scan", "off",          # scanned once, below
+               # each worker pre-scans its own (disjoint) share: one
+               # truncated file would otherwise cost a retry of its part
                "--output-hdf5", "%s_job%d%s" % (base, j, ext)] + cfg["flags"]
         if chunk_files:
             cmd += ["--chunk-files", str(chunk_files)]
@@ -834,7 +835,6 @@ def run_process_per_run(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         cmd = [sys.executable, "-u", _cfg("PROCESS_PY"),
                "--gcd", gcd,
                "--input-list", lst,
-               "--scan", "off",
                "--output-hdf5", "%s_%s%s" % (base, label, ext)] + cfg["flags"]
         if chunk_files:
             cmd += ["--chunk-files", str(chunk_files)]

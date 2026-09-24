@@ -349,6 +349,12 @@ def _read_resolved(h5, path, nodes, available, wanted, extra=None):
                     and np.array_equal(e2, ev) and np.array_equal(s2, sub))
             if same:
                 idx = None                   # aligned: use directly
+                # hdfwriter pads a frame without the key with an exists=0
+                # row; its values are zeros, not measurements.
+                if "exists" in node.colnames:
+                    ex = np.asarray(node.col("exists")).astype(bool)
+                    if not ex.all():
+                        idx = np.where(ex, np.arange(n), -1)
             elif dup:
                 # 2) No index AND repeating triples -> reliable matching
                 #    is IMPOSSIBLE.  Leave NaN and SAY SO, rather than
@@ -367,10 +373,13 @@ def _read_resolved(h5, path, nodes, available, wanted, extra=None):
                                enumerate(zip(run.tolist(), ev.tolist(),
                                              sub.tolist()))}
                 idx = np.full(n, -1, dtype=np.int64)
+                ex2 = (np.asarray(node.col("exists")).astype(bool)
+                       if "exists" in node.colnames
+                       else np.ones(len(r2), dtype=bool))
                 for j, k in enumerate(zip(r2.tolist(), e2.tolist(),
                                           s2.tolist())):
                     i = ref_key.get(k)
-                    if i is not None:
+                    if i is not None and ex2[j]:
                         idx[i] = j
 
         for name, col in cols:
@@ -466,6 +475,42 @@ def find_hdf5(name, SAMPLES, verbose=True):
     return None
 
 
+def _refuse_double_booking(name, files):
+    """
+    Raise if one L3 file went into two of the parts about to be loaded.
+
+    Every part matches the L4_<sample>*.hdf5 glob: a serial run's
+    L4_x_part000 beside a parallel run's L4_x_job0_part000, or parts left by
+    two differently cut runs, would load the same events twice -- double
+    weight, and copies on both sides of the train/test split.  Each part's
+    .meta.json lists its L3 files (process_L4.py since this check existed);
+    parts made before that cannot be checked, and that is said.
+    """
+    seen, unchecked = {}, []
+    for f in files:
+        try:
+            with open(f + ".meta.json") as fh:
+                lst = json.load(fh).get("l3_files")
+        except (OSError, ValueError):
+            lst = None
+        if lst is None:
+            unchecked.append(f)
+            continue
+        for l3 in lst:
+            if l3 in seen:
+                raise RuntimeError(
+                    "%s: the L3 file %s is in two parts:\n    %s\n    %s\n"
+                    "Both match the sample's glob and would be loaded, "
+                    "double-counting its events.  Remove the stale output "
+                    "(e.g. an earlier serial run beside a parallel one)."
+                    % (name, l3, seen[l3], f))
+            seen[l3] = f
+    if unchecked and len(files) > 1:
+        print("  [i] %s: %d of %d parts record no L3 file list (made by an "
+              "older process_L4.py) -- cannot check that no L3 file is booked "
+              "twice." % (name, len(unchecked), len(files)))
+
+
 def load_sample(name, SAMPLES, wanted, max_files=None):
     """Read and concatenate every HDF5 file of a sample."""
     # Do not ask for AUX columns this sample is not EXPECTED to have.
@@ -487,9 +532,16 @@ def load_sample(name, SAMPLES, wanted, max_files=None):
               % (name, SAMPLES[name]["hdf5"].replace(".hdf5", "*.hdf5")))
         return None
 
+    _refuse_double_booking(name, files)
+
     parts = [load_one_file(f, wanted) for f in files]
     keys = parts[0].keys()
     data = {k: np.concatenate([p[k] for p in parts]) for k in keys}
+    # Which part each event came from: an L3 file never spans two parts, so
+    # this is what lets a split keep the OverSampling copies of one CORSIKA
+    # shower together whatever Run holds (dataset.split_by_shower).
+    data["_part"] = np.concatenate([np.full(len(p["Run"]), i, dtype=np.int64)
+                                    for i, p in enumerate(parts)])
 
     # --- number of L3 files: the divisor of the weights ---
     per_file, why = zip(*[_n_l3_files_why(f) for f in files])
@@ -516,6 +568,9 @@ def load_sample(name, SAMPLES, wanted, max_files=None):
                   "this")
             print("      version, or verify n_l3_files by hand.")
     data["_n_files"] = float(n_l3)
+    # "meta.json" when every part recorded its L3 file count; anything else
+    # means the divisor is a guess (make_dataset.py refuses to train on it).
+    data["_n_files_src"] = src if src == "meta.json" else "fallback"
     data["_n_hdf5"] = len(files)
     # The CORSIKA weighting has to REOPEN the files (simweights reads the
     # HDF5 directly), so keep the list and the per-part L3 counts.
@@ -947,6 +1002,12 @@ def genie_weight(d):
                     "    print(sorted(dump_tables(H5)[\"I3MCWeightDict\"][1]))"
                     % (missing.sum(), missing.size, NU_FRAC,
                        NU_FRAC / NUBAR_FRAC))
+            pdg_m = np.asarray(pdg, dtype=np.float64)[missing]
+            if not np.isfinite(pdg_m).all():
+                raise KeyError(
+                    "genie_weight: pdg is missing for %d of the %d events "
+                    "that need it; they would silently get the neutrino ratio."
+                    % (int((~np.isfinite(pdg_m)).sum()), pdg_m.size))
             frac = np.where(np.asarray(pdg) < 0, NUBAR_FRAC, NU_FRAC)
             print("  [i] gen_ratio derived from pdg (%.1f / %.1f)"
                   % (NU_FRAC, NUBAR_FRAC))
@@ -1015,15 +1076,24 @@ def corsika_weight(d):
     notebook.
 
     simweights reads the HDF5 DIRECTLY (CorsikaWeightMap, PolyplopiaPrimary,
-    I3CorsikaInfo, ...), so the files are reopened here.  The result is matched
-    back on Run/Event/SubEvent -- row order is not trusted.
+    I3CorsikaInfo, ...), so the files are reopened here.
 
-    NORMALISATION -- deliberately DIFFERENT from the earlier notebook:
-      That code passed nfiles=1 per HDF5 and divided by the HDF5 count at the
-      end.  Our parts hold several L3 files each (--chunk-files), so each
-      part's OWN n_l3_files is passed as nfiles and there is NO further
-      division at the end.  Otherwise the weights would come out too small by
-      the number of files per part.
+    NORMALISATION: nfiles is the TOTAL number of L3 files behind the whole
+    sample, passed to every part.  simweights computes the generation surface
+    as nfiles x (one file's NEvents x OverSampling), so each part has to be
+    told how many files the WHOLE sample was generated from.  Passing a part
+    its OWN count -- what this function used to do, on the argument that parts
+    hold several L3 files -- makes every part estimate the full rate on its
+    own: the sum came out (number of parts) times too high, and parts of
+    unequal size were weighted against each other.  Checked against
+    simweights' own combination (the sum of the per-part weighters): identical.
+    The manual fallback divides by the same total.
+
+    MATCHING: by POSITION, through each part's /__I3Index__/CorsikaWeightMap
+    -- the same way load_sample lines tables up.  (Run, Event, SubEvent) was
+    the key once, and it repeats across the L3 files of a part (booking audit,
+    bug 2): later files overwrote earlier ones' weights with the log still
+    reporting "100% matched".
     """
     try:
         import simweights
@@ -1035,32 +1105,40 @@ def corsika_weight(d):
     if not files:
         print("  [!] no file list -> falling back to approximate weights")
         return _corsika_weight_manual(d)
+    if not all(n_l3):
+        print("  [!] a part has no usable meta.json -> the sample's total L3 "
+              "file count is unknown; approximate weights")
+        return _corsika_weight_manual(d)
+    total = float(sum(n_l3))
 
-    key2w, n_fail = {}, 0
-    for path, nl3 in zip(files, n_l3):
-        if not nl3:
-            print("  [!] %s: no meta.json, nfiles unknown -> skipped"
-                  % os.path.basename(path))
-            n_fail += 1
-            continue
-        fh = kind = None
+    parts, n_fail = [], 0
+    for path in files:
+        with tables.open_file(path, "r") as h5:
+            n = _table_nodes(h5)["I3EventHeader"].nrows
+            inode = _index_node(h5, "CorsikaWeightMap")
+            ex = st = None
+            if inode is not None and len(inode) == n \
+                    and "exists" in inode.colnames and "start" in inode.colnames:
+                ex = np.asarray(inode.col("exists")).astype(bool)
+                st = np.asarray(inode.col("start"), dtype=np.int64)
+        wp = np.full(n, np.nan)
+        fh = None
         try:
-            fh, kind = _open_for_simweights(path)
-            wobj = simweights.CorsikaWeighter(fh, nfiles=nl3)
-            w = np.asarray(wobj.get_weights(simweights.GaisserH3a()), dtype=np.float64)
-            with tables.open_file(path, "r") as h5:
-                eh = _table_nodes(h5)["I3EventHeader"]
-                r, e, sub = _ids(eh)
-            if len(w) != len(r):
-                print("  [!] %s: simweights gave %d weights for %d events -> skipped"
-                      % (os.path.basename(path), len(w), len(r)))
+            fh, _kind = _open_for_simweights(path)
+            w = np.asarray(simweights.CorsikaWeighter(fh, nfiles=total)
+                           .get_weights(simweights.GaisserH3a()),
+                           dtype=np.float64)
+            if ex is not None and (not ex.any() or st[ex].max() < len(w)):
+                wp[ex] = w[st[ex]]
+            elif len(w) == n:
+                wp = w                          # no index, one row per event
+            else:
+                print("  [!] %s: %d weights for %d events and no usable "
+                      "index -> NaN" % (os.path.basename(path), len(w), n))
                 n_fail += 1
-                continue
-            for k, ww in zip(zip(r, e, sub), w):
-                key2w[k] = ww
-        except Exception as ex:
+        except Exception as ex_:
             print("  [!] simweights failed (%s): %s"
-                  % (os.path.basename(path), str(ex)[:120]))
+                  % (os.path.basename(path), str(ex_)[:120]))
             n_fail += 1
         finally:
             if fh is not None:
@@ -1068,19 +1146,19 @@ def corsika_weight(d):
                     fh.close()
                 except Exception:
                     pass
+        parts.append(wp)                        # load_sample's file order
 
-    if not key2w:
-        print("  [!] simweights worked on no file -> approximate weights")
+    out = np.concatenate(parts)
+    if len(out) != len(d["Run"]):
+        print("  [!] %d weights for %d loaded events -> approximate weights"
+              % (len(out), len(d["Run"])))
         return _corsika_weight_manual(d)
-
-    out = np.array([key2w.get(k, np.nan) for k in
-                    zip(d["Run"], d["Event"], d["SubEvent"])], dtype=np.float64)
     matched = np.isfinite(out).mean()
-    print("  simweights + GaisserH3a: %d events weighted (%.0f%% matched%s)"
-          % (len(key2w), 100 * matched,
+    print("  simweights + GaisserH3a, nfiles = %d: %.1f%% of events weighted%s"
+          % (total, 100 * matched,
              ", %d files failed" % n_fail if n_fail else ""))
     if matched < 0.99:
-        print("      [!] unmatched events are NaN -> counted as w_phys 0")
+        print("      [!] unweighted events are NaN -> counted as w_phys 0")
     return out
 
 
