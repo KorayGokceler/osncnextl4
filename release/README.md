@@ -47,8 +47,10 @@ python scripts/process_L4.py \
     --input <L3 file(s), globs accepted> \
     --output-i3 L4_<name>.i3.zst \
     --apply-cut --model-dir models \
-    --mc --genie            # GENIE;  --noise for vuvuzela, --muongun, --corsika,
-                            # nothing for detector data
+    --mc --genie            # GENIE;  --noise for vuvuzela, --muongun for
+                            # MuonGun, --corsika for CORSIKA, nothing for
+                            # detector data (each sample's `flags` in
+                            # config/productions.json)
 ```
 
 For **pass2** L3 add `--cleaned-pulses SRTTWOfflinePulsesDC` (pass3's cleaned
@@ -100,24 +102,43 @@ Three steps per classifier, noise first: the muon training set is built only
 from events that pass the trained noise model (P ≥ 0.70), as in the
 production.
 
+**Train into a directory of your own, not `models/`.**  `models/` holds the
+shipped pair, and the muon model is only valid beside the noise model it was
+cut with: retraining one of them in place silently breaks that pairing.  The
+commands below use `my_models/`; point `--model-dir` at it to apply them.
+
 ```bash
 # (a) L3 -> booked HDF5, one tree per sample:  <HDF>/<sample>/L4_<sample>*.hdf5
+#     The flags for each sample are its `flags` in config/productions.json;
+#     for pass2 L3 add --cleaned-pulses SRTTWOfflinePulsesDC to EVERY sample.
 python scripts/process_L4.py --gcd <GCD> --input "<L3 glob>" \
     --output-hdf5 <HDF>/nue/L4_nue.hdf5 --chunk-files 10 --mc --genie
-#     ... likewise for every sample of the production in config/productions.json
+#     ... likewise for every sample of the production in config/productions.json.
+#     Detector data ("data", pass2): one process_L4.py run PER RUN, with that
+#     run's own GCD (the `gcd` pattern beside it in productions.json), each
+#     output named <HDF>/data/L4_data_<run>.hdf5.
+#     Book CORSIKA with --chunk-files: its train/test split keeps the
+#     oversampled copies of a shower together by HDF5 part, and refuses a
+#     sample with too few parts to split.
 
 # (b) noise
 python scripts/make_dataset.py --stage noise --production pass2 \
     --hdf-base <HDF> --outdir <DS>
 python scripts/train_L4_classifier.py --tag noise \
-    --dataset <DS>/L4_noise_dataset.npz --outdir models
+    --dataset <DS>/L4_noise_dataset.npz --outdir my_models
 
 # (c) muon, on the survivors of the noise model just trained
 python scripts/make_dataset.py --stage muon --production pass2 \
-    --hdf-base <HDF> --outdir <DS> --noise-model models/L4_noise_model.txt
+    --hdf-base <HDF> --outdir <DS> --noise-model my_models/L4_noise_model.txt
 python scripts/train_L4_classifier.py --tag muon \
-    --dataset <DS>/L4_muon_dataset.npz --outdir models
+    --dataset <DS>/L4_muon_dataset.npz --outdir my_models
 ```
+
+`make_dataset.py` refuses, rather than writing a set that trains without
+error and is wrong: a muon set whose signal events are not exactly the noise
+set's (their shared train/test split would differ), an input missing in every
+event of a class, or a sample whose HDF5 parts do not all carry their
+`.meta.json` (the weights are divided by the L3 file count recorded there).
 
 `config/productions.json` says which samples each production has, their role
 (signal / noise background / muon background) and how each is weighted;
@@ -125,6 +146,10 @@ python scripts/train_L4_classifier.py --tag muon \
 signal train/test split, so the combined cut has a common held-out set.  Each
 model's `.json` records what made it: production, samples, weighting, and for
 the muon model the noise model it was cut with (by sha256).
+
+Some shipped files (`config/README.md`, a few messages) refer to the
+notebook, `runner.py`, `verification/` or `CLAUDE.md`: those belong to the
+development repository and are not part of this package.
 
 ## 3. The models
 

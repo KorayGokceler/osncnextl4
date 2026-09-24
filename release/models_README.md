@@ -15,7 +15,9 @@ all four files:
 The `.json` is not optional: it fixes the order the inputs are handed to the
 model in, and `process_L4.py` refuses to run without it.
 
-They are produced by `scripts/train_L4_classifier.py --outdir models` (README,
-section 2): noise first, then muon on the survivors of that noise model.
+They were produced by `scripts/train_L4_classifier.py` (README, section 2):
+noise first, then muon on the survivors of that noise model.  Retrain into a
+directory of your own rather than this one: the muon model is only valid
+beside the noise model it was cut with.
 
 {{STATUS}}

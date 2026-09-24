@@ -341,12 +341,37 @@ def check_models(model_dir, partial):
         if unknown:
             errors.append("%s: %s not in the variable table's frame side; the "
                           "tray could not read them" % (tag, unknown))
+        sha = _sha256(txt)
+        # Does this sidecar describe THIS .txt?  A sidecar left beside a
+        # retrained model would put the other model's numbers in the README.
+        if meta.get("model_sha256") and meta["model_sha256"] != sha:
+            errors.append("%s: the sidecar was written for a different model "
+                          "(sha256 %s..., the .txt is %s...)"
+                          % (tag, meta["model_sha256"][:12], sha[:12]))
+        elif meta.get("n_trees") is not None:
+            with open(txt) as fh:
+                n_trees = sum(1 for line in fh if line.startswith("Tree="))
+            if n_trees != meta["n_trees"]:
+                errors.append("%s: the sidecar says %d trees, the .txt has %d "
+                              "-- they are not one model"
+                              % (tag, meta["n_trees"], n_trees))
         warnings = []
         if feats != standard[tag]:
             warnings.append("trained on a non-standard input list %s (the "
                             "production's is %s)" % (feats, standard[tag]))
-        found[tag] = dict(txt=txt, json=js, meta=meta, sha256=_sha256(txt),
+        found[tag] = dict(txt=txt, json=js, meta=meta, sha256=sha,
                           warnings=warnings)
+    # The muon model is trained on the survivors of ONE noise model; shipping
+    # it beside another applies a cut it never saw.
+    if "noise" in found and "muon" in found:
+        nc = ((found["muon"]["meta"].get("provenance") or {})
+              .get("noise_cut") or {})
+        want = nc.get("model_sha256")
+        if want and want != found["noise"]["sha256"]:
+            errors.append("muon: trained on the survivors of noise model "
+                          "%s..., but the noise model here is %s... -- "
+                          "retrain the muon model on this one"
+                          % (want[:12], found["noise"]["sha256"][:12]))
     if errors:
         raise ReleaseError("models:\n  " + "\n  ".join(errors))
     if not found:
@@ -617,14 +642,18 @@ def _contents(files, external, models, build):
     third = sorted(e for e in external
                    if e not in getattr(sys, "stdlib_module_names", ()))
     lines.append("Outside this directory and the standard library, the code "
-                 "imports: %s.  (`I3Tray` is the pre-v1.5 location of "
-                 "`icecube.icetray.I3Tray`, tried second; `h5py`, `simweights` "
-                 "and `matplotlib` are optional.)"
+                 "imports: %s.  (`h5py`, `simweights` and `matplotlib` are "
+                 "optional.)"
                  % ", ".join("`%s`" % e for e in third))
     lines.append("")
-    lines.append("Built %s from commit `%s`%s."
-                 % (build["date"], build["commit"] or "unknown",
-                    " **with uncommitted changes**" if build["dirty"] else ""))
+    if build["commit"] is None:
+        lines.append("Built %s, not from a git checkout (no commit recorded)."
+                     % build["date"])
+    else:
+        lines.append("Built %s from commit `%s`%s."
+                     % (build["date"], build["commit"],
+                        " **with uncommitted changes**" if build["dirty"]
+                        else ""))
     return "\n".join(lines)
 
 
@@ -643,7 +672,8 @@ def build(out, model_dir, partial):
     dirty = _git("status", "--porcelain")
     info = {"date": datetime.datetime.now().isoformat(timespec="seconds"),
             "commit": _git("rev-parse", "--short", "HEAD"),
-            "dirty": bool(dirty), "models": model_dir and os.path.abspath(model_dir)}
+            "dirty": None if dirty is None else bool(dirty),
+            "models": model_dir and os.path.abspath(model_dir)}
 
     out = os.path.abspath(out)
     if os.path.exists(out) and os.listdir(out) and \

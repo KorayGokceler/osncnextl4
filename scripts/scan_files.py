@@ -45,12 +45,25 @@ def main():
     p.add_argument("--bad-list", default="scan_bad.txt", help="write the corrupt files here")
     args = p.parse_args()
 
-    files = []
+    files, unmatched = [], []
     for pattern in args.input:
         m = sorted(glob.glob(pattern))
-        files.extend(m if m else [pattern])
+        if m:
+            files.extend(m)
+        elif os.path.exists(pattern):
+            files.append(pattern)
+        else:
+            unmatched.append(pattern)
+    for pattern in unmatched:
+        # Not a corrupt file: nothing is there.  Listing it among the corrupt
+        # ones sent people looking for a damaged file that does not exist.
+        print("[!] matches nothing: %s" % pattern)
     if not files:
         sys.exit("No files found.")
+    for out in (args.good_list, args.bad_list):
+        d = os.path.dirname(os.path.abspath(out)) if out else None
+        if d and not os.path.isdir(d):
+            sys.exit("no such directory for %s" % out)
 
     print("Files to scan: %d  (%s mode)"
           % (len(files), "full" if args.full else "quick/%d frames" % args.frames))
@@ -72,16 +85,21 @@ def main():
             for path, why in bad:
                 fh.write("%s\t%s\n" % (path, why))
         print("\n-> %s" % args.bad_list)
+    elif os.path.exists(args.bad_list):
+        # A clean scan must not leave an earlier run's list looking current.
+        os.remove(args.bad_list)
 
     if args.good_list:
         with open(args.good_list, "w") as fh:
             fh.write("\n".join(good) + "\n")
         print("-> %s  (%d files)" % (args.good_list, len(good)))
         print("\nUsage:")
-        print("  python process_L4.py --input-list %s --scan off ..." % args.good_list)
+        print("  python scripts/process_L4.py --input-list %s --scan off ..."
+              % args.good_list)
 
-    # Exit code 1 when anything was corrupt, so a wrapper script can check it.
-    return 1 if bad else 0
+    # Exit code 1 when anything was corrupt or missing, so a wrapper script
+    # can check it.
+    return 1 if bad or unmatched else 0
 
 
 if __name__ == "__main__":

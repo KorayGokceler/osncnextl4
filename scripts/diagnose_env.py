@@ -2,13 +2,16 @@
 '''
 Report what is actually available in the IceTray environment.
 
-Run this inside the IceTray environment and share the whole output.  Which
-fallbacks are needed is decided from the result.
+Run this inside the IceTray environment and share the whole output.  The
+pipeline expects IceTray v1.17.0 from cvmfs (py3-v4.4.2); what it reports
+missing there is either expected (oscNext, tau_bdt, ... -- rewritten.py and
+frame_objects.py stand in for them) or a broken environment.
 '''
 
 import os
 import sys
 import importlib
+import importlib.util
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
@@ -42,8 +45,26 @@ print("\n" + "=" * 70)
 print("CORE ICETRAY")
 print("=" * 70)
 for n in ["icecube", "icecube.icetray", "icecube.dataclasses",
-          "icecube.dataio", "icecube.phys_services", "icecube.icetray.I3Tray"]:
+          "icecube.dataio", "icecube.phys_services"]:
     try_import(n)
+# I3Tray is a CLASS in icecube.icetray (v1.5+), not a submodule, so
+# import_module("icecube.icetray.I3Tray") would report it missing wrongly.
+try:
+    from icecube.icetray import I3Tray  # noqa: F401
+    print(f"  [OK]      {'from icecube.icetray import I3Tray':42s}")
+except Exception as e:
+    print(f"  [MISSING] {'from icecube.icetray import I3Tray':42s} "
+          f"{type(e).__name__}: {e}")
+
+if not importlib.util.find_spec("icecube"):
+    print("\n  -> this python (%s) is not inside IceTray, so nothing below can"
+          % sys.executable)
+    print("     be judged.  Load the environment and run this again:")
+    print("       eval $(/cvmfs/icecube.opensciencegrid.org/py3-v4.4.2/setup.sh)")
+    print("       /cvmfs/icecube.opensciencegrid.org/py3-v4.4.2/RHEL_9_x86_64_v2/"
+          "metaprojects/icetray/v1.17.0/env-shell.sh -- python "
+          "scripts/diagnose_env.py")
+    sys.exit(1)
 
 print("\n" + "=" * 70)
 print("BOOKING / TABLE WRITING")
@@ -61,7 +82,8 @@ if not hdfw:
     print("     booking AND the pass2 cross-check.  See oscnext_l4/tray_io.py.")
 elif tableio:
     print("\n  -> hdfwriter is present but DEPRECATED (v1.17.0 warns on import).")
-    print("     tableio is the successor; migrating means keeping /__I3Index__/.")
+    print("     tableio is the generic engine and hdfwriter holds its HDF5 back")
+    print("     end, so booking needs hdfwriter either way (oscnext_l4/tray_io.py).")
 
 print("\n" + "=" * 70)
 print("PROJECTS REQUIRED BY THE L4 VARIABLES")
@@ -106,10 +128,11 @@ for sub in ["icecube.oscNext.tools.classifier",
     try_import(sub)
 
 if not osc:
-    print("\n  -> The oscNext project is MISSING.  Consequences:")
-    print("     * I3Classifier unavailable -> we ship our own application module")
-    print("     * oscNext_cut unavailable  -> fallback exists (reads the L3 bools)")
-    print("     * calc_rho_36 unavailable  -> fallback exists")
+    print("\n  -> The oscNext project is MISSING -- EXPECTED in v1.17.0; this")
+    print("     package does not import it:")
+    print("     * I3Classifier -> oscnext_l4/classifier.py")
+    print("     * oscNext_cut  -> the L3 cut in oscnext_l4/variables.py")
+    print("     * calc_rho_36  -> oscnext_l4/frame_objects.py")
 
 print("\n" + "=" * 70)
 print("L3 OUTPUT  (what is in your input files?)")
@@ -128,9 +151,10 @@ print("        break")
 print("\"")
 print()
 print("Check in particular that these exist:")
-for k in ["IC2018_LE_L3_Vars", "IC2018_LE_L3_bools",
-          "SRTTWOfflinePulsesDC", "SplitInIcePulses",
-          "SRTTWOfflinePulsesDCHitStatistics", "I3MCWeightDict"]:
+for k in ["IC2018_LE_L3_Vars", "IC2018_LE_L3_bools", "SplitInIcePulses",
+          "SRTTWSplitInIcePulsesDC  (pass3; pass2: SRTTWOfflinePulsesDC, "
+          "then give --cleaned-pulses)",
+          "I3MCWeightDict  (simulation)"]:
     print(f"    {k}")
 
 print("\n" + "=" * 70)
