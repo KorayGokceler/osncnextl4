@@ -64,3 +64,8 @@ venv/
 .DS_Store
 *.swp
 *~
+
+# Git worktrees created by Claude Code agents -- a checkout of this repo
+# inside this repo, never to be committed.  Only worktrees/: .claude/ may
+# legitimately hold committed settings or skills.
+.claude/worktrees/
