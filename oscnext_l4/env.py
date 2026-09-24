@@ -67,7 +67,7 @@ def get_I3Tray():
 
 
 # ---------------------------------------------------------------------------
-# Opsiyonel projeler
+# Optional projects
 # ---------------------------------------------------------------------------
 
 # project name -> the L4 variable that needs it (shown in the error message)
@@ -116,7 +116,7 @@ def report_missing(stream=sys.stderr):
           file=stream)
     print("  In your own build: check whether src/<name> exists, then rebuild.",
           file=stream)
-    print("  Ayrinti: python diagnose_env.py", file=stream)
+    print("  Details: python scripts/diagnose_env.py", file=stream)
     print("", file=stream)
     return True
 
@@ -163,11 +163,11 @@ _doms_cache = {}
 
 def deepcore_doms(detector="IC86"):
     '''
-    icecube.DeepCore_Filter.DOMS.DOMS(detector) -- cache'li.
+    icecube.DeepCore_Filter.DOMS.DOMS(detector), cached.
 
     Raises when the DeepCore_Filter project is absent.  These lists are the
     DEFINITION of VICH and micro_count; filling them with a guess would give
-    fizik uretir, o yuzden fallback YOK.
+    wrong physics without a sign of it, so there is NO fallback.
     '''
     if detector in _doms_cache:
         return _doms_cache[detector]
@@ -208,7 +208,7 @@ def deepcore_fiducial_domset(detector="IC86"):
 
 
 def have_lightgbm():
-    """lightgbm import edilebiliyor mu?"""
+    """Can lightgbm be imported?"""
     try:
         importlib.import_module("lightgbm")
         return True

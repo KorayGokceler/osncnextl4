@@ -303,7 +303,7 @@ _WANT_USAGE = {"on": False}
 
 def _print_usage(tray):
     """
-    Modul bazli CPU zamanini bas (--usage).
+    Print the CPU time per module (--usage).
 
     IceTray already records how long every module took, so read that rather
     than guessing.  The "usermodule" lines name the slowest modules -- that is
@@ -314,7 +314,7 @@ def _print_usage(tray):
     try:
         usage = tray.Usage()
     except Exception as e:
-        print("  [!] modul zamanlamasi alinamadi: %s" % e)
+        print("  [!] could not read the module timings: %s" % e)
         return
     rows = []
     for key, u in usage.items():
@@ -324,9 +324,9 @@ def _print_usage(tray):
     total = sum(r[0] for r in rows) or 1.0
     print()
     print("=" * 66)
-    print("MODUL BAZLI CPU ZAMANI  (toplam %.1f s)" % total)
+    print("CPU TIME PER MODULE  (total %.1f s)" % total)
     print("=" * 66)
-    print("%-38s %9s %7s %8s" % ("modul", "cpu [s]", "%", "cagri"))
+    print("%-38s %9s %7s %8s" % ("module", "cpu [s]", "%", "calls"))
     for t, n, key in rows[:25]:
         print("%-38s %9.1f %6.1f%% %8d" % (key[:38], t, 100 * t / total, n))
     print()
@@ -424,7 +424,7 @@ def build_key_list(is_mc=False, is_noise=False, is_muongun=False,
         keys += MC_KEYS
     if extra:
         keys += list(extra)
-    # sirayi koruyarak tekrarlari at
+    # drop duplicates, keeping the order
     return list(dict.fromkeys(keys))
 
 
@@ -715,7 +715,7 @@ def main():
     build_tray.n_frames = args.n if args.n > 0 else 0
 
     # -----------------------------------------------------------------------
-    # Calistir -- tek parca ya da chunk'li
+    # Run -- in one piece or in chunks
     # -----------------------------------------------------------------------
     t_start = time.time()
     totals = {"physics": 0, "stream": 0, "n": 0}

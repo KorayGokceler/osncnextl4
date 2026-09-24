@@ -93,7 +93,7 @@ L4_NOISE_MODEL_PREDICTION_KEY     = "L4_NoiseClassifier_ProbNu"
 L4_MUON_MODEL_PREDICTION_DATA_KEY = "L4_MuonClassifier_Data_ProbNu"
 
 # ---------------------------------------------------------------------------
-# Pulse serisi isimleri
+# Pulse series names
 #
 # oscNext L3 (online_filterscripts .. grecovariables.DeepCoreCleaning) takes
 # "SplitInIcePulses" as its input and produces "SRTTWSplitInIcePulsesDC".
@@ -416,7 +416,7 @@ def oscNext_L4_hit_statistics(tray, name, cleaned_pulses):
 
 
 # ===========================================================================
-# 5. KESIMLER
+# 5. CUTS
 # ===========================================================================
 
 def L4_noise_straight_cuts(frame, output_key=L4_NOISE_STRAIGHT_CUT_KEY):
@@ -466,7 +466,7 @@ def compute_L4_cut(tray, name, classifier_model_dir,
 
 
 # ===========================================================================
-# 6. ANA SEGMENT
+# 6. MAIN SEGMENT
 # ===========================================================================
 
 @icetray.traysegment

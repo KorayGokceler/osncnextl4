@@ -149,7 +149,7 @@ def load_model(model_file):
 
 
 # ---------------------------------------------------------------------------
-# Tray modulu
+# Tray module
 # ---------------------------------------------------------------------------
 
 # Missing in all of the first 100 events is the bug signature, not an event

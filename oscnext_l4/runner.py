@@ -38,7 +38,7 @@ import subprocess
 
 try:
     from IPython.display import display
-except ImportError:                       # notebook disinda da calissin
+except ImportError:                       # so it also works outside a notebook
     def display(*a, **k):
         pass
 
@@ -49,7 +49,7 @@ except ImportError:
     _HAS_W = False
 
 
-# --- notebook'tan gelen tanimlar -------------------------------------------
+# --- set from the notebook -------------------------------------------------
 _CFG = {"SAMPLES": None, "PROCESS_PY": None, "GCD": None}
 
 
@@ -93,8 +93,8 @@ def _cfg(key):
     v = _CFG[key]
     if v is None:
         raise RuntimeError(
-            "configure_runner(SAMPLES, PROCESS_PY, GCD) cagrilmamis -- "
-            "notebook'ta bolum 1'deki hucreyi calistirin.")
+            "configure_runner(SAMPLES, PROCESS_PY, GCD) was not called -- "
+            "run the cell in section 1 of the notebook.")
     return v
 
 
@@ -141,13 +141,13 @@ class _Bar:
             frac, body = None, note
         if _HAS_W:
             if self.total:
-                # total kurulumdan SONRA atanmis olabilir ([CHUNK] satirindan)
+                # total may be set AFTER construction (from the [CHUNK] line)
                 # -> update the widget's max too, or the bar never fills.
                 if self.w.max != self.total:
                     self.w.max = self.total
                 self.w.value = min(done, self.total)
             else:
-                self.w.max, self.w.value = 1, 0.5   # belirsiz
+                self.w.max, self.w.value = 1, 0.5   # indeterminate
             self.txt.value = "<code>%s</code>" % body
         else:
             if self.total:
