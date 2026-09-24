@@ -6,7 +6,8 @@ oscNext L4 classifier training -- LightGBM, the method of the technical note.
                                                             L4_<tag>_model.json
                                                             plots
 
-The notebook writes the .npz; this script owns the training.  Keeping the two
+scripts/make_dataset.py (or the notebook) writes the .npz; this script owns
+the training, and copies the set's provenance into the model's .json.  Keeping the two
 apart means there is exactly one implementation of the training, and the
 notebook stays a thin interface.
 
@@ -50,6 +51,13 @@ import datetime
 
 import numpy as np
 import lightgbm as lgb
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
+# stdlib only: the production's two input lists, to check a dataset against
+from oscnext_l4.varmap import NOISE_FEATURES, MUON_FEATURES   # noqa: E402
+
+BDT_FEATURES = {"noise": NOISE_FEATURES, "muon": MUON_FEATURES}
 
 
 # ===========================================================================
@@ -119,7 +127,7 @@ REJ_LEVELS = [0.90, 0.95, 0.99, 0.995, 0.999]
 
 # Columns in the .npz that are NOT model inputs.
 RESERVED_COLS = {"w_phys", "weight", "istrain", "features",
-                 "livetime", "Run", "Event", "SubEvent"}
+                 "livetime", "Run", "Event", "SubEvent", "provenance"}
 
 
 # ===========================================================================
@@ -157,6 +165,9 @@ def load_dataset(path, features=None):
         sys.exit("these are not model inputs: %s" % ", ".join(bad))
 
     X = np.column_stack([np.asarray(z[f], dtype=float) for f in features])
+    # What made this set (make_dataset.py writes it; the notebook does not).
+    provenance = (json.loads(str(z["provenance"])) if "provenance" in names
+                  else None)
     y = np.asarray(z["label"], dtype=float)
     w = np.nan_to_num(np.asarray(z["weight"], dtype=float))
     wp = np.nan_to_num(np.asarray(z["w_phys"], dtype=float)) \
@@ -169,7 +180,7 @@ def load_dataset(path, features=None):
         # it is a decision rather than a surprise.
         print("  note: %d of %d events have a non-finite input; LightGBM will "
               "route them itself." % (nan_rows, len(y)))
-    return X, y, w, wp, tr, features
+    return X, y, w, wp, tr, features, provenance
 
 
 # ===========================================================================
@@ -384,7 +395,8 @@ def main():
     ap = argparse.ArgumentParser(description="Train an L4 classifier (LightGBM)")
     ap.add_argument("--tag", required=True, choices=sorted(PARAMS),
                     help="which classifier: noise or muon")
-    ap.add_argument("--dataset", required=True, help=".npz written by the notebook")
+    ap.add_argument("--dataset", required=True,
+                    help=".npz written by scripts/make_dataset.py (or the notebook)")
     ap.add_argument("--outdir", required=True)
     ap.add_argument("--features", default=None,
                     help="comma separated; defaults to the 'features' array "
@@ -427,7 +439,25 @@ def main():
     # iterated character by character and every run with it failed.
     wanted = ([f.strip() for f in args.features.split(",") if f.strip()]
               if args.features else None)
-    X, y, w, wp, tr, features = load_dataset(args.dataset, wanted)
+    X, y, w, wp, tr, features, provenance = load_dataset(args.dataset, wanted)
+
+    # THE INPUT LIST IS THE PRODUCTION'S, AND THE MODEL IS APPLIED BY NAME.
+    # A set built with another list would train without complaint, and the
+    # model would then be applied to frames against inputs nobody meant.
+    # --features is the one deliberate way to train on something else.
+    if wanted is None and features != BDT_FEATURES[args.tag]:
+        sys.exit("%s holds the features\n    %s\nbut the %s classifier's inputs "
+                 "(config/variables.json bdt_features.%s, order included) are\n"
+                 "    %s\nRebuild the set, or pass --features explicitly if "
+                 "this is intended." % (args.dataset, features, args.tag,
+                                        args.tag, BDT_FEATURES[args.tag]))
+    if provenance is None:
+        print("  [!] %s carries no provenance (made by the notebook, or before "
+              "make_dataset.py recorded it).  The model's .json gets "
+              "\"provenance\": null -- nothing is guessed." % args.dataset)
+    elif provenance.get("stage") not in (None, args.tag):
+        sys.exit("%s was built for the %r classifier, not %r."
+                 % (args.dataset, provenance.get("stage"), args.tag))
     te = ~tr
     sig, bg = y == 1, y == 0
 
@@ -554,6 +584,7 @@ def main():
 
     # The note's own cut, on the note's own scale -- directly comparable
     # because this is a LightGBM probability.
+    at_cut = None
     if args.tag in DEFAULT_CUT:
         c = DEFAULT_CUT[args.tag]
         print("\n--- At the note's cut (%.2f) ---" % c)
@@ -561,6 +592,12 @@ def main():
               "(%d background events left)"
               % (100 * (s_te >= c).mean(), 100 * (1 - (b_te >= c).mean()),
                  int((b_te >= c).sum())))
+        # Recorded, not only printed: it is the number a reader of the model
+        # needs, and the release README is written from this file.
+        at_cut = dict(cut=c, eff=float((s_te >= c).mean()),
+                      rej=float(1 - (b_te >= c).mean()),
+                      sig_kept=int((s_te >= c).sum()), sig_total=len(s_te),
+                      bg_kept=int((b_te >= c).sum()), bg_total=len(b_te))
 
     # Two importance types, because they answer different questions and the
     # reference reports the other one.
@@ -632,6 +669,7 @@ def main():
             eff_weighted_at_target=(None if not np.isfinite(eff_w)
                                     else float(eff_w)),
             table=rows,
+            at_default_cut=at_cut,
         ),
         importance_gain=importance,
         # The reference's Figure 14 / Figure 21 report split counts, so this is
@@ -639,6 +677,9 @@ def main():
         importance_split=importance_split,
         default_cut=DEFAULT_CUT.get(args.tag),
         plots=plots,
+        # Verbatim from the .npz -- production, samples, weighting, noise cut.
+        # null when the set did not record it; never reconstructed here.
+        provenance=provenance,
     )
     meta_path = os.path.join(args.outdir, "L4_%s_model.json" % args.tag)
     with open(meta_path, "w") as fh:
