@@ -221,9 +221,13 @@ def main():
                     help="--stage muon WITHOUT the noise cut.  Not what the "
                          "production trained on; recorded in the provenance.")
     ap.add_argument("--grl-pattern", action="append", default=None,
+                    # argparse %-formats help text, so every % in it -- the
+                    # patterns' own %(y)d included -- must arrive as %%, or
+                    # --help itself dies with KeyError.  Concatenated, not
+                    # %-formatted here, so nothing unescapes them first.
                     help="Good Run List path pattern with %%(y)d for the year, "
-                         "tried in order; repeatable.  Default: %s"
-                         % " then ".join(l4data.GRL_PATTERNS))
+                         "tried in order; repeatable.  Default: "
+                         + " then ".join(l4data.GRL_PATTERNS).replace("%", "%%"))
     args = ap.parse_args()
 
     if args.stage == "muon":
