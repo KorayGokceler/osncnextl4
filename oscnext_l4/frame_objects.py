@@ -43,6 +43,20 @@ def calc_rho_36(x, y):
     '''
     return float(np.sqrt((x - STRING36_X) ** 2 + (y - STRING36_Y) ** 2))
 
+# The DeepCore DOM lists, built once.  DOMS.DOMS("IC86") is not cheap, and it
+# used to be rebuilt on every frame inside VICH.  These lists are the
+# DEFINITION of micro_count's fiducial selection; there is deliberately no
+# fallback that guesses them.
+_doms_cache = {}
+
+
+def deepcore_doms(detector="IC86"):
+    '''icecube.DeepCore_Filter.DOMS.DOMS(detector), cached.'''
+    if detector not in _doms_cache:
+        from icecube.DeepCore_Filter import DOMS
+        _doms_cache[detector] = DOMS.DOMS(detector)
+    return _doms_cache[detector]
+
 # -------------------------------------------------------------------------
 # pulses -- pulse-series helpers
 # oscNext/python/frame_objects/pulses.py

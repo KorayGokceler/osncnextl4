@@ -51,10 +51,11 @@ def expand(patterns):
 
 def _icetray():
     """Import IceTray only in the subcommands that need it."""
-    from oscnext_l4.env import get_I3Tray, load_deserialization_libs
+    from icecube.icetray import I3Tray
+    from oscnext_l4.tray_io import load_deserialization_libs
     from icecube import icetray, dataio, dataclasses
     load_deserialization_libs()
-    return icetray, dataio, dataclasses, get_I3Tray()
+    return icetray, dataio, dataclasses, I3Tray
 
 
 # ---------------------------------------------------------------------------
@@ -204,8 +205,6 @@ def cmd_book(args):
     # already in the frame, so nothing would import it and I3TableWriter dies
     # mid-run with "No converter found for ... I3HitMultiplicityValues",
     # leaving a half-written HDF5 behind.
-    from oscnext_l4.env import require_project
-    require_project("common_variables")
     from icecube import common_variables      # noqa: F401  (registers converters)
 
     files = expand(args.input)

@@ -47,18 +47,11 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))     # repo root, for `oscnext_l4`
 
-from oscnext_l4.env import (get_I3Tray, report_missing,
-                            load_deserialization_libs, have_lightgbm)
 from icecube import icetray, dataio, dataclasses
-I3Tray = get_I3Tray()
+from icecube.icetray import I3Tray
 
-# Required so that frame objects can be deserialised.  Importing them is
-# MANDATORY even though they are not used directly -- otherwise you get
-# "Deserialization failed for object at frame key 'X'".
-#   simclasses     -> I3MCPESeriesMap, I3MCPulseSeriesMap, noise_weight
-#   recclasses     -> I3DST, PoleMuonLlhFitFitParams, ...
-#   genie_icetray  -> I3GenieInfo, I3GenieResult   <-- for n_flux_events
-#   sim_services   -> I3MCPEShifter and the like
+# Frame objects cannot be unpacked without their libraries -- see tray_io.
+from oscnext_l4.tray_io import load_deserialization_libs
 load_deserialization_libs()
 
 # validate_files was USED at the --scan step but never imported, so the default
@@ -551,7 +544,9 @@ def main():
         if absent:
             p.error("--apply-cut runs BOTH classifiers, and %s is missing %s."
                     % (args.model_dir, ", ".join(absent)))
-        if not have_lightgbm():
+        try:
+            import lightgbm                         # noqa: F401
+        except ImportError:
             p.error("--apply-cut needs lightgbm, which does not import in %s.  "
                     "On cvmfs it ships with the metaproject, so this is most "
                     "likely not the env-shell python." % sys.executable)
@@ -563,12 +558,6 @@ def main():
     #                             so with --chunk-files it marks a part finished
     #     <anchor>.badfiles.txt   the corrupt inputs that were dropped
     anchor = args.output_hdf5 or args.output_i3
-
-    # Which icetray projects are absent.  `variables.py` records them at import
-    # time through `optional_project`; without this call the record is kept and
-    # never shown, so a missing project only surfaced later as a require_project
-    # error deep inside a segment.
-    report_missing()
 
     _WANT_USAGE["on"] = args.usage
 

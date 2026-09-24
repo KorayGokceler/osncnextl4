@@ -21,6 +21,31 @@ from icecube import dataio
 # In: the pre-flight check on the input files
 # -------------------------------------------------------------------------
 
+# Libraries a frame object needs in order to be unpacked.  Never used by name,
+# but without them reading a frame fails with "Deserialization failed for
+# object at frame key 'X'".  Imported leniently: not every metaproject carries
+# every one (genie_reader, for one), and a file only needs those whose objects
+# it holds.
+#   simclasses     -> I3MCPESeriesMap, noise_weight, ...
+#   recclasses     -> I3HitStatisticsValues, I3DST, ...
+#   genie_icetray  -> I3GenieInfo, I3GenieResult
+_DESERIALIZE_LIBS = ("simclasses", "recclasses", "genie_icetray",
+                     "genie_reader", "sim_services", "phys_services")
+
+
+def load_deserialization_libs():
+    """Import whichever of the deserialisation libraries exist; return them."""
+    import importlib
+    loaded = []
+    for lib in _DESERIALIZE_LIBS:
+        try:
+            importlib.import_module("icecube." + lib)
+            loaded.append(lib)
+        except ImportError:
+            pass
+    return loaded
+
+
 def validate_files(paths, n_frames=25, verbose=True):
     """
     Open each file and read its first `n_frames` frames.  Returns

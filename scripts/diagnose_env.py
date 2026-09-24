@@ -19,24 +19,12 @@ print("=" * 70)
 print(sys.version)
 print(sys.executable)
 
-# When icecube cannot be imported at all, print the detailed diagnosis and
-# leave -- every check below would be meaningless.
-try:
-    from oscnext_l4 import env as _ienv
-except ImportError:
-    _ienv = None
-
-if _ienv is not None:
-    print()
-    print("=" * 70)
-    print("ENVIRONMENT")
-    print("=" * 70)
-    for _v in ("I3_BUILD", "I3_SRC", "SROOT"):
-        print("  %-10s %s" % (_v, os.environ.get(_v, "<unset>")))
-    try:
-        print("  %-10s %s" % ("I3Tray", _ienv.get_I3Tray()))
-    except Exception as _e:
-        print("  %-10s NOT FOUND -- %s" % ("I3Tray", _e))
+print()
+print("=" * 70)
+print("ENVIRONMENT")
+print("=" * 70)
+for _v in ("I3_BUILD", "I3_SRC", "SROOT"):
+    print("  %-10s %s" % (_v, os.environ.get(_v, "<unset>")))
 
 
 def try_import(name, note=""):
@@ -54,7 +42,7 @@ print("\n" + "=" * 70)
 print("CORE ICETRAY")
 print("=" * 70)
 for n in ["icecube", "icecube.icetray", "icecube.dataclasses",
-          "icecube.dataio", "icecube.phys_services"]:
+          "icecube.dataio", "icecube.phys_services", "icecube.icetray.I3Tray"]:
     try_import(n)
 
 print("\n" + "=" * 70)
@@ -79,9 +67,8 @@ print("\n" + "=" * 70)
 print("PROJECTS REQUIRED BY THE L4 VARIABLES")
 print("=" * 70)
 try_import("icecube.DomTools",          "I3OMSelection, I3TimeWindowCleaning")
-try_import("icecube.STTools",           "SeededRT cleaning")
 try_import("icecube.linefit",           "improved LineFit")
-try_import("icecube.tensor_of_inertia", "I3TensorOfInertia")
+try_import("icecube.tensor_of_inertia", "I3TensorOfInertia (--run-optional only)")
 try_import("icecube.fill_ratio",        "I3FillRatioModule")
 try_import("icecube.common_variables",  "HitStatistics / HitMultiplicity")
 try_import("icecube.DeepCore_Filter",   "DOMS -- fiducial/veto lists")
@@ -89,7 +76,8 @@ try_import("icecube.DeepCore_Filter",   "DOMS -- fiducial/veto lists")
 print("\n  C++ module libraries:")
 try:
     from icecube import icetray
-    for lib in ["static-twc", "slc-veto", "DomTools", "fill-ratio"]:
+    for lib in ["static-twc", "slc-veto (--run-optional only)"]:
+        lib = lib.split()[0]
         try:
             icetray.load(lib, False)
             print(f"  [OK]      {lib}")
@@ -105,8 +93,8 @@ lgbm = try_import("lightgbm")
 if lgbm:
     print("\n  -> lightgbm is present; training and application will work.")
 else:
-    print("\n  -> lightgbm is MISSING.  The L4 classifiers cannot be trained without it:")
-    print("     pip install --user lightgbm")
+    print("\n  -> lightgbm is MISSING.  It ships inside the cvmfs metaproject, so this")
+    print("     python is most likely not the env-shell one (%s)." % sys.executable)
 
 print("\n" + "=" * 70)
 print("oscNext PROJECT")

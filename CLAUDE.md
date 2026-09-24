@@ -135,20 +135,20 @@ Supporting files:
   - `oscnext_l4/l3vars.py` — `FullTimeLengthRatio`.  An L3 variable
     (`oscNext_L3.py` writes it, and pass2's L3 map carries it); pass3's L3 map
     carries only the two components, so it is divided out at L4 instead.
-- `oscnext_l4/env.py` — what this meta-project does and does not CARRY.
-  **`icecube` itself is not its business:** this pipeline always runs inside an
-  icetray environment, so modules write `from icecube import ...` directly and
-  a failure there is a broken environment, not a case to handle.  What env.py
-  guards is everything above that line -- `optional_project`/`require_project`
-  for the projects that really are absent (`oscNext`, `tau_bdt`, `slc-veto`,
-  `tensor_of_inertia`, ...), `get_I3Tray()` for the two places I3Tray lives
-  depending on version, the DeepCore DOM lists, `load_deserialization_libs()`
-  and `have_lightgbm()`.
-  (It used to carry a `require_icetray()` that 29 call sites went through and
-  a 70-line report explaining why `import icecube` had failed.  Nothing in the
-  intended workflow can reach that state, so it went, and with it
-  `have_icetray`, `IceTrayNotAvailable` and `find_env_shells` -- the last
-  reachable only from a branch that assumed icetray was missing.)
+- **There is no import layer any more.**  `oscnext_l4/env.py` used to guard
+  every project import (`optional_project`/`require_project`, `get_I3Tray`,
+  `have_lightgbm`, ...).  It was dissolved: this pipeline always runs inside
+  one known environment (icetray v1.17.0 on cvmfs), so every module writes
+  `from icecube import ...` directly and a failure there is a broken
+  environment, not a case to handle.  What it did that was real went where it
+  is used: `deepcore_doms()` (the cached `DOMS.DOMS("IC86")`) to
+  `frame_objects.py`, `load_deserialization_libs()` to `tray_io.py`, I3Tray is
+  `from icecube.icetray import I3Tray`, and the two `--run-optional` projects
+  (`tensor_of_inertia`, `slc-veto`) are imported/loaded only when asked for.
+  The projects this meta-project LACKS (`oscNext`, `tau_bdt`, `analysis`,
+  `SimpleVertex`) are never imported: `rewritten.py` stands in for them.
+  Checked by recording every tray module and its arguments before and after,
+  over 32 option combinations: identical.
 - `setup_env.sh` — find the environment / open a shell / run one command /
   register a Jupyter kernel.
 - `oscnext_l4/tray_io.py` — the tray's two file ends, neither of which
@@ -277,7 +277,7 @@ sklearn/joblib, only `lightgbm` + `numpy`.
       A local build DOES exist at `/data/user/$USER/icetray_build/build` and
       nothing here has run on it (environment trap 6); "no local build anywhere"
       was wrong.
-- [x] IceTray/lightgbm import layer (`oscnext_l4/env.py` + `setup_env.sh`)
+- [x] Environment entry point (`setup_env.sh`; direct `icecube` imports)
 - [x] Robust against corrupt input files (`--scan` + `--retries`)
 - [x] nue processed (100 files → 256,799 events), CORSIKA (500 files → 6,462)
 - [x] Column names pinned down (14/14 BDT inputs found)
@@ -914,8 +914,8 @@ are never called once `Process()` is overridden) -- removed.
     assume.
   - **The detector string differs by LEVEL, and ours follows L4.**
     `oscNext_L3.py` builds its DOM lists with `DOMS.DOMS("IC86EDC")` while the
-    L4 script uses `DOMS.DOMS("IC86")`, which is what `oscnext_l4/env.py`
-    passes.  Not a conflict -- different levels by design -- and micro_count
+    L4 script uses `DOMS.DOMS("IC86")`, which is what
+    `frame_objects.deepcore_doms()` passes.  Not a conflict -- different levels by design -- and micro_count
     reproducing pass2 exactly confirms "IC86" is right at L4.
   - A full-tree sweep for every L4-relevant term (micro_count, fill_ratio,
     iLineFit, StaticTWC, TimeWindowCleaning, FullTimeLength, CutL7, tau_bdt,
@@ -1026,18 +1026,16 @@ install.  So a missing lightgbm means the kernel is not the env-shell python,
 not that a package is absent -- check `sys.executable` before installing
 anything.
 
-**4. The location of `I3Tray` depends on the version** —
-`icecube.icetray.I3Tray` (v1.5+) versus a top-level `I3Tray` (combo).
-`env.get_I3Tray()` tries both.
+**4. `I3Tray` is `from icecube.icetray import I3Tray`** (v1.5+).  The old
+top-level `I3Tray` of combo builds is not supported any more.
 
-**5. One missing project used to lock the whole repository.**
-`oscnext_l4/variables.py` used to import `tensor_of_inertia`, `fill_ratio` and
-`DeepCore_Filter` at module level; if one was absent the file could not be
-imported at all.  It now uses `optional_project()`, and a missing project
-raises a clear error when the segment that produces its variable is called
-(`require_project(...)`).
+**5. The optional projects are imported only when asked for.**
+`tensor_of_inertia` and `slc-veto` produce `L4_ToI` / `L4_QR_Box`, which are
+not BDT inputs; they are imported inside the `--run-optional` branch, so a
+build without them runs the default pipeline.  Every other project is
+imported at module level: without it the pipeline cannot run anyway.
 
-Build search order (`setup_env.sh` and `env.find_env_shells()`):
+Build search order (`setup_env.sh`):
 `$OSCNEXT_I3_BUILD` → `$I3_BUILD` → `/data/user/$USER/icetray_build/build` →
 `/data/user/$USER/*/build` → `~/*/build` → cvmfs metaprojects.
 

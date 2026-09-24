@@ -14,8 +14,6 @@ L3 .i3.zst files
    ▼
 scripts/process_L4.py          driver: builds the tray, runs it, books
    │   │
-   │   ├─ oscnext_l4.env       EVERY icecube import goes through here
-   │   │
    │   ├─ oscnext_l4.variables tray segments:
    │   │      oscNext_L4                the main segment
    │   │      ├─ common      first_hlc, rho_36, FullTimeLengthRatio
@@ -77,7 +75,6 @@ oscnext_l4.classifier          the L4Classifier tray module
 | file | when |
 |---|---|
 | `setup_env.sh` | find the environment, open a shell, run one command, register a Jupyter kernel |
-| `oscnext_l4/env.py` | every `icecube` import; `get_I3Tray`, `have_lightgbm` |
 | `scripts/diagnose_env.py` | when something "will not import": what is and is not in the environment |
 | `scripts/scan_files.py` | scan for corrupt `.i3.zst`, produce a `--good-list` |
 

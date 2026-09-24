@@ -29,31 +29,27 @@ but where the note and the production disagree, the production wins; see the
 `oscNext_L4` docstring.
 '''
 
-from .env import (optional_project, require_project,
-                  load_deserialization_libs, deepcore_doms,
-                  load_lib)
-
 # Helpers and rewrites live beside this file so that the segments below read
 # next to the original script.  Importing them here also keeps them module
 # attributes, so `from oscnext_l4.variables import _vich` still works.
-from .frame_objects import calc_rho_36, iter_map, get_pulses
+from .frame_objects import calc_rho_36, iter_map, get_pulses, deepcore_doms
 from .frame_objects import PropagateGenieInfo, L4_NFLUX_KEY
 from .l3vars import _full_time_length_ratio, L4_FTLR_KEY
 from .rewritten import _first_hlc, _accumulated_time, _separation_in_cogs, _vich
 
-from icecube import dataclasses, icetray
+from .tray_io import load_deserialization_libs
 
-# --- Optional projects -----------------------------------------------------
-# Deliberately NOT imported hard at module level: one missing project (say
-# tensor_of_inertia absent from your own build) must not make the whole
-# repository unimportable.  A missing one raises an explicit error when the
-# segment that produces its variable is called; everything else keeps working.
-DomTools          = optional_project("DomTools")
-linefit           = optional_project("linefit")
-tensor_of_inertia = optional_project("tensor_of_inertia")
-fill_ratio        = optional_project("fill_ratio")
+# The projects the L4 segments call.  All of them ship with the icetray
+# metaproject this runs on (v1.17.0): DomTools registers I3OMSelection and
+# I3TimeWindowCleaning, fill_ratio registers I3FillRatioModule, linefit
+# provides `simple`.  Plain imports: a missing one is a broken environment and
+# should say so at once.  The projects the metaproject really LACKS (tau_bdt,
+# analysis.event_selection, SimpleVertex) are not imported at all --
+# rewritten.py replaces them -- and the two that serve only --run-optional
+# (tensor_of_inertia, slc-veto) are imported where they are used.
+from icecube import dataclasses, icetray, linefit
+from icecube import DomTools, fill_ratio        # noqa: F401  (register modules)
 
-# Required for deserialisation (even though they are not used directly)
 load_deserialization_libs()
 
 
@@ -209,13 +205,9 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
     Turn them on with process_L4.py --run-optional.
     '''
 
-    # Projects this segment needs -- raise an explicit error HERE if absent
-    # (not at import time, so the rest of the repository stays importable).
-    require_project("linefit")
-
     # --- Tensor of inertia (not a BDT input; candidate/legacy) ---
     if run_optional:
-        require_project("tensor_of_inertia")
+        from icecube import tensor_of_inertia      # noqa: F401  (registers it)
         tray.AddModule("I3TensorOfInertia", name + "_ToI",
                        AmplitudeOption=1,
                        AmplitudeWeight=1,
@@ -233,8 +225,7 @@ def oscNext_L4_atm_muon_classifier_variables(tray, name,
     # --- QR box (slc-veto; optional, not a BDT input) ---
     if run_qr_box:
         try:
-            if not load_lib("slc-veto"):
-                raise RuntimeError("the slc-veto library is not in this build")
+            icetray.load("slc-veto", False)
             tray.AddModule("SmallQ_Box", name + "_QRBox",
                            BoxName=L4_QRBOX_KEY,
                            RecoPulsesKey=cleaned_pulses)
@@ -335,13 +326,7 @@ def oscNext_L4_noise_cut_variables(tray, name,
     # different parameters -- the two are not fully correlated, and the BDT
     # extracts information from both.
 
-    require_project("DomTools")
-    require_project("fill_ratio")
-    if not load_lib("static-twc"):
-        raise RuntimeError(
-            "the C++ library 'static-twc' is not in this build -- micro_count "
-            "cannot be computed.  Check whether DomTools/static-twc were "
-            "built (python scripts/diagnose_env.py).")
+    icetray.load("static-twc", False)
 
     tw_pulses = "L4_TWPulses"
     tray.AddModule("I3StaticTWC<I3RecoPulseSeries>", name + "_StaticTWC_DC",
@@ -397,7 +382,6 @@ def oscNext_L4_hit_statistics(tray, name, cleaned_pulses):
     Compute hit statistics and multiplicity with common_variables.
     Skip this segment if L3 already computes them.
     '''
-    require_project("common_variables")
     from icecube.common_variables import hit_statistics, hit_multiplicity
 
     tray.AddSegment(hit_statistics.I3HitStatisticsCalculatorSegment,

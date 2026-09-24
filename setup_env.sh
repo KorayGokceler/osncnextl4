@@ -94,7 +94,7 @@ report() {
         [ -n "${ts:-}" ] && echo "Build toolset (CMakeCache): $ts"
         echo
         echo "icecube + lightgbm import test:"
-        "$es" -- python "$HERE/oscnext_l4/env.py" 2>&1 | sed 's/^/  /'
+        "$es" -- python -c "import sys, icecube, lightgbm; from icecube.icetray import I3Tray; print('python  :', sys.executable); print('icecube :', icecube.__file__); print('lightgbm:', lightgbm.__version__)" 2>&1 | sed 's/^/  /'
     else
         echo "env-shell.sh NOT FOUND."
         echo "If your own build is somewhere else:"

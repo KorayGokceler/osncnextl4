@@ -16,8 +16,9 @@ as the first check to run.  From those entry scripts:
     only imports classifier.py inside compute_L4_cut).  Nothing is imported,
     so this runs without icetray.
   * scripts: any script in scripts/ that a shipped file NAMES in a string it
-    shows the user (an error message pointing at scripts/diagnose_env.py, a
-    help text pointing at scan_files.py), and then ITS closure, to a fixpoint.
+    shows the user (a help text pointing at scan_files.py) or that the
+    release README tells the reader to run (diagnose_env.py), and then ITS
+    closure, to a fixpoint.
     A release that tells its reader to run a script it does not contain is not
     self-contained.
   * config: every file in config/ whose name a shipped file or a shipped
@@ -65,6 +66,9 @@ ENTRY_SCRIPTS = ("scripts/process_L4.py", "scripts/make_dataset.py",
                  "scripts/train_L4_classifier.py",
                  "scripts/check_application.py")
 TEMPLATE_DIR = os.path.join(ROOT, "release")
+# The templates the reader sees; the scripts they name ship (see closure).
+DOC_TEMPLATES = [os.path.join("release", n)
+                 for n in ("README.md", "models_README.md", "physics_caveats.md")]
 MARKER = ".oscnext_l4_release"
 TAGS = ("noise", "muon")
 
@@ -200,10 +204,14 @@ def _json_strings(obj):
             yield from _json_strings(v)
 
 
-def closure(root, entry_scripts):
+def closure(root, entry_scripts, docs=()):
     """
     -> (files, external, errors): every file the release needs, relative to
     `root`, starting from `entry_scripts`.  See the module docstring.
+    `docs` are Markdown files (relative to `root`) whose text is read the way
+    a shipped file's strings are: a script the README tells the reader to
+    run ships even when no shipped code names it.  HTML comments are skipped
+    -- they address whoever edits the template, not the reader.
     """
     scripts_available = {f for f in os.listdir(os.path.join(root, "scripts"))
                          if f.endswith(".py")} \
@@ -214,6 +222,22 @@ def closure(root, entry_scripts):
     files, external, errors = set(), set(), []
     todo = list(entry_scripts) + [os.path.join(PKG, "__init__.py")]
     strings = []
+
+    def named_scripts(texts):
+        for s in texts:
+            for m in re.finditer(r"(?<![\w/])(?:scripts/)?([A-Za-z_]\w*\.py)\b", s):
+                if m.group(1) in scripts_available:
+                    todo.append(os.path.join("scripts", m.group(1)))
+
+    for rel in docs:
+        path = os.path.join(root, rel)
+        if not os.path.exists(path):
+            errors.append("%s does not exist" % rel)
+            continue
+        with open(path) as fh:
+            text = re.sub(r"<!--.*?-->", "", fh.read(), flags=re.S)
+        strings.append(text)
+        named_scripts([text])
     while todo:
         rel = todo.pop()
         if rel in files:
@@ -247,10 +271,7 @@ def closure(root, entry_scripts):
         # Scripts a shipped file points its reader at.
         own = _strings(tree)
         strings += own
-        for s in own:
-            for m in re.finditer(r"(?<![\w/])(?:scripts/)?([A-Za-z_]\w*\.py)\b", s):
-                if m.group(1) in scripts_available:
-                    todo.append(os.path.join("scripts", m.group(1)))
+        named_scripts(own)
     # Config files named by a shipped file or by a shipped config file.
     changed = True
     while changed:
@@ -608,7 +629,7 @@ def _contents(files, external, models, build):
 
 
 def build(out, model_dir, partial):
-    files, external, errors = closure(ROOT, ENTRY_SCRIPTS)
+    files, external, errors = closure(ROOT, ENTRY_SCRIPTS, DOC_TEMPLATES)
     if errors:
         raise ReleaseError("import closure:\n  " + "\n  ".join(errors))
     for name in ("README.md", "physics_caveats.md", "models_README.md"):
@@ -691,7 +712,9 @@ def verify(tree, files):
     every file must compile.
     """
     entry = [f for f in ENTRY_SCRIPTS]
-    again, _, errors = closure(tree, entry)
+    docs = [d for d in ("README.md", os.path.join("models", "README.md"))
+            if os.path.exists(os.path.join(tree, d))]
+    again, _, errors = closure(tree, entry, docs)
     if errors:
         raise ReleaseError("inside the release:\n  " + "\n  ".join(errors))
     extra = sorted(set(files) - again)
@@ -738,7 +761,7 @@ def main():
 
     try:
         if args.list:
-            files, external, errors = closure(ROOT, ENTRY_SCRIPTS)
+            files, external, errors = closure(ROOT, ENTRY_SCRIPTS, DOC_TEMPLATES)
             for f in sorted(files):
                 print(f)
             print("external:", ", ".join(sorted(external)))

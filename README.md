@@ -15,7 +15,7 @@ The method is the note's own: LightGBM with the Table 10 hyperparameters.
 ```
 oscnext_l4/     the library
                   tray side      variables, rewritten, frame_objects, l3vars,
-                                 tray_io, env       (need icetray)
+                                 tray_io            (need icetray)
                   analysis side  data              (needs pytables/numpy)
                   both sides     varmap            (stdlib only)
                   and            runner (drives process_L4 as a subprocess),
