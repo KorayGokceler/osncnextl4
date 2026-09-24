@@ -856,6 +856,16 @@ are never called once `Process()` is overridden) -- removed.
     `frame_objects/weighting.py` adds a single power law with `norm=2.e-2`,
     `spectral_index=-3.` *for machine-learning training samples* -- our `NORM`
     and `GAMMA` to the digit, and no longer "an invented power law".
+    **BUT it is NOT what the L4 classifiers were trained with, and an earlier
+    version of this file said it was.**  Note Appendix F.1 (p.68) gives the
+    order: L4 v01.01 -- "Noise classifier trained using 888003 and 1?9002
+    datasets ... L3 v01.01 as input" -- while the power law arrived only at
+    L3 v01.03 ("Added single power law flux weight").  The classifiers
+    predate the weight.  WHICH weight they did use is open: Table 18 gives
+    the nominal `I3MCWeightDict.weight` as Honda 2014 + NuFit v2, oscillated;
+    the fridge's training reads `final_weight` (docs/production_build.md).
+    The fridge's `L4_model_data.py` settles it.  Our E^-3 signal weight is
+    therefore a DEVIATION, disclosed in release/physics_caveats.md.
     `frame_objects/neutrinos.py` computes
     `weight = OneWeight * flux / (NEvents * gen_ratio)` with
     `flux = norm * E**index` and `gen_ratio = 0.7` for GENIE (`1 - 0.7` for
@@ -1270,7 +1280,9 @@ chain has to adapt.  Three findings, in order of how much they matter:
   missing pdg would have given every event the neutrino ratio and made
   antineutrinos 2.33x too heavy with nothing in the output to show for it.
   With neither route available `genie_weight` now raises.
-- **The production's OWN training weight is in the file**, unused so far:
+- **The production's power-law weight is in the file**, unused so far (NOT
+  the L4 classifiers' training weight -- see the correction under
+  `frame_objects/weighting.py` above):
   `SinglePowerLawFlux_norm`, `_index`, `_flux`, `_weight`, plus `weight` and
   `weight_no_osc`.  `SinglePowerLawFlux_*` is exactly the single power law
   `weighting.py` adds "for unbiased samples for training machine learning
