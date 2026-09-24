@@ -10,4 +10,4 @@ from making the whole package unimportable.
 '''
 
 __all__ = ["env", "variables", "frame_objects", "rewritten", "l3vars",
-           "tray_io", "data", "varmap", "runner", "classifier"]
+           "tray_io", "data", "dataset", "varmap", "runner", "classifier"]
