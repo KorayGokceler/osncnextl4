@@ -101,6 +101,28 @@ def _cfg(key):
 _CHUNK_RE = re.compile(r"\[CHUNK\] (\d+)/(\d+) files=(\d+)/(\d+) booked=(\d+) elapsed=([\d.]+)")
 _PROG_RE  = re.compile(r"\[PROGRESS\] frames=(\d+) physics=(\d+) booked=(\d+) elapsed=([\d.]+) rate=([\d.]+)")
 
+# A worker's root cause is usually printed well before its traceback (HDF5
+# prints its error stack first), so the last few lines alone lose it.  These
+# lines are kept apart from the tail and shown with it.
+_CAUSE_RE = re.compile(r"HDF5-DIAG|major:|minor:|No space|[Qq]uota|errno|"
+                       r"FATAL|Error reading|MemoryError|Killed")
+
+
+def _keep(st, line):
+    """Append to a worker's tail, and to its cause lines when it is one."""
+    st["tail"].append(line)
+    if len(st["tail"]) > 60:
+        del st["tail"][:30]
+    if _CAUSE_RE.search(line) and len(st["cause"]) < 20:
+        st["cause"].append(line)
+
+
+def _show_failure(st, log_tail):
+    if st["cause"]:
+        print("  cause lines:")
+        print("\n".join("    " + c for c in st["cause"]))
+    print("\n".join(st["tail"][-log_tail:]))
+
 
 def _fmt_eta(sec):
     if sec is None or sec != sec or sec < 0:
@@ -580,7 +602,7 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
                                       stderr=subprocess.STDOUT, text=True,
                                       bufsize=1))
         state[j] = {"done": 0, "total": len(grp), "booked": 0, "live": 0,
-                    "tail": []}
+                    "tail": [], "cause": []}
 
     # The file count moves only when a whole part finishes.  With as many
     # files per worker as `chunk_files`, every worker holds ONE part and the
@@ -604,9 +626,7 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         for line in p.stdout:
             line = line.rstrip("\n")
             st = state[j]
-            st["tail"].append(line)
-            if len(st["tail"]) > 60:
-                del st["tail"][:30]
+            _keep(st, line)
             m = _CHUNK_RE.match(line)
             if m:
                 _, _, fdone, _, booked, _ = m.groups()
@@ -645,7 +665,7 @@ def run_process_parallel(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         for j, r in enumerate(rc):
             if r:
                 print("\n--- job %d (rc=%d) ---" % (j, r))
-                print("\n".join(state[j]["tail"][-log_tail:]))
+                _show_failure(state[j], log_tail)
         return None
 
     if b:
@@ -842,7 +862,8 @@ def run_process_per_run(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
             cmd += ["--run-optional"]
         if extra_args:
             cmd += list(extra_args)
-        state[label] = {"done": 0, "total": len(files), "booked": 0, "tail": []}
+        state[label] = {"done": 0, "total": len(files), "booked": 0, "tail": [],
+                        "cause": []}
         return subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, bufsize=1)
 
@@ -850,9 +871,7 @@ def run_process_per_run(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
         for line in p.stdout:
             line = line.rstrip("\n")
             st = state[label]
-            st["tail"].append(line)
-            if len(st["tail"]) > 60:
-                del st["tail"][:30]
+            _keep(st, line)
             m = _CHUNK_RE.match(line)
             if m:
                 _, _, fdone, _, booked, _ = m.groups()
@@ -900,7 +919,7 @@ def run_process_per_run(name, jobs=4, chunk_files=10, log_tail=10, bar=True,
             b.fail("failed runs: %s" % sorted(failed))
         for label in sorted(failed):
             print("\n--- %s FAILED ---" % label)
-            print("\n".join(state[label]["tail"][-log_tail:]))
+            _show_failure(state[label], log_tail)
         print("\nRe-run just those:  run_process_per_run(%r, runs=%s)"
               % (name, sorted(failed)))
         return None
