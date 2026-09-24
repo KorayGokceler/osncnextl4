@@ -7,8 +7,9 @@ Five of the 14 BDT inputs are pure-Python rewrites (CLAUDE.md, "Why it was
 rewritten"): micro_count, FullTimeLengthRatio, VICH_nch, accumulated_time and
 first_hlc_rho, plus fill_ratio, whose IceTray module we drive with our own
 vertex.  They were written from the technical note and from
-reference/oscNext_L4_pass2_original.py and have never been held against the
-numbers the original chain actually produced.
+reference/oscNext_L4_pass2_original.py, and this module is what held them
+against the numbers the original chain actually produced: 14 of 15 rows
+bitwise identical over 56,301 events (verification/README.md).
 
 The pass2 production is that answer key: the L3 files are the input our code
 was built to read, and the matching L4 files already contain every variable.
@@ -249,9 +250,9 @@ EXPECTED_DEVIATION = {
 FLOAT_RTOL = 1e-6
 FLOAT_ATOL = 1e-9
 
-# Verdict thresholds on the fraction of events agreeing.  ONE definition,
-# imported by fit_pass2 too: the same data must not get a different verdict
-# depending on which tool printed it.
+# Verdict thresholds on the fraction of events agreeing.  ONE definition, so
+# the same data never gets a different verdict depending on which tool
+# printed it.
 #
 # Two levels, because a single one lies in both directions.  99.40% of 8144
 # events is 49 disagreements -- calling that "DIFFERS" hides that the rule is
@@ -402,11 +403,11 @@ def _verdict(name, ours, theirs):
     first_hlc_rho agreed in 99.85% of 8144 events and was still stamped
     DIFFERS because a dozen of them picked a different hit.
 
-    "Agree" is also not bitwise equality for a float.  Our rho goes through
-    np.hypot while pass2's went through the oscNext project's calc_rho_36;
-    the two differ in the last bit for about a fifth of events, which is a
-    different square root, not a different definition.  Integers are still
-    held to exact equality -- there is no rounding to forgive there.
+    "Agree" is also not bitwise equality for a float: a different but
+    equivalent formula can differ in the last bit (first_hlc_rho once did,
+    through np.hypot; calc_rho_36 now uses the production's own np.sqrt form
+    and matches bitwise).  Integers are held to exact equality -- there is no
+    rounding to forgive there.
     """
     both = np.isfinite(ours) & np.isfinite(theirs)
     n = int(both.sum())
@@ -569,8 +570,8 @@ def report(ours_h5, pass2_h5, cleaned_pulses=PASS2_CLEANED_PULSES,
 #   * there is NO CORSIKA at pass2 here -- the muon background is MuonGun, so
 #     a pass2-trained muon BDT is not weighted the way the pass3 one is
 #     (CLAUDE.md open risk 3d is about the CORSIKA weighting specifically);
-#   * NuTau exists at pass2 (160511).  Our signal definition is nue+numu
-#     (open risk 6), so it is listed but not used unless that changes.
+#   * NuTau exists at pass2 (160511), and it IS signal: samples are taken by
+#     role (kind "signal"), as the production's L4_model_data.py does.
 def _l3_patterns(spec):
     """`l3` is a string for a single dataset and a list when a sample spans
     several -- pass2 NuE is 121122 AND 121291, NuMu is 141154 AND 141292."""
