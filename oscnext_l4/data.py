@@ -984,6 +984,12 @@ def genie_weight(d):
         stored = d.get("gen_ratio")
         if stored is not None and np.isfinite(np.asarray(stored, dtype=np.float64)).any():
             frac = np.asarray(stored, dtype=np.float64)
+            bad = int((~np.isfinite(frac[missing])).sum())
+            if bad:
+                # add_weights would turn their NaN weight into 0 unseen.
+                raise KeyError("genie_weight: gen_ratio is missing for %d of "
+                               "the %d events that need it." % (bad, missing.sum()))
+            how = "gen_ratio from I3MCWeightDict"
             print("  [i] gen_ratio read from I3MCWeightDict "
                   "(min %.3f, max %.3f)" % (np.nanmin(frac), np.nanmax(frac)))
         else:
@@ -1009,12 +1015,12 @@ def genie_weight(d):
                     "that need it; they would silently get the neutrino ratio."
                     % (int((~np.isfinite(pdg_m)).sum()), pdg_m.size))
             frac = np.where(np.asarray(pdg) < 0, NUBAR_FRAC, NU_FRAC)
+            how = "gen_ratio %.1f / %.1f from the pdg sign" % (NU_FRAC, NUBAR_FRAC)
             print("  [i] gen_ratio derived from pdg (%.1f / %.1f)"
                   % (NU_FRAC, NUBAR_FRAC))
         n_flux[missing] = (d["NEvents"] * frac)[missing]
-        print("  [i] n_flux_events missing in %d of %d events -> NEvents * "
-              "(%.1f/%.1f)" % (missing.sum(), missing.size, NU_FRAC,
-                               NUBAR_FRAC))
+        print("  [i] n_flux_events missing in %d of %d events -> NEvents * %s"
+              % (missing.sum(), missing.size, how))
         if missing.all():
             # Two very different causes, and blaming the flag for both sent
             # the reader after the wrong one: the pass2 GENIE L3 files simply

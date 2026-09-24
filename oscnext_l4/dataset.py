@@ -111,8 +111,9 @@ def split_by_shower(runs, frac, rng_, groups=None, allow_event_fallback=True):
                 "put OverSampling copies of one shower on both sides.  Book "
                 "the sample in more parts (process_L4.py --chunk-files)."
                 % (len(uniq), len(runs)))
-        print("  [!] split_by_shower: only %d distinct Run value(s) for %d "
-              "events." % (len(uniq), len(runs)))
+        print("  [!] split_by_shower: only %d distinct %s for %d events."
+              % (len(uniq), "(part, Run) group(s)" if groups is not None
+                 else "Run value(s)", len(runs)))
         print("      Too few to split on -- falling back to an EVENT-level "
               "split.  That is correct when the sample has no oversampling "
               "(MuonGun), and would leak copies if it does (CORSIKA).")

@@ -80,7 +80,7 @@ file is never asked for `CorsikaWeightMap` and no false alarm is printed.
 | field | meaning |
 |---|---|
 | `gcd` | the GCD for every MC sample of this production |
-| `cleaned_pulses` | see above; `null` = the code's default |
+| `cleaned_pulses` | the cleaned pulse series, passed as `--cleaned-pulses`; written out for both productions (see above) |
 | `noise_weight_unit` | see above |
 | `samples` | name → sample spec, **in order**; the order is preserved |
 
@@ -119,8 +119,8 @@ from theirs, agree **to the last bit over 8144 events**.
 ## `pass2.samples.data` — the templated one
 
 Detector data is the production's actual muon background (note sec. 3.6.3).
-It is the only sample with `runs_by_year` and templates rather than a literal
-`l3`, and the only one with a per-pattern `gcd`.
+It is the only sample with a per-pattern `gcd` list beside its `l3` list:
+one pattern per run, in the same order.
 
 ### The 18 paths are written out, and that is on purpose
 
@@ -163,7 +163,7 @@ The fridge's `L4_model_data.py` says *"one run per month 2012-2018"* — a later
 and larger list.  Where they differ, the note is what the published Table 13
 numbers were produced with.
 
-### `l3_template` cannot be `*.i3.zst`
+### The `l3` patterns cannot be `*.i3.zst`
 
 The layout is verified on disk:
 
@@ -181,7 +181,7 @@ three entries per subrun.  It also inflates the file count threefold: a
 directory of 634 entries is about 211 L3 files, and the 18 runs come to
 roughly 4,400 rather than the 13,125 a naive `ls | wc -l` suggests.
 
-### `gcd_template` must end `.i3*`, not `.i3.zst`
+### The `gcd` patterns must end `_GCD.i3*`, not `.i3.zst`
 
 The GCD lives in the run directory, one per run — detector data cannot use the
 averaged MC GCD, because the dead DOMs and the calibration are exactly what

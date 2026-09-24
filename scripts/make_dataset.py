@@ -145,6 +145,11 @@ def set_livetime(data, samples, grl_patterns):
         else:
             print("\n  [!] the GRL does not cover every run -- falling back to "
                   "the event-time span.")
+            if not t_hdr or not np.isfinite(t_hdr) or t_hdr <= 0:
+                sys.exit("[!] %s: no livetime -- the Good Run List does not "
+                         "cover every run and the booked files give no event-"
+                         "time span.  Pass --grl-pattern for the right list."
+                         % name)
             set_data_livetime(t_hdr)
             record = {"source": "event_time_span", "seconds": t_hdr,
                       "patterns": list(grl_patterns)}
