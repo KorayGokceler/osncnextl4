@@ -162,6 +162,12 @@ def load_model(model_file):
 FAIL_AFTER = 100
 
 
+# Below this many Physics frames an always-missing input is reported, not
+# fatal: too few events to tell a missing binding from legitimately absent
+# values.  See Finish().
+MIN_FRAMES_TO_JUDGE = 30
+
+
 class L4Classifier(icetray.I3ConditionalModule):
     '''Apply a trained LightGBM model frame by frame.'''
 
@@ -248,9 +254,20 @@ class L4Classifier(icetray.I3ConditionalModule):
                 % (self.output_key, ", ".join(never), self.n_frames))
 
     def Finish(self):
-        # A short file never reached FailAfter frames: judge it on what it had.
-        if not self.checked and self.n_frames:
+        # A short file never reached FailAfter frames: judge it on what it had,
+        # but only if it had enough to judge.  Some inputs are legitimately
+        # absent per event (accumulated_time with <= 4 cleaned DOMs, a failed
+        # linefit), so "missing in all of 5 frames" is not the bug signature
+        # and would kill a --n smoke test or a sparse noise chunk.  Below the
+        # floor it warns instead; the report below still flags it.
+        if not self.checked and self.n_frames >= MIN_FRAMES_TO_JUDGE:
             self._fail_if_never_seen()
+        elif not self.checked and self.n_frames:
+            never = [f for f, n in self.n_missing.items() if n == self.n_frames]
+            if never:
+                print("L4Classifier [%s] WARNING: %s missing in all of only "
+                      "%d frames -- too few to judge; check on a larger run."
+                      % (self.output_key, ", ".join(never), self.n_frames))
         bad = {f: n for f, n in self.n_missing.items() if n > 0}
         if bad and self.n_frames:
             print("L4Classifier [%s] missing-variable report (%d frames):"

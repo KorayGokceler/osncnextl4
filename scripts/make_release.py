@@ -3,7 +3,7 @@
 Assemble the self-contained, runnable release handed to a collaborator.
 
     python scripts/make_release.py [--out dist/oscnext_l4_release] \\
-        [--models L4_output/models_pass2] [--partial-models]
+        (--models L4_output/models_pass2 [--partial-models] | --no-models)
 
 WHAT GOES IN IS COMPUTED, NOT LISTED.  The release serves three things: L3 .i3
 -> L4 .i3 (process_L4.py), the training (make_dataset.py,
@@ -720,12 +720,21 @@ def main():
     ap.add_argument("--models", default=None,
                     help="directory holding L4_noise_model.txt/.json and "
                          "L4_muon_model.txt/.json (models never enter git)")
+    ap.add_argument("--no-models", action="store_true",
+                    help="build without models on purpose (models/README.md "
+                         "says what belongs there); otherwise --models is "
+                         "required, so a forgotten flag cannot ship an empty "
+                         "models/ that looks finished")
     ap.add_argument("--partial-models", action="store_true",
                     help="ship the models that exist even if one of the two "
                          "is missing; models/README.md says which")
     ap.add_argument("--list", action="store_true",
                     help="print the import closure and exit; builds nothing")
     args = ap.parse_args()
+    if not args.list and args.models is None and not args.no_models:
+        ap.error("give --models DIR, or --no-models to build without them")
+    if args.models is not None and args.no_models:
+        ap.error("--models and --no-models are mutually exclusive")
 
     try:
         if args.list:
