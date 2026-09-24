@@ -35,7 +35,8 @@ verification/   the pass2 cross-check -- NOT part of the pipeline.  Runs it
                 pass2 L4 files.  Delete this arm LAST; it is the safety net.
 release/        the templates make_release.py fills: the package a
                 collaborator runs (README, physics caveats, models)
-docs/           pipeline.md, technical_note_comparison.md, production_build.md
+docs/           CODE_GUIDE.md (start here), pipeline.md,
+                technical_note_comparison.md, production_build.md
 presentation/   figures and the weekly updates
 reference/      the technical note and first-hand source material
 ```
@@ -173,6 +174,9 @@ Output cells take megabytes and produce meaningless diffs.
       on 120,125 noise events; pass3: 95.9%, on only 2,051 (Table 13: ~96%)
 - [ ] pass3 numu / noise need reprocessing (cut short by corrupt `.i3.zst`)
 - [ ] Muon classifier not trained
+
+**New to the code?  Start with `docs/CODE_GUIDE.md`**: the big picture, the
+data flow, recipes, and what every file and function does.
 
 Details and open risks: `CLAUDE.md`.  Line-by-line comparison with the
 technical note: `docs/technical_note_comparison.md`.  Data flow:

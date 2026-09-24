@@ -201,6 +201,9 @@ Supporting files:
   was a name list written when pass3 was the only production, and it silently
   dropped pass2's NuTau.)
 - `scripts/diagnose_env.py` — what is and is not in the environment.
+- `docs/CODE_GUIDE.md` — the guide for a newcomer: the big picture, the
+  data flow, recipes, and every file and function explained (Parts A-D).
+  Update it when a function's behaviour changes.
 - `docs/pipeline.md` — which file runs when.
 - `docs/technical_note_comparison.md` — exactly what we write to HDF5, compared
   line by line with the technical note (Tables 7/10/11/12/13).
